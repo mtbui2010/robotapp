@@ -1,0 +1,156 @@
+[
+  {
+    "id": "sendstringdata_srv",
+    "label": "SendStringData — Service",
+    "interfaces": ["rosinterfaces/srv/SendStringData"],
+    "keywords": ["SendStringData"],
+    "conn_types": ["ros_service"],
+    "builtin": true,
+    "description": "Built-in encode/decode for rosinterfaces/srv/SendStringData. No custom functions needed.",
+    "encode_func": null,
+    "decode_func": null
+  },
+  {
+    "id": "sendstringdata_action",
+    "label": "SendStringData — Action",
+    "interfaces": ["rosinterfaces/action/SendStringData"],
+    "keywords": ["SendStringData"],
+    "conn_types": ["ros_action"],
+    "builtin": true,
+    "description": "Built-in encode/decode for rosinterfaces/action/SendStringData. No custom functions needed.",
+    "encode_func": null,
+    "decode_func": null
+  },
+  {
+    "id": "string_topic_sub",
+    "label": "std_msgs/String — Subscribe",
+    "interfaces": ["std_msgs/msg/String"],
+    "keywords": ["String", "std_msgs"],
+    "conn_types": ["ros_topic"],
+    "builtin": false,
+    "description": "Subscribe to std_msgs/String topic. Decodes string data as dict.",
+    "encode_func": null,
+    "decode_func": "def decode_func(msg):\n    from pyconnect.utils import str2dict\n    return str2dict(msg.data)"
+  },
+  {
+    "id": "string_topic_pub",
+    "label": "std_msgs/String — Publish",
+    "interfaces": ["std_msgs/msg/String"],
+    "keywords": ["String", "std_msgs"],
+    "conn_types": ["ros_topic"],
+    "builtin": false,
+    "description": "Publish to std_msgs/String topic. Encodes dict as string.",
+    "encode_func": "def encode_func(data, msg):\n    from pyconnect.utils import dict2str\n    msg.data = dict2str(data)\n    return msg",
+    "decode_func": null
+  },
+  {
+    "id": "compressed_image_sub",
+    "label": "sensor_msgs/CompressedImage — Subscribe",
+    "interfaces": ["sensor_msgs/msg/CompressedImage"],
+    "keywords": ["CompressedImage", "Image", "sensor_msgs"],
+    "conn_types": ["ros_topic"],
+    "builtin": false,
+    "description": "Subscribe to compressed image. Returns {'im': ndarray, 'isdone': True}.",
+    "encode_func": null,
+    "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_imgmsg\n    return decode_imgmsg(msg)"
+  },
+  {
+    "id": "image_pub",
+    "label": "sensor_msgs/Image — Publish",
+    "interfaces": ["sensor_msgs/msg/Image"],
+    "keywords": ["Image", "sensor_msgs"],
+    "conn_types": ["ros_topic"],
+    "builtin": false,
+    "description": "Publish a cv2/numpy image as sensor_msgs/Image.",
+    "encode_func": "def encode_func(img, msg):\n    from pyconnect.ros.utils import encode_imgmsg\n    return encode_imgmsg(img, msg)",
+    "decode_func": null
+  },
+  {
+    "id": "camera_info_sub",
+    "label": "sensor_msgs/CameraInfo — Subscribe",
+    "interfaces": ["sensor_msgs/msg/CameraInfo"],
+    "keywords": ["CameraInfo", "sensor_msgs"],
+    "conn_types": ["ros_topic"],
+    "builtin": false,
+    "description": "Subscribe to camera info. Returns {'cam_params': [fx, fy, cx, cy], 'isdone': True}.",
+    "encode_func": null,
+    "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_caminfomsg\n    return decode_caminfomsg(msg)"
+  },
+  {
+    "id": "passthrough_srv_successed",
+    "label": "Passthrough Service — res.successed",
+    "interfaces": [],
+    "keywords": ["Command", "kcare", "Elevation", "Gripper", "Mobile", "Rotate", "Shift", "DirectPose"],
+    "conn_types": ["ros_service"],
+    "builtin": false,
+    "description": "Generic service: maps dict fields directly to request via set_atrrs. Used for kcare_robot_ros2_controller_msgs services.",
+    "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+    "decode_func": "def decode_func(res):\n    return {'isdone': res.successed}"
+  },
+  {
+    "id": "passthrough_srv_ret",
+    "label": "Passthrough Service — res.ret == 0",
+    "interfaces": [],
+    "keywords": ["xarm", "MoveJoint", "MoveCartesian", "SetInt", "Call"],
+    "conn_types": ["ros_service"],
+    "builtin": false,
+    "description": "Generic service: maps dict fields to request via set_atrrs. Checks res.ret == 0 for success (xarm_msgs style).",
+    "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+    "decode_func": "def decode_func(res):\n    return {'isdone': res.ret == 0, 'ret': res.ret}"
+  },
+  {
+    "id": "pose_stamped_sub",
+    "label": "geometry_msgs/PoseStamped — Subscribe",
+    "interfaces": ["geometry_msgs/msg/PoseStamped"],
+    "keywords": ["PoseStamped", "Pose", "geometry_msgs"],
+    "conn_types": ["ros_topic"],
+    "builtin": false,
+    "description": "Subscribe to PoseStamped. Returns {'x': mm, 'y': mm, 'theta': deg, 'isdone': True}.",
+    "encode_func": null,
+    "decode_func": "def decode_func(msg):\n    from scipy.spatial.transform import Rotation as R\n    ori = msg.pose.orientation\n    r = R.from_quat([ori.x, ori.y, ori.z, ori.w])\n    return {\n        'x': round(msg.pose.position.x * 1000),\n        'y': round(msg.pose.position.y * 1000),\n        'theta': r.as_euler('xyz', degrees=True)[-1],\n        'isdone': True\n    }"
+  },
+  {
+    "id": "pose_covariance_sub",
+    "label": "geometry_msgs/PoseWithCovarianceStamped — Subscribe",
+    "interfaces": ["geometry_msgs/msg/PoseWithCovarianceStamped"],
+    "keywords": ["PoseWithCovariance", "amcl", "geometry_msgs"],
+    "conn_types": ["ros_topic"],
+    "builtin": false,
+    "description": "Subscribe to AMCL/EKF pose. Returns {'x': mm, 'y': mm, 'theta': deg}.",
+    "encode_func": null,
+    "decode_func": "def decode_func(msg):\n    from scipy.spatial.transform import Rotation as R\n    ori = msg.pose.pose.orientation\n    r = R.from_quat([ori.x, ori.y, ori.z, ori.w])\n    return {\n        'x': round(msg.pose.pose.position.x * 1000),\n        'y': round(msg.pose.pose.position.y * 1000),\n        'theta': r.as_euler('xyz', degrees=True)[-1]\n    }"
+  },
+  {
+    "id": "navigate_to_pose",
+    "label": "nav2_msgs/NavigateToPose — Action Client",
+    "interfaces": ["nav2_msgs/action/NavigateToPose"],
+    "keywords": ["NavigateToPose", "nav2", "navigate"],
+    "conn_types": ["ros_action"],
+    "builtin": false,
+    "description": "Navigate to pose action. Input dict: {'x': mm, 'y': mm, 'theta': deg}.",
+    "encode_func": "def encode_func(data, req):\n    import numpy as np\n    from scipy.spatial.transform import Rotation as R\n    from pyconnect.utils import set_atrrs\n    req.pose.header.frame_id = 'map'\n    req.pose.pose.position.x = data.get('x', 0.) / 1000.\n    req.pose.pose.position.y = data.get('y', 0.) / 1000.\n    axis = np.array([0, 0, 1])\n    r = R.from_rotvec(axis * data.get('theta', 0.) * np.pi / 180.)\n    x, y, z, w = r.as_quat().tolist()\n    set_atrrs(req.pose.pose.orientation, {'x': x, 'y': y, 'z': z, 'w': w})\n    return req",
+    "decode_func": "def decode_func(res):\n    return {'isdone': True}"
+  },
+  {
+    "id": "generic_sub",
+    "label": "Generic Subscribe — get_attrs",
+    "interfaces": [],
+    "keywords": [],
+    "conn_types": ["ros_topic", "ros_service", "ros_action"],
+    "builtin": false,
+    "description": "Generic pattern: read specific fields from the message using get_attrs.",
+    "encode_func": null,
+    "decode_func": "def decode_func(msg):\n    from pyconnect.utils import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['field1', 'field2'])\n    ret['isdone'] = True\n    return ret"
+  },
+  {
+    "id": "generic_service",
+    "label": "Generic Service — custom",
+    "interfaces": [],
+    "keywords": [],
+    "conn_types": ["ros_service", "ros_action"],
+    "builtin": false,
+    "description": "Generic template for custom service or action encode/decode.",
+    "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+    "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}"
+  }
+]

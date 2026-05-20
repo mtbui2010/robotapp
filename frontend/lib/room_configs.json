@@ -1,0 +1,16 @@
+{
+  "ME": "living room",
+  "MOBILE_HEIGHT": 0.435,
+  "ENV": {
+    "living room": {
+      "default_loc": "table",
+      "table": {
+        "default_mode": "right",
+        "placepose": {"dx": 0.3, "dy": -0.1},
+        "loc": {"x": 1.0, "y": -1.74, "theta": 0},
+        "dforward": 0.3,
+        "dshift": -0.2
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+tôi muốn kcare_robot và robot_template có thể support CLI cho user và python API user (user chạy code của riêng họ).
+Chỉ run robot và CLI/python, không dùng UI
+
+ví dụ cho CLI: kcare_robot find::apple
+ví dụ cho python:
+
+from kcare_robot.skills.recognition import find
+ret = find(inputs=apple)
+
+Gợi ý cách thực hiện
