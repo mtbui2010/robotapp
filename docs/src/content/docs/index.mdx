@@ -1,0 +1,201 @@
+---
+title: RobotApp
+description: A real-time ops console and FastAPI runtime for ROS2 mobile manipulators — open-vocabulary perception, live RGB-D streaming, hot-swappable skills.
+template: splash
+hero:
+  tagline: A real-time ops console + FastAPI runtime for <strong>ROS2 mobile manipulators</strong>. Open-vocabulary perception, live RGB-D streaming, hot-swappable skills — driven from a browser.
+  image:
+    file: ../../assets/dashboard-hero.png
+    alt: RobotApp dashboard showing live RGB-D camera feed, task plan execution, and skill registry.
+  actions:
+    - text: Live demo
+      link: https://robot.aistations.org
+      icon: external
+      variant: primary
+    - text: GitHub
+      link: https://github.com/mtbui2010/robotapp
+      icon: github
+      variant: secondary
+    - text: Read the architecture
+      link: /robotapp/deep-dive/architecture/
+      variant: minimal
+draft: false
+---
+
+import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import dashboardFull from '../../assets/dashboard-full.png';
+import featureCamera from '../../assets/feature-camera.png';
+import featurePlan   from '../../assets/feature-plan.png';
+import featureSkills from '../../assets/feature-skills.png';
+import featureAgent  from '../../assets/feature-agent.png';
+import featureConn   from '../../assets/feature-connections.png';
+import { Image } from 'astro:assets';
+
+<div class="stat-grid">
+  <div class="stat"><div class="n">23</div><div class="l">production skills</div></div>
+  <div class="stat"><div class="n">30+</div><div class="l">REST + WS endpoints</div></div>
+  <div class="stat"><div class="n">6</div><div class="l">device transports</div></div>
+  <div class="stat"><div class="n">3</div><div class="l">execution modes</div></div>
+  <div class="stat"><div class="n">~20 fps</div><div class="l">depth streaming</div></div>
+</div>
+
+## What it does
+
+RobotApp is the **UI tier** of a three-mode robot stack — UI, CLI, and Python API
+all share one runtime ([robot_agent](/robotapp/stack/robot-agent/)). The
+dashboard turns any [robot_agent](/robotapp/stack/robot-agent/)-based robot
+(reference: [kcare_robot](/robotapp/stack/kcare-robot/), an assistive 6-DOF
+mobile manipulator) into a network-addressable agent — driveable from a
+browser on the other side of the world, deployed globally on Cloudflare Pages.
+
+<CardGrid>
+  <Card title="Live RGB-D streaming" icon="rocket">
+    WebSocket bridges to RealSense D405 and Femto Bolt RGB-D cameras.
+    `zlib`-compressed `uint16` depth is decoded in the browser and rendered
+    with a JET colormap. Pixel-hover gives a live millimetre readout.
+  </Card>
+  <Card title="Open-vocabulary perception" icon="magnifier">
+    Type <code>apple</code> or <code>the red mug on the table</code>;
+    the backend routes to a TCP VLM service (GroundingDINO + GroundedSAM +
+    mask2grasps) and lifts detections to 6-DOF grasp poses.
+  </Card>
+  <Card title="Streaming task plans" icon="list-format">
+    A single WebSocket carries the full lifecycle:
+    <code>start → plan → step_start → step_log → step_done → done</code>.
+    Inline frames render next to the step that produced them.
+  </Card>
+  <Card title="Hot-swappable skills" icon="setting">
+    Register new ROS service / topic / action / WebRTC / TCP / LLM clients
+    from the UI. Reload skills with one POST — no robot restart.
+  </Card>
+  <Card title="Three execution modes" icon="puzzle">
+    Same skill, three entry points: <code>POST /skill/&lt;name&gt;</code>,
+    <code>kcare_robot pick::apple</code>, or
+    <code>from kcare_robot.skills.pick import pick</code>.
+  </Card>
+  <Card title="Edge deployment" icon="cloud-download">
+    Static export, served from Cloudflare Pages with a custom domain
+    (<a href="https://robot.aistations.org">robot.aistations.org</a>) — sub-100 ms TTFB anywhere.
+  </Card>
+</CardGrid>
+
+## A guided tour of the dashboard
+
+<Image src={dashboardFull} alt="Full dashboard screenshot" />
+
+The interface is split into four functional zones. Click through them below.
+
+<Tabs>
+  <TabItem label="Camera feed">
+    <Image src={featureCamera} alt="Live RGB / depth camera tabs with FPS counter and capture controls" />
+    Multi-camera tabs (head_rgb, head_depth, arm_rgb, arm_depth, log_image)
+    persist their order in <code>localStorage</code>. Drag to reorder. RGB
+    streams as JPEG; depth streams as raw <code>uint16</code> +
+    <code>zlib</code>, decoded and colorised client-side. Rectangle-draw
+    overlay is wired to detector inputs.
+  </TabItem>
+  <TabItem label="Unified agent">
+    <Image src={featureAgent} alt="Structured / unstructured agent prompt with language toggle" />
+    Two prompt modes — <strong>Structured</strong> for direct skill calls
+    (<code>moveh::down</code> + key=value params) and
+    <strong>Unstructured</strong> for natural-language tasks routed through
+    an LLM planner. Language picker (EN / KO / VI). Ctrl+Enter to dispatch.
+  </TabItem>
+  <TabItem label="Task plan">
+    <Image src={featurePlan} alt="Plan + execution panel with step results" />
+    The LLM plan and step-by-step execution timeline. Each step shows
+    status (<code>✓ done</code> / <code>✗ failed</code> / <code>⟳ running</code>),
+    a JSON result, and any log image emitted mid-skill — all streamed over
+    one WebSocket.
+  </TabItem>
+  <TabItem label="Skill registry">
+    <Image src={featureSkills} alt="Skill registry grouped by category" />
+    Live list of every registered skill, grouped by category
+    (recognition, pick, place, mobile, arm, head, lift…). CRUD on each
+    skill, JSON-edit per-skill configs, hot-reload via
+    <code>POST /skills/reload</code>.
+  </TabItem>
+  <TabItem label="Connections">
+    <Image src={featureConn} alt="Device connections panel with ping all and ROS scan" />
+    Every ROS service / topic / action / WebRTC / TCP / LLM client
+    registered with the robot. <strong>Ping All</strong> health-checks the
+    bus; <strong>Scan ROS</strong> discovers nodes via
+    <code>get_ros2_node_names_and_types()</code>.
+  </TabItem>
+</Tabs>
+
+## The stack
+
+<CardGrid>
+  <LinkCard
+    title="robotapp · Next.js 14 dashboard"
+    href="/robotapp/stack/robotapp/"
+    description="TypeScript, Tailwind, WebSocket clients for camera + plan streaming. Static export → Cloudflare Pages."
+  />
+  <LinkCard
+    title="robot_agent · FastAPI runtime"
+    href="/robotapp/stack/robot-agent/"
+    description="~4.2 K LOC. SkillRegistry · DeviceManager · UnifiedAgent. 30+ endpoints. Six device transports."
+  />
+  <LinkCard
+    title="kcare_robot · 6-DOF assistive manipulator"
+    href="/robotapp/stack/kcare-robot/"
+    description="23 production skills. RealSense D405 wrist cam · Femto Bolt head stereo · Nav2 base · KAAIR cobot arm."
+  />
+  <LinkCard
+    title="robot_template · cookiecutter scaffold"
+    href="/robotapp/stack/robot-template/"
+    description="Bootstrap a dashboard-ready robot package in 30 seconds. Same contract as kcare_robot."
+  />
+</CardGrid>
+
+## Architecture at a glance
+
+```text
+                ┌──────────────────────────────────────┐
+                │  robotapp   ·  Next.js 14 + Tailwind │   browser / Cloudflare Pages
+                │  WebSocket + REST client (TypeScript)│
+                └────────────────┬─────────────────────┘
+                                 │  HTTP + WS
+                                 ▼
+       ┌──────────────────────────────────────────────────┐
+       │  robot_agent   ·   FastAPI                       │   robot host · port 8001
+       │  · SkillRegistry · DeviceManager · UnifiedAgent  │
+       │  · /ws/camera/{id}   /ws/agent   30+ REST        │
+       └────────────┬──────────────────────┬──────────────┘
+                    │                      │
+                    ▼                      ▼
+        ROS2 Humble · rclpy · Nav2     Devices · RealSense D405
+        joint_states · /navigate_to_   Femto Bolt · KAAIR cobot
+        pose · /kaair_worker/*         TCP VLM service (GPU)
+```
+
+Want the full diagram with sequence flow? **[Read the architecture deep dive
+→](/robotapp/deep-dive/architecture/)**
+
+## Demo
+
+<video controls width="100%" style="border-radius: 12px; border: 1px solid var(--sl-color-hairline); margin-top: 1rem;">
+  <source src="/robotapp/demo.mp4" type="video/mp4" />
+  Your browser does not support embedded video — a demo GIF will be placed at <code>docs/public/demo.gif</code>.
+</video>
+
+<p style="color: var(--sl-color-gray-4); font-size: .9rem; margin-top: .5rem;">
+  Record a screen capture of the dashboard and drop it at <code>docs/public/demo.mp4</code>
+  (or <code>demo.gif</code>) — it will appear here automatically.
+</p>
+
+## Contact
+
+<div class="contact-card">
+  <p style="margin: 0 0 .5rem 0; font-weight: 600;">Trung Bui · Robotics + Vision Engineer</p>
+  <p style="margin: 0; color: var(--sl-color-gray-4);">
+    Built RobotApp, robot_agent, kcare_robot, and robot_template end-to-end.
+    Open to roles in robotics, computer vision, and full-stack AI infrastructure.
+  </p>
+  <p style="margin-top: .75rem;">
+    <a href="mailto:bmtrungvp@gmail.com">bmtrungvp@gmail.com</a> ·
+    <a href="https://github.com/mtbui2010">github.com/mtbui2010</a> ·
+    <a href="/robotapp/about/">More about this project →</a>
+  </p>
+</div>

@@ -1,0 +1,155 @@
+/* Light-first professional theme — refined accents over Starlight's defaults. */
+
+:root {
+  --sl-color-accent-low: #dbeafe;
+  --sl-color-accent: #2563eb;
+  --sl-color-accent-high: #1d4ed8;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #f8fafc;
+  --sl-color-gray-2: #e2e8f0;
+  --sl-color-gray-3: #cbd5e1;
+  --sl-color-gray-4: #64748b;
+  --sl-color-gray-5: #475569;
+  --sl-color-gray-6: #1e293b;
+  --sl-color-black: #0f172a;
+  --sl-font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --sl-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root[data-theme='light'] {
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #f8fafc;
+  --sl-color-text: #0f172a;
+  --sl-color-text-accent: #1d4ed8;
+  --sl-color-hairline: #e2e8f0;
+}
+
+:root[data-theme='dark'] {
+  /* Keep a tasteful dark mode for OS-dark users */
+  --sl-color-accent-low: #1e3a8a;
+  --sl-color-accent: #60a5fa;
+  --sl-color-accent-high: #93c5fd;
+  --sl-color-bg: #0b1220;
+  --sl-color-bg-nav: #0b1220;
+  --sl-color-bg-sidebar: #0f172a;
+  --sl-color-text: #e2e8f0;
+}
+
+/* Hero spacing tightens the splash template */
+.hero {
+  padding-block: 3rem;
+}
+
+.hero h1 {
+  letter-spacing: -0.02em;
+  font-size: clamp(2.25rem, 4.5vw, 3.75rem);
+}
+
+.hero .tagline {
+  font-size: clamp(1rem, 1.4vw, 1.25rem);
+  color: var(--sl-color-gray-4);
+  max-width: 56ch;
+}
+
+.hero .actions a[data-variant='primary'] {
+  background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+  border: none;
+  color: #fff;
+}
+
+.hero .actions a[data-variant='primary']:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  transition: transform 120ms ease;
+}
+
+/* Card grids look nicer with subtle shadow */
+.sl-link-card,
+starlight-card {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: all 180ms ease;
+}
+.sl-link-card:hover,
+starlight-card:hover {
+  border-color: var(--sl-color-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(37, 99, 235, 0.10);
+}
+
+/* Stat blocks (custom HTML in pages) */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.stat {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 14px;
+  padding: 1.25rem;
+  background: var(--sl-color-bg);
+}
+.stat .n {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--sl-color-accent-high);
+  line-height: 1;
+}
+.stat .l {
+  margin-top: .4rem;
+  font-size: .85rem;
+  color: var(--sl-color-gray-4);
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+/* Tag pill */
+.pill {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: .75rem;
+  border-radius: 999px;
+  background: var(--sl-color-accent-low);
+  color: var(--sl-color-accent-high);
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+/* Code blocks slightly less heavy */
+.expressive-code {
+  border-radius: 12px !important;
+}
+
+/* Image rounded + soft border */
+.sl-markdown-content img:not([data-no-style]) {
+  border-radius: 12px;
+  border: 1px solid var(--sl-color-hairline);
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+}
+
+/* Center hero image inside splash */
+.hero > img {
+  max-height: none;
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--sl-color-hairline);
+  box-shadow: 0 10px 40px rgba(15, 23, 42, 0.08);
+}
+
+/* Tighter headings */
+h2 { letter-spacing: -0.01em; }
+
+/* Footer-like contact section */
+.contact-card {
+  margin-top: 2rem;
+  padding: 1.5rem 1.75rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+}
+:root[data-theme='dark'] .contact-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a33 100%);
+}

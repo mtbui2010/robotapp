@@ -1,0 +1,134 @@
+---
+title: kcare_robot — Reference Implementation
+description: An assistive mobile manipulator. 23 production skills on a 6-DOF cobot with RealSense D405 + Femto Bolt + Nav2.
+draft: false
+---
+
+import { Card, CardGrid, Aside, Badge } from '@astrojs/starlight/components';
+
+<Badge text="Reference robot" variant="note" />
+<Badge text="6-DOF cobot" /> <Badge text="RealSense D405" /> <Badge text="Femto Bolt" /> <Badge text="Nav2" />
+
+A real, working assistive mobile manipulator — the proof that the
+[`robot_agent`](/robotapp/stack/robot-agent/) runtime carries production
+robotics workloads.
+
+<div class="stat-grid">
+  <div class="stat"><div class="n">23</div><div class="l">skills</div></div>
+  <div class="stat"><div class="n">6-DOF</div><div class="l">cobot arm</div></div>
+  <div class="stat"><div class="n">2</div><div class="l">RGB-D cameras</div></div>
+  <div class="stat"><div class="n">Nav2</div><div class="l">mobile base</div></div>
+</div>
+
+## Hardware
+
+| Subsystem | Hardware | ROS2 interface |
+|---|---|---|
+| Manipulator | 6-DOF **KAAIR** cobot arm | `/kaair_worker/arm_moveJ`, `/arm_moveT` (actions) |
+| End-effector | Two-finger gripper + suction | `/body/tool_controller/gripper_cmd` |
+| Wrist camera | Intel **RealSense D405** | `/hand/d405/color/...`, `/depth/image_rect_raw` |
+| Head cameras | Orbbec **Femto Bolt** RGB-D | `/femto/color/...`, `/femto/depth/...compressedDepth` |
+| Mobile base | 2-wheel diff-drive, LiDAR | Nav2 `/navigate_to_pose` |
+| Lift | Linear actuator | `/kaair_worker/lift_move` |
+| Head | 2-DOF pan-tilt | `/kaair_worker/head_move` (rz, ry) |
+| Proprioception | Joint states, tool pose, mobile odom | `/joint_states`, `/robot_pose/*` |
+| Perception backend | TCP VLM service | GroundingDINO + GroundedSAM + mask2grasps |
+
+## The 23 skills
+
+| Group | Skills |
+|---|---|
+| **Perception** | `find`, `detect`, `find_arm`, `grasp_succeed`, `get3d`, `inform` |
+| **Manipulation** | `pick`, `pick_no_sound`, `pick_card`, `fine_move`, `place`, `placeat`, `placep`, `open_drawer`, `close_drawer`, `collect_card`, `return_card`, `stack`, `wipe` |
+| **Arm motion** | `arm_joints`, `arm_pose`, `movel`, `movej`, `movet`, `movelf` |
+| **Mobile base** | `move`, `forward`, `turn`, `rotate`, `moveb`, `mobile_pose` |
+| **Head / lift / gripper** | `moveh`, `head_state`, `lift`, `lift_state`, `dlift`, `grip` |
+| **Interaction** | `select_response`, `llm` |
+
+Every skill follows one contract:
+
+```python
+def skill(node, **params) -> dict:
+    return {'isdone': bool, 'msg': str, ...}   # planner-readable
+```
+
+## What's interesting under the hood
+
+### Open-vocabulary 3D perception
+
+`skills/recognition.py` — 415 lines — runs the full pipeline:
+
+1. **Fetch** RGB-D from wrist or head camera
+2. **Detect** via TCP to the VLM service (`GroundingDINO` for text queries,
+   `GroundedSAM` for masks)
+3. **Lift to 3D** — `attach_3d_features()` reconstructs per-cluster normals,
+   min/median/max depth, 3D centroids via inverse projection `Ixy2xyz()`
+4. **Classify pose** — detects lying objects from normal-vector dispersion;
+   estimates mass-center percentages for handle-equipped items
+5. **Grasp** — `mask2grasps` returns 2D pixel endpoints; the skill lifts
+   them to a 6-DOF grasp pose using depth + camera intrinsics + wrist-offset
+   geometry
+
+### Head-to-base calibration
+
+`skills/calibrattion.py` ships a `Head2BaseCalibration` class with:
+- Intrinsic camera parameters (fx, fy, ppx, ppy) per stream
+- 4×4 link-to-base and base-to-lift transforms
+- Per-mode (front / left / right) error-linear corrections
+
+This is what turns *"the apple your wrist camera sees"* into *"an XYZ in the
+base frame the arm can actually move to."*
+
+### Closed-loop grasping with self-correction
+
+`skills/pick.py` — 422 lines — orchestrates the full pick:
+
+1. `find_arm()` — wrist-camera detection
+2. `fine_move()` — wrist-guided approach with **up to 2 self-correction
+   trials** if the object drifts out of frame
+3. `grip()` — close gripper
+4. `grasp_succeed()` — verify by re-imaging the gripper ROI and checking
+   depth in a ±0.27 m window
+
+Place is the mirror: `placeat()` / `placep()` plus retraction choreography.
+Drawer skills detect the handle as a separate class and run open/close as a
+constrained Cartesian movement.
+
+### Parallel actuator coordination
+
+```python
+# Common pattern: lift + arm + head move simultaneously
+run_parallel_check([
+    ('lift',  {'height': 0.4}),
+    ('movej', {'joints': ARM_PRE_PICK}),
+    ('moveh', {'rz': -30, 'ry': 20}),
+])
+```
+
+`run_parallel_check()` (from `pyconnect`) fires ROS actions in parallel and
+waits for all to converge before continuing — drops a typical pick from
+~7 s sequential to ~3 s.
+
+## Quick start
+
+```bash
+make install                                 # editable-install everything
+make run                                     # uvicorn on :8001
+                                             # auto-sources /opt/ros/humble/setup.bash
+
+# HTTP
+curl -X POST http://localhost:8001/skill/find -d '{"inputs":"apple"}'
+
+# CLI
+kcare_robot --list
+kcare_robot find::apple
+kcare_robot pick::apple
+
+# Python
+python -c "from kcare_robot.skills.pick import pick; print(pick('apple'))"
+```
+
+<Aside type="caution">
+Don't run two modes against the same physical robot at the same time —
+there is no central arbitration layer.
+</Aside>

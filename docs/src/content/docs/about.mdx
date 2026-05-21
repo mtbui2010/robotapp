@@ -1,0 +1,85 @@
+---
+title: About / Contact
+description: About this project, the engineer behind it, and how to get in touch.
+draft: false
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What this is
+
+RobotApp is a **personal portfolio piece** that also happens to be a real,
+working robotics product. It is the UI layer of a four-package stack that
+turns any ROS2 mobile manipulator into a network-addressable agent —
+driveable from a browser, from a CLI, or from a Python script, all sharing
+one runtime.
+
+The reference robot ([`kcare_robot`](/robotapp/stack/kcare-robot/)) is an
+assistive 6-DOF cobot with two RGB-D cameras, a Nav2-driven mobile base, and
+an open-vocabulary perception pipeline (GroundingDINO + GroundedSAM +
+mask2grasps). It's deployed in real environments today.
+
+## What I built end to end
+
+<CardGrid>
+  <Card title="Frontend" icon="seti:tsx">
+    Next.js 14, TypeScript strict, Tailwind. WebSocket bridges, in-browser
+    depth-map decoding, multi-camera tabs, live skill registry CRUD.
+    Deployed to Cloudflare Pages.
+  </Card>
+  <Card title="Backend runtime" icon="seti:python">
+    FastAPI service (~4.2 K LOC) with custom JSON encoder for numpy / PIL,
+    atomic-persistence layer, async-to-thread WebSocket bridge,
+    cross-mode bootstrap.
+  </Card>
+  <Card title="Robotics integration" icon="puzzle">
+    ROS2 Humble integration via `pyconnect`; lazy node init with 4 callback
+    groups, Nav2, action / service / topic clients, head-to-base
+    calibration, parallel actuator coordination.
+  </Card>
+  <Card title="Vision" icon="magnifier">
+    Open-vocabulary detection pipeline over TCP, 3D feature extraction
+    (cluster normals, inverse projection, lying-object classification),
+    grasp-pose lifting (2D pixels → 6-DOF tool pose).
+  </Card>
+  <Card title="Cookiecutter scaffold" icon="setting">
+    `robot_template` — generates a dashboard-ready robot package in seconds,
+    with three reference patterns for skill implementation.
+  </Card>
+  <Card title="DevOps" icon="cloud-download">
+    Cloudflare Pages + custom domain (robot.aistations.org), GitHub Pages
+    docs (this site, Astro Starlight), Makefile-driven deploys.
+  </Card>
+</CardGrid>
+
+## Tech I work with
+
+- **Languages**: Python (production), TypeScript (production), C++ (ROS2 / driver-level)
+- **Robotics**: ROS2 Humble, rclpy, Nav2, MoveIt2 basics, custom action/service clients
+- **Vision**: GroundingDINO, SAM / GroundedSAM, OpenCV, RealSense / Orbbec SDKs, depth-map processing, calibration
+- **Backend**: FastAPI, async Python, threading patterns, WebSocket streaming, REST APIs
+- **Frontend**: React 18, Next.js 14 App Router, TypeScript strict, TailwindCSS, Canvas / WebSocket clients
+- **Infra**: Cloudflare Pages, Wrangler, GitHub Actions, Linux services, Docker
+
+## The full stack — at a glance
+
+| Repo | What it is |
+|---|---|
+| [**robotapp**](https://github.com/mtbui2010/robotapp) | This dashboard — Next.js + Cloudflare Pages |
+| [**robot_agent**](https://github.com/mtbui2010/robot_agent) | FastAPI runtime — three-mode core |
+| [**kcare_robot**](https://github.com/mtbui2010/kcare_robot) | Reference robot — 23 production skills |
+| [**robot_template**](https://github.com/mtbui2010/robot_template) | Cookiecutter scaffold for new robots |
+
+## Contact
+
+<div class="contact-card">
+  <p style="margin: 0 0 .5rem 0; font-weight: 600;">Trung Bui · Robotics + Vision Engineer</p>
+  <p style="margin: 0; color: var(--sl-color-gray-4);">
+    Open to roles in robotics, computer vision, and full-stack AI
+    infrastructure. Happy to walk through any layer of this stack on a call.
+  </p>
+  <p style="margin-top: .75rem;">
+    <a href="mailto:bmtrungvp@gmail.com">bmtrungvp@gmail.com</a> ·
+    <a href="https://github.com/mtbui2010">github.com/mtbui2010</a>
+  </p>
+</div>

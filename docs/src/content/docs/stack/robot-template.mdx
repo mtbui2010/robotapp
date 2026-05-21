@@ -1,0 +1,90 @@
+---
+title: robot_template — Cookiecutter Scaffold
+description: Bootstrap a dashboard-ready, CLI-ready, Python-API-ready ROS2 robot package in 30 seconds.
+draft: false
+---
+
+import { Card, CardGrid, Badge } from '@astrojs/starlight/components';
+
+<Badge text="Cookiecutter" variant="caution" />
+<Badge text="3-mode out-of-the-box" />
+
+The fast lane to a new robot. Generates a complete package that drops
+straight into the [`robot_agent`](/robotapp/stack/robot-agent/) runtime and
+is immediately controllable from the
+[`robotapp`](/robotapp/stack/robotapp/) dashboard.
+
+```bash
+pip install cookiecutter
+cookiecutter https://github.com/mtbui2010/robot_template
+cd <package_name>
+make install && make run
+# → uvicorn on :8001, ready to drive from https://robot.aistations.org
+```
+
+## What it emits
+
+```
+<package_name>/
+├── Makefile                  install · run · cli · doctor · terminate
+├── pyproject.toml            [project.scripts] <package_name> = ...
+├── .vscode/launch.json       F5 → debug uvicorn
+└── <package_name>/
+    ├── main.py               create_app('<package_name>', data_dir=...)
+    ├── __main__.py           CLI entry → robot_agent.cli:main
+    ├── configs/
+    │   ├── skills_config.py  SKILL_CONFIGS — auto-populated from your list
+    │   ├── tasks.py          ARM_CONFIGS, ENV stubs
+    │   └── guide.py          planner guide stub
+    ├── skills/
+    │   ├── __init__.py       auto_wrap_skills(SKILL_CONFIGS, pkg=...)
+    │   └── <skill>.py        one runnable mock per skill name you gave
+    └── template_skills/      three reference patterns, NOT auto-registered
+        ├── grip_pyconnect.py     Pattern 1 — pyconnect NodeAgent (90 % of cases)
+        ├── grip_pure_ros2.py     Pattern 2 — raw rclpy + custom QoS / feedback
+        └── grip_external.py     Pattern 3 — separate process / language / host
+```
+
+## Prompts
+
+| Prompt | Default | Purpose |
+|---|---|---|
+| `project_name` | `My Robot` | Human-readable name |
+| `package_name` | derived | Importable Python package |
+| `description` | `A robot agent ...` | `pyproject.toml` summary |
+| `author` | `Your Name` | `pyproject.toml` metadata |
+| `version` | `0.1.0` | Initial version |
+| `skills` | `find,pick,place` | One mock file per skill |
+| `default_port` | `8001` | Makefile port pin |
+| `robot_agent_relpath` | `../robot_agent` | Editable-install path |
+| `pyconnect_relpath` | `../pyconnect` | Editable-install path |
+
+## Why a template instead of forking `kcare_robot`?
+
+`kcare_robot` is a real implementation — 23 skills tuned for a specific
+KAAIR arm, Femto Bolt head, and D405 wrist camera. Forking it means
+inheriting (and then pruning) those quirks. The template gives a **clean
+baseline** that honours the same contract with `robot_agent`:
+
+```python
+# Everything robot_agent needs from your package:
+SKILL_CONFIGS: dict[str, tuple[str, str]]   # name -> (module_path, func_name)
+```
+
+That's it. One dict, one convention, infinite robots.
+
+## Three ways to drive a fresh robot — out of the box
+
+<CardGrid>
+  <Card title="HTTP" icon="laptop">
+    `make run` → uvicorn on the port you chose → open the
+    [hosted dashboard](https://robot.aistations.org), paste the URL,
+    drive it.
+  </Card>
+  <Card title="CLI" icon="seti:powershell">
+    `<package_name> find::apple` — auto-registered as a console-script.
+  </Card>
+  <Card title="Python" icon="seti:python">
+    `from <package_name>.skills.find import find; find('apple')`
+  </Card>
+</CardGrid>

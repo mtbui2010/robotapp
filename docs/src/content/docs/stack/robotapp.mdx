@@ -1,0 +1,108 @@
+---
+title: robotapp — Next.js 14 Dashboard
+description: The UI tier — Next.js 14, TypeScript strict, Tailwind, deployed to Cloudflare Pages.
+draft: false
+---
+
+import { Card, CardGrid, Tabs, TabItem, Aside, Badge } from '@astrojs/starlight/components';
+
+<Badge text="UI tier" variant="tip" />
+<Badge text="Next.js 14" /> <Badge text="TypeScript strict" /> <Badge text="Tailwind 3" /> <Badge text="Cloudflare Pages" />
+
+The browser-side of the stack. A single-page app that turns a running
+[`robot_agent`](/robotapp/stack/robot-agent/) into an interactive control
+surface — every endpoint typed, every WebSocket framed, every panel
+collapsible.
+
+## Stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Framework | **Next.js 14.2** (App Router, static export) | Static export → Cloudflare Pages; no server runtime to manage |
+| Language | **TypeScript 5** (`strict: true`) | API contract is fully typed in [`lib/types.ts`](https://github.com/mtbui2010/robotapp/blob/main/frontend/lib/types.ts) |
+| Styling | **TailwindCSS 3** + PostCSS | Utility-first; ~0 custom CSS bytes shipped |
+| State | Local `useState` / `useRef` + `localStorage` | No client-state lib needed for this app's depth |
+| Streaming | Native `WebSocket` + `zlib`-deflate decode | Depth maps decoded in the browser |
+| Deploy | **wrangler 3.78** → Cloudflare Pages | One `make deploy`, custom domain pinned |
+
+## Components
+
+| File | LOC | Responsibility |
+|---|---:|---|
+| [`CameraFeed.tsx`](https://github.com/mtbui2010/robotapp/blob/main/frontend/components/CameraFeed.tsx) | 615 | Multi-camera tabs, WebSocket frame decode, depth colormap, pixel-hover mm readout, rectangle annotation overlay |
+| [`DevicePanel.tsx`](https://github.com/mtbui2010/robotapp/blob/main/frontend/components/DevicePanel.tsx) | 1070 | ROS scan, register pub/sub/service/action/WebRTC/TCP/LLM clients, encode/decode template editor |
+| [`SkillPanel.tsx`](https://github.com/mtbui2010/robotapp/blob/main/frontend/components/SkillPanel.tsx) | 422 | Skill CRUD, hot-reload, per-skill JSON config editor with live diff |
+| [`AgentPanel.tsx`](https://github.com/mtbui2010/robotapp/blob/main/frontend/components/AgentPanel.tsx) | 131 | Structured / unstructured prompt input, language selector (EN/KO/VI), Ctrl+Enter dispatch |
+| [`PlanPanel.tsx`](https://github.com/mtbui2010/robotapp/blob/main/frontend/components/PlanPanel.tsx) | 157 | Live task-plan timeline with step status, expandable JSON results, inline log images |
+| [`ButtonPanel.tsx`](https://github.com/mtbui2010/robotapp/blob/main/frontend/components/ButtonPanel.tsx) | 268 | Server-persisted quick-action buttons with drag-reorder + bulk import |
+| [`EnvPanel.tsx`](https://github.com/mtbui2010/robotapp/blob/main/frontend/components/EnvPanel.tsx) | 143 | Live ENV / HOME_LOC editor backed by `/skill-configs` |
+
+## The depth decode pipeline
+
+The trickiest piece of the frontend. ROS publishes 16-bit depth maps which
+the browser must reconstruct from a compressed binary frame:
+
+```ts
+// pseudocode of CameraFeed.tsx depth path
+ws.onmessage = async (e) => {
+  const { mode, w, h, raw } = JSON.parse(e.data);
+  if (mode === 'raw') {
+    const u16 = new Uint16Array(await pako.inflate(decodeBase64(raw)).buffer);
+    const px = u16Length === w * h ? u16 : reshape(u16, w, h);
+    // hover: mm = px[y * w + x]
+    const rgba = applyJetColormap(px, dmin, dmax);   // 4-channel ImageData
+    ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
+  } else {
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, 0, 0);
+    img.src = `data:image/jpeg;base64,${raw}`;       // pre-colorized JPEG
+  }
+};
+```
+
+The same pipeline handles ROS `sensor_msgs/CompressedImage` (with the 12-byte
+`compressedDepth` header that the backend strips for us) and `Image`
+(`16uc1`, `32fc1`).
+
+## API client
+
+[`lib/api.ts`](https://github.com/mtbui2010/robotapp/blob/main/frontend/lib/api.ts)
+exposes a typed function per endpoint. A few highlights:
+
+- **Multi-robot registry** in `localStorage` with active-robot toggle; every
+  call routes to the selected base URL.
+- **Legacy single-URL migration** runs on app boot.
+- **WebSocket helpers** wrap `/ws/agent` and `/ws/camera/{id}` with typed event
+  callbacks (`AgentEvent`, `CameraFrame`).
+
+## Routes
+
+| Path | What it does |
+|---|---|
+| `/app/page.tsx` | Single-page dashboard (3-column responsive layout) |
+| `/app/layout.tsx` | Root html/body + metadata |
+
+The whole app fits in one page because every panel is independently
+collapsible and the camera + plan panels are the main visual real estate.
+
+## Deploy
+
+```bash
+make install
+make run-frontend                       # next dev on :3007
+
+export CLOUDFLARE_API_TOKEN=<token>     # needs "Cloudflare Pages: Edit"
+make deploy                              # next build → out/ → wrangler pages deploy
+make deploy-status                       # custom domain + SSL status
+```
+
+Static export config in [`next.config.js`](https://github.com/mtbui2010/robotapp/blob/main/frontend/next.config.js):
+`output: 'export'`, `trailingSlash: true`, `images.unoptimized: true`.
+Pinned in [`Makefile`](https://github.com/mtbui2010/robotapp/blob/main/Makefile):
+account ID, project name `robotapp`, custom domain `robot.aistations.org`.
+
+<Aside type="caution" title="Concurrency note">
+The robot accepts commands from any of: UI, CLI, or Python API. **Do not run
+two clients against the same arm at the same time** — there is no central
+arbitration layer. Surfaced in the dashboard's Guide panel.
+</Aside>
