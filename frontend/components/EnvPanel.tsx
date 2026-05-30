@@ -6,7 +6,9 @@ import { api } from '../lib/api'
 const PROXY_NAMES = ['ENV', 'HOME_LOC'] as const
 type ProxyName = typeof PROXY_NAMES[number]
 
-export default function EnvPanel() {
+// `refreshKey` is bumped by the parent when the active robot connects or the
+// location (config site) changes, so the live global-config values are refetched.
+export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [texts,       setTexts]       = useState<Record<string, string>>({})
   const [loading,     setLoading]     = useState<Set<string>>(new Set(PROXY_NAMES))
   const [loadErrors,  setLoadErrors]  = useState<Record<string, string>>({})
@@ -37,7 +39,7 @@ export default function EnvPanel() {
       })
   }, [])
 
-  useEffect(() => { PROXY_NAMES.forEach(fetchOne) }, [fetchOne])
+  useEffect(() => { PROXY_NAMES.forEach(fetchOne) }, [fetchOne, refreshKey])
 
   const save = async (name: ProxyName) => {
     const text = texts[name]

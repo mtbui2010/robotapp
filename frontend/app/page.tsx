@@ -109,7 +109,7 @@ export default function Home() {
               <SkillPanel refreshKey={skillRefreshKey} />
             </div>
             <div className="p-4 border-t border-gray-200">
-              <EnvPanel />
+              <EnvPanel refreshKey={skillRefreshKey} />
             </div>
           </div>
           <button
@@ -121,7 +121,7 @@ export default function Home() {
         </aside>
 
         {/* Sidebar 2 — buttons + plan + execution */}
-        <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${planOpen ? 'w-72' : 'w-0'}`}>
+        <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${planOpen ? 'w-96' : 'w-0'}`}>
           <div className={`flex flex-col h-full overflow-hidden ${planOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} transition-opacity duration-150`}>
             <div className="p-3 border-b border-gray-200 flex-shrink-0">
               <ButtonPanel onRun={plan => run(plan, true)} refreshKey={skillRefreshKey} />
@@ -141,17 +141,11 @@ export default function Home() {
         {/* Main area — agent + camera */}
         <main className="flex-1 flex flex-col overflow-y-auto">
 
-          <section className="p-5 border-b border-gray-200">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-              Unified Agent
-            </h2>
+          <section className="px-5 pt-2 pb-1 border-b border-gray-200">
             <AgentPanel running={running} onRun={run} onStop={stop} />
           </section>
 
-          <section className="p-5">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              Camera
-            </h2>
+          <section className="px-5 pt-1 pb-3">
             <CameraFeed clients={clients} logImage={logImage} />
           </section>
 

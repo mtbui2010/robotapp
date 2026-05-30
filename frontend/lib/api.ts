@@ -360,6 +360,66 @@ export const api = {
     return r.json() as Promise<{ added: { id: string; label: string; plan: string }[]; count: number }>
   },
 
+  // ── Location config profiles (per-robot, server-side) ──────
+  // Each robot backend stores one config folder per deployment site (its own
+  // connections + global configs). One site is active at a time; switching is
+  // a live hot-reload on the backend.
+  async listLocations(): Promise<{ locations: string[]; active: string }> {
+    try {
+      const r = await fetch(`${getAgentUrl()}/config/locations`)
+      if (!r.ok) return { locations: [], active: '' }
+      return r.json()
+    } catch { return { locations: [], active: '' } }
+  },
+
+  async activateLocation(name: string): Promise<{ locations: string[]; active: string }> {
+    const r = await fetch(`${getAgentUrl()}/config/locations/${encodeURIComponent(name)}/activate`, {
+      method: 'POST',
+    })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
+  },
+
+  async createLocation(name: string, copyFrom?: string): Promise<{ locations: string[]; active: string }> {
+    const r = await fetch(`${getAgentUrl()}/config/locations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, copy_from: copyFrom ?? null }),
+    })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
+  },
+
+  async renameLocation(name: string, newName: string): Promise<{ locations: string[]; active: string }> {
+    const r = await fetch(`${getAgentUrl()}/config/locations/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_name: newName }),
+    })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
+  },
+
+  async deleteLocation(name: string): Promise<{ locations: string[]; active: string }> {
+    const r = await fetch(`${getAgentUrl()}/config/locations/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
+  },
+
   // ── WebSockets ───────────────────────────────────────────
   agentWs(): WebSocket {
     return new WebSocket(`${getWsBase()}/ws/agent`)

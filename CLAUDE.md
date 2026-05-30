@@ -45,6 +45,18 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `POST /devices`         | add a device |
 | `GET  /diagnostics/boot`| boot-error inspection |
 | `GET  /camera/<id>`     | MJPEG / WebRTC stream |
+| `GET/POST/PUT/DELETE /config/locations[...]` | per-site config profiles (see below) |
+
+### Location config profiles
+
+A robot backend stores one config folder per deployment site (its own
+`connections.json` + global configs). The `DevicePanel` exposes a **Location**
+picker (next to the Robot picker) to choose / add / rename / delete sites and
+hot-switch between them. Wrappers live in [frontend/lib/api.ts](frontend/lib/api.ts)
+(`listLocations`, `activateLocation`, `createLocation`, `renameLocation`,
+`deleteLocation`); switching triggers a backend device reconnect, so the UI
+refreshes the connections list right after. Sites are a **per-robot backend**
+concept (distinct from the multi-robot URL registry kept in `localStorage`).
 
 `POST /skill/<name>` is the same path the CLI mode (`<pkg> <name>::<inputs>`)
 ultimately resolves through `SkillRegistry.execute()`. Two clients (UI +

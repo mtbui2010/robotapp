@@ -134,15 +134,38 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   const [rosOpen, setRosOpen] = useState(false)
   const [connOpen, setConnOpen] = useState(true)
 
+  // Location config profiles (per-robot, server-side)
+  const [locations, setLocations]         = useState<string[]>([])
+  const [activeLocation, setActiveLocation] = useState<string>('')
+  const [locBusy, setLocBusy]             = useState(false)
+  const [locError, setLocError]           = useState<string | null>(null)
+  const [locEditor, setLocEditor]         = useState<
+    { mode: 'add' } | { mode: 'rename'; original: string } | null
+  >(null)
+  const [locNameInput, setLocNameInput]   = useState('')
+  const [locCopyFrom,  setLocCopyFrom]    = useState('')
+
   const reloadRobots = useCallback(() => {
     setRobots(api.listRobots())
     setActiveRobotState(api.getActiveRobotName() ?? '')
   }, [])
 
+  const reloadLocations = useCallback(async () => {
+    try {
+      const { locations: locs, active } = await api.listLocations()
+      setLocations(locs)
+      setActiveLocation(active)
+    } catch {
+      setLocations([])
+      setActiveLocation('')
+    }
+  }, [])
+
   useEffect(() => {
     reloadRobots()
+    void reloadLocations()
     api.getApiKeys().then(setApiKeysSaved).catch(() => {})
-  }, [reloadRobots])
+  }, [reloadRobots, reloadLocations])
 
   const connectActiveRobot = async () => {
     setAgentConnecting(true)
@@ -152,6 +175,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       setAgentStatus({ ok: true, skills: skills.length })
       onAgentConnect?.()
       await refresh()
+      await reloadLocations()
       return true
     } catch {
       setAgentStatus({ ok: false, skills: 0, error: 'Unreachable' })
@@ -228,6 +252,97 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     api.removeRobot(activeRobot)
     reloadRobots()
     setAgentStatus(null)
+  }
+
+  // ── Location config profiles ────────────────────────────────
+  // Switching is a backend hot-reload: it tears down the current device
+  // connections and reconnects from the chosen site's connections.json +
+  // global configs, so we refresh the device list right after.
+  const switchLocation = async (name: string) => {
+    if (!name || name === activeLocation) return
+    setLocBusy(true)
+    setLocError(null)
+    try {
+      const res = await api.activateLocation(name)
+      setLocations(res.locations)
+      setActiveLocation(res.active)
+      onAgentConnect?.()
+      await refresh()
+    } catch (e) {
+      setLocError(e instanceof Error ? e.message : 'Switch failed')
+      void reloadLocations()
+    } finally {
+      setLocBusy(false)
+    }
+  }
+
+  const openAddLocation = () => {
+    setLocEditor({ mode: 'add' })
+    setLocNameInput('')
+    setLocCopyFrom(activeLocation || 'default')
+    setLocError(null)
+  }
+
+  const openRenameLocation = () => {
+    if (!activeLocation) return
+    setLocEditor({ mode: 'rename', original: activeLocation })
+    setLocNameInput(activeLocation)
+    setLocError(null)
+  }
+
+  const closeLocEditor = () => {
+    setLocEditor(null)
+    setLocError(null)
+  }
+
+  const saveLocEditor = async () => {
+    if (!locEditor) return
+    const name = locNameInput.trim()
+    if (!name) { setLocError('Name is required'); return }
+    setLocBusy(true)
+    setLocError(null)
+    try {
+      if (locEditor.mode === 'add') {
+        const res = await api.createLocation(name, locCopyFrom || undefined)
+        setLocations(res.locations)
+        closeLocEditor()
+        await switchLocation(name)   // activate the new site for convenience
+      } else {
+        const res = await api.renameLocation(locEditor.original, name)
+        setLocations(res.locations)
+        setActiveLocation(res.active)
+        closeLocEditor()
+      }
+    } catch (e) {
+      setLocError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setLocBusy(false)
+    }
+  }
+
+  const removeLocation = async () => {
+    const target = activeLocation
+    if (!target) return
+    if (target === 'default') { setLocError('Cannot delete the default location'); return }
+    if (!confirm(`Delete location "${target}"? This removes its connections and global configs.`)) return
+    setLocBusy(true)
+    setLocError(null)
+    try {
+      // The backend refuses to delete the active site, so fall back to
+      // 'default' first (also hot-reloads devices), then delete.
+      await api.activateLocation('default')
+      setActiveLocation('default')
+      const res = await api.deleteLocation(target)
+      setLocations(res.locations)
+      setActiveLocation(res.active)
+      onAgentConnect?.()
+      await refresh()
+    } catch (e) {
+      setLocError(e instanceof Error ? e.message : 'Delete failed')
+      void reloadLocations()
+    } finally {
+      setLocBusy(false)
+    }
   }
 
   const refresh = useCallback(async () => {
@@ -526,6 +641,98 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
             </div>
           </div>
         )}
+      </div>
+
+      {/* Location — per-robot config profile (connections + global configs) */}
+      <div className="flex flex-col gap-1.5 pb-3 border-b border-gray-200">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-700">Location</span>
+          <span className="text-[10px] text-gray-400" title="Each location has its own connections + global configs. Switching hot-reloads the robot.">
+            connections + global configs
+          </span>
+          {locBusy && <span className="ml-auto text-[10px] text-gray-500">switching…</span>}
+        </div>
+
+        <div className="flex gap-1.5 items-center">
+          <select
+            value={activeLocation}
+            onChange={e => void switchLocation(e.target.value)}
+            disabled={locBusy || locations.length === 0}
+            className="flex-1 bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 text-xs disabled:opacity-50"
+          >
+            {locations.length === 0 && <option value="">(connect a robot)</option>}
+            {locations.map(l => (
+              <option key={l} value={l}>{l}{l === 'default' ? ' (default)' : ''}</option>
+            ))}
+          </select>
+          <button
+            onClick={openAddLocation}
+            disabled={locBusy || locations.length === 0}
+            className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700 rounded"
+          >
+            + Add
+          </button>
+          <button
+            onClick={openRenameLocation}
+            disabled={locBusy || !activeLocation}
+            className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700 rounded"
+          >
+            Rename
+          </button>
+          <button
+            onClick={() => void removeLocation()}
+            disabled={locBusy || !activeLocation || activeLocation === 'default'}
+            className="px-2.5 py-1 text-xs bg-red-100 hover:bg-red-200 disabled:opacity-40 text-red-700 rounded"
+            title={activeLocation === 'default' ? 'The default location cannot be deleted' : 'Delete the active location'}
+          >
+            Delete
+          </button>
+        </div>
+
+        {locEditor && (
+          <div className="border border-gray-200 rounded p-2 bg-gray-50 flex flex-col gap-1.5">
+            <div className="text-[11px] font-medium text-gray-700">
+              {locEditor.mode === 'add' ? 'Add location' : `Rename "${locEditor.original}"`}
+            </div>
+            <input
+              value={locNameInput}
+              onChange={e => setLocNameInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') void saveLocEditor() }}
+              placeholder="Name (e.g. lab_seoul, home_busan)"
+              className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs"
+            />
+            {locEditor.mode === 'add' && (
+              <label className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                Copy configs from
+                <select
+                  value={locCopyFrom}
+                  onChange={e => setLocCopyFrom(e.target.value)}
+                  className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-xs"
+                >
+                  <option value="">(empty)</option>
+                  {locations.map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </label>
+            )}
+            {locError && <div className="text-[10px] text-red-600">{locError}</div>}
+            <div className="flex gap-1.5 justify-end">
+              <button
+                onClick={closeLocEditor}
+                className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void saveLocEditor()}
+                disabled={locBusy}
+                className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+        {locError && !locEditor && <div className="text-[10px] text-red-600">{locError}</div>}
       </div>
 
       {/* Connections panel */}
