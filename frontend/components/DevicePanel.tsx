@@ -40,6 +40,10 @@ const TYPE_LABELS: Record<ClientType, string> = {
   webrtc:      'WebRTC',
   llm:         'LLM',
   tcp:         'TCP/IP',
+  zmq:         'ZeroMQ',
+  websocket:   'WebSocket',
+  http:        'HTTP / REST',
+  visionserve: 'VisionServe',
 }
 
 type LLMProvider = 'llama' | 'chatgpt' | 'gemini'
@@ -55,11 +59,18 @@ interface FormFields {
   encodeFuncCode: string
   decodeFuncCode: string
   selectedTemplateId: string | null
-  // WebRTC / TCP
+  // WebRTC / TCP / ZMQ / WebSocket
   host: string
   port: string
-  // TCP server
+  // TCP / ZMQ / WebSocket / HTTP server
   runFuncCode: string
+  // WebSocket
+  path: string
+  secure: boolean
+  // HTTP / REST client
+  method: string
+  token: string
+  timeout: string
   // LLM
   provider: LLMProvider
   url: string
@@ -73,6 +84,8 @@ const DEFAULT_FORM: FormFields = {
   encodeFuncCode: '', decodeFuncCode: '', selectedTemplateId: null,
   host: '192.168.1.10', port: '8443',
   runFuncCode: '',
+  path: '/', secure: false,
+  method: 'POST', token: '', timeout: '',
   provider: 'llama', url: 'http://localhost:11434', model: '', apiKey: '',
 }
 
@@ -414,7 +427,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   }
 
   const handleTypeChange = (type: ClientType) => {
-    setForm(f => ({ ...f, type }))
+    setForm(f => type === 'visionserve'
+      ? { ...f, type, url: 'http://localhost:11435', model: f.model || 'rf-detr' }
+      : { ...f, type })
   }
 
   const buildConfig = (f: FormFields): Record<string, unknown> => {
@@ -447,6 +462,59 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       if (!f.isClient && f.runFuncCode.trim()) cfg.run_func = f.runFuncCode.trim()
       return cfg
     }
+    if (f.type === 'zmq') {
+      const cfg: Record<string, unknown> = {
+        host: f.host,
+        port: parseInt(f.port) || 8888,
+        is_client: f.isClient,
+      }
+      if (f.agentName.trim()) cfg.agent_name = f.agentName.trim()
+      if (f.isClient && f.timeout.trim()) cfg.timeout = parseInt(f.timeout)
+      if (!f.isClient && f.runFuncCode.trim()) cfg.run_func = f.runFuncCode.trim()
+      return cfg
+    }
+    if (f.type === 'websocket') {
+      const cfg: Record<string, unknown> = {
+        host: f.host,
+        port: parseInt(f.port) || 8888,
+        is_client: f.isClient,
+      }
+      if (f.agentName.trim()) cfg.agent_name = f.agentName.trim()
+      if (f.path.trim()) cfg.path = f.path.trim()
+      if (f.isClient && f.secure) cfg.secure = true
+      if (f.isClient && f.timeout.trim()) cfg.timeout = parseFloat(f.timeout)
+      if (!f.isClient && f.runFuncCode.trim()) cfg.run_func = f.runFuncCode.trim()
+      return cfg
+    }
+    if (f.type === 'http') {
+      if (f.isClient) {
+        const cfg: Record<string, unknown> = { is_client: true, url: f.url }
+        if (f.agentName.trim()) cfg.agent_name = f.agentName.trim()
+        if (f.method.trim()) cfg.method = f.method.trim().toUpperCase()
+        if (f.token.trim()) cfg.token = f.token.trim()
+        if (f.timeout.trim()) cfg.timeout = parseFloat(f.timeout)
+        return cfg
+      }
+      const cfg: Record<string, unknown> = {
+        is_client: false,
+        host: f.host,
+        port: parseInt(f.port) || 8888,
+      }
+      if (f.agentName.trim()) cfg.agent_name = f.agentName.trim()
+      if (f.path.trim()) cfg.path = f.path.trim()
+      if (f.runFuncCode.trim()) cfg.run_func = f.runFuncCode.trim()
+      return cfg
+    }
+    if (f.type === 'visionserve') {
+      const cfg: Record<string, unknown> = {
+        is_client: true,
+        url: f.url,
+        model: f.model.trim() || 'rf-detr',
+      }
+      if (f.agentName.trim()) cfg.agent_name = f.agentName.trim()
+      if (f.timeout.trim()) cfg.timeout = parseFloat(f.timeout)
+      return cfg
+    }
     // llm — pyconnect expects "name" key; agent_name used as id
     const llmName = f.model.trim() || f.provider
     const cfg: Record<string, unknown> = { name: f.provider, agent_name: llmName }
@@ -466,7 +534,10 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     const config = buildConfig(form)
     const agentName = form.type === 'llm'
       ? (form.model.trim() || form.provider)
-      : (form.agentName.trim() || form.connName.trim() || form.host)
+      : form.type === 'visionserve'
+      ? (form.agentName.trim() || form.model.trim() || form.url)
+      : (form.agentName.trim() || form.connName.trim() ||
+         (form.type === 'http' && form.isClient ? form.url : form.host))
 
     let result: { id: string; error: string }
     try {
@@ -510,6 +581,38 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       f.agentName   = String(cfg.agent_name ?? c.name)
       f.isClient    = cfg.is_client !== false
       f.runFuncCode = String(cfg.run_func ?? '')
+    } else if (c.type === 'zmq') {
+      f.host        = String(cfg.host ?? 'localhost')
+      f.port        = String(cfg.port ?? '8888')
+      f.agentName   = String(cfg.agent_name ?? c.name)
+      f.isClient    = cfg.is_client !== false
+      f.timeout     = cfg.timeout != null ? String(cfg.timeout) : ''
+      f.runFuncCode = String(cfg.run_func ?? '')
+    } else if (c.type === 'websocket') {
+      f.host        = String(cfg.host ?? 'localhost')
+      f.port        = String(cfg.port ?? '8888')
+      f.agentName   = String(cfg.agent_name ?? c.name)
+      f.isClient    = cfg.is_client !== false
+      f.path        = String(cfg.path ?? '/')
+      f.secure      = Boolean(cfg.secure)
+      f.timeout     = cfg.timeout != null ? String(cfg.timeout) : ''
+      f.runFuncCode = String(cfg.run_func ?? '')
+    } else if (c.type === 'http') {
+      f.isClient    = cfg.is_client !== false
+      f.agentName   = String(cfg.agent_name ?? c.name)
+      f.url         = String(cfg.url ?? '')
+      f.method      = String(cfg.method ?? 'POST')
+      f.token       = String(cfg.token ?? '')
+      f.timeout     = cfg.timeout != null ? String(cfg.timeout) : ''
+      f.host        = String(cfg.host ?? '0.0.0.0')
+      f.port        = String(cfg.port ?? '8888')
+      f.path        = String(cfg.path ?? '/run')
+      f.runFuncCode = String(cfg.run_func ?? '')
+    } else if (c.type === 'visionserve') {
+      f.agentName = String(cfg.agent_name ?? c.name)
+      f.url       = String(cfg.url ?? 'http://localhost:11435')
+      f.model     = String(cfg.model ?? 'rf-detr')
+      f.timeout   = cfg.timeout != null ? String(cfg.timeout) : ''
     } else {
       f.provider = (cfg.name as LLMProvider) ?? (cfg.provider as LLMProvider) ?? 'llama'
       f.url      = String(cfg.url ?? '')
@@ -902,6 +1005,138 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
                   className="font-mono text-[11px] bg-white border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:border-blue-400 placeholder-gray-300" />
               </div>
             )}
+          </>)}
+
+          {/* ZeroMQ fields (REQ client / REP server) */}
+          {form.type === 'zmq' && (<>
+            <input placeholder="agent_name" value={form.agentName}
+              onChange={e => setForm(f => ({ ...f, agentName: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="host  e.g. localhost" value={form.host}
+              onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="port  (default 8888)" value={form.port}
+              onChange={e => setForm(f => ({ ...f, port: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={form.isClient} className="accent-blue-600"
+                onChange={e => setForm(f => ({ ...f, isClient: e.target.checked }))} />
+              <span className="text-gray-600">is_client <span className="text-gray-400">(uncheck → server)</span></span>
+            </label>
+            {form.isClient && (
+              <input placeholder="timeout ms  (default 10000)" value={form.timeout}
+                onChange={e => setForm(f => ({ ...f, timeout: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            )}
+            {!form.isClient && (
+              <div className="flex flex-col gap-1">
+                <span className="text-gray-500">run_func</span>
+                <textarea value={form.runFuncCode} rows={6} spellCheck={false}
+                  onChange={e => setForm(f => ({ ...f, runFuncCode: e.target.value }))}
+                  placeholder={"def run_func(**kwargs):\n    # process incoming dict\n    return {'ok': True}"}
+                  className="font-mono text-[11px] bg-white border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:border-blue-400 placeholder-gray-300" />
+              </div>
+            )}
+          </>)}
+
+          {/* WebSocket fields */}
+          {form.type === 'websocket' && (<>
+            <input placeholder="agent_name" value={form.agentName}
+              onChange={e => setForm(f => ({ ...f, agentName: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="host  e.g. localhost" value={form.host}
+              onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="port  (default 8888)" value={form.port}
+              onChange={e => setForm(f => ({ ...f, port: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="path  (default /)" value={form.path}
+              onChange={e => setForm(f => ({ ...f, path: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={form.isClient} className="accent-blue-600"
+                onChange={e => setForm(f => ({ ...f, isClient: e.target.checked }))} />
+              <span className="text-gray-600">is_client <span className="text-gray-400">(uncheck → server)</span></span>
+            </label>
+            {form.isClient && (<>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={form.secure} className="accent-blue-600"
+                  onChange={e => setForm(f => ({ ...f, secure: e.target.checked }))} />
+                <span className="text-gray-600">secure <span className="text-gray-400">(wss://)</span></span>
+              </label>
+              <input placeholder="timeout s  (default 10)" value={form.timeout}
+                onChange={e => setForm(f => ({ ...f, timeout: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            </>)}
+            {!form.isClient && (
+              <div className="flex flex-col gap-1">
+                <span className="text-gray-500">run_func</span>
+                <textarea value={form.runFuncCode} rows={6} spellCheck={false}
+                  onChange={e => setForm(f => ({ ...f, runFuncCode: e.target.value }))}
+                  placeholder={"def run_func(**kwargs):\n    # process incoming dict\n    return {'ok': True}"}
+                  className="font-mono text-[11px] bg-white border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:border-blue-400 placeholder-gray-300" />
+              </div>
+            )}
+          </>)}
+
+          {/* HTTP / REST fields */}
+          {form.type === 'http' && (<>
+            <input placeholder="agent_name" value={form.agentName}
+              onChange={e => setForm(f => ({ ...f, agentName: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={form.isClient} className="accent-blue-600"
+                onChange={e => setForm(f => ({ ...f, isClient: e.target.checked }))} />
+              <span className="text-gray-600">is_client <span className="text-gray-400">(uncheck → server)</span></span>
+            </label>
+            {form.isClient && (<>
+              <input placeholder="url  e.g. https://host/api/.../infer_array" value={form.url}
+                onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+              <input placeholder="method  (default POST)" value={form.method}
+                onChange={e => setForm(f => ({ ...f, method: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+              <input placeholder="bearer token  (optional)" value={form.token}
+                onChange={e => setForm(f => ({ ...f, token: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+              <input placeholder="timeout s  (default 30)" value={form.timeout}
+                onChange={e => setForm(f => ({ ...f, timeout: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            </>)}
+            {!form.isClient && (<>
+              <input placeholder="host  (default 0.0.0.0)" value={form.host}
+                onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+              <input placeholder="port  (default 8888)" value={form.port}
+                onChange={e => setForm(f => ({ ...f, port: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+              <input placeholder="path  (default /run)" value={form.path}
+                onChange={e => setForm(f => ({ ...f, path: e.target.value }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+              <div className="flex flex-col gap-1">
+                <span className="text-gray-500">run_func</span>
+                <textarea value={form.runFuncCode} rows={6} spellCheck={false}
+                  onChange={e => setForm(f => ({ ...f, runFuncCode: e.target.value }))}
+                  placeholder={"def run_func(**kwargs):\n    # process posted JSON body\n    return {'ok': True}"}
+                  className="font-mono text-[11px] bg-white border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:border-blue-400 placeholder-gray-300" />
+              </div>
+            </>)}
+          </>)}
+
+          {/* VisionServe fields */}
+          {form.type === 'visionserve' && (<>
+            <input placeholder="agent_name" value={form.agentName}
+              onChange={e => setForm(f => ({ ...f, agentName: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="url  e.g. http://localhost:11435" value={form.url}
+              onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="model  e.g. rf-detr" value={form.model}
+              onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="timeout s  (default 30)" value={form.timeout}
+              onChange={e => setForm(f => ({ ...f, timeout: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
           </>)}
 
           {/* LLM fields */}

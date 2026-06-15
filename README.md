@@ -21,6 +21,7 @@ The UI tier of a three-mode robot stack (UI / CLI / Python API). Talks to
 | **Multi-camera ops** | Persistent tab order in `localStorage`, drag-to-reorder, auto-tab when a skill emits a `log_image` |
 | **Skill orchestration** | Live skill registry CRUD, JSON-edit per-skill configs, hot-reload via `POST /skills/reload` — no robot restart |
 | **Streaming task plans** | `GET /ws/agent` yields `start → plan → step_start → step_log(image) → step_done → done` events; UI renders the timeline with inline frames |
+| **Persistent robot state** | A symbolic world state (`arrived`/`found`/`holding`/`opened`/`on` + a display-only `found_pose`) survives across runs, rides on `/ws/agent` `world` events for live updates, and is editable mid-run via `PUT /agent/world` |
 | **Multi-robot / multi-tenant** | Robot registry in `localStorage`, active-robot toggle, every API call routed to the selected base URL |
 | **Open-vocab perception UI** | Type `apple` or `the red mug on the table` into the agent panel; the backend dispatches to GroundingDINO / GroundedSAM running on a TCP VLM service |
 | **Edge deployment** | Static export (`next.config.js: output: 'export'`), uploaded to Cloudflare Pages via `wrangler` — sub-100 ms TTFB from anywhere |
@@ -69,7 +70,7 @@ The UI tier of a three-mode robot stack (UI / CLI / Python API). Talks to
 | [components/DevicePanel.tsx](frontend/components/DevicePanel.tsx) | 1070 | ROS scan, register pub/sub/service/action/WebRTC/TCP/LLM clients, encode/decode template editor |
 | [components/SkillPanel.tsx](frontend/components/SkillPanel.tsx) | 422 | Skill CRUD, hot-reload, per-skill JSON config editor with live diff |
 | [components/AgentPanel.tsx](frontend/components/AgentPanel.tsx) | 131 | Structured / unstructured prompt input, language selector (EN / KO / VI), Ctrl+Enter dispatch |
-| [components/PlanPanel.tsx](frontend/components/PlanPanel.tsx) | 157 | Live task-plan timeline with step status, expandable JSON results, inline log images |
+| [components/PlanPanel.tsx](frontend/components/PlanPanel.tsx) | 343 | Editable **Robot State** block (persistent world beliefs) above a live task-plan timeline with step status, expandable JSON results, inline log images |
 | [components/ButtonPanel.tsx](frontend/components/ButtonPanel.tsx) | 268 | Server-persisted quick-action buttons with drag-reorder + bulk import |
 | [components/EnvPanel.tsx](frontend/components/EnvPanel.tsx) | 143 | Live ENV / HOME_LOC editor backed by `/skill-configs` |
 | [lib/api.ts](frontend/lib/api.ts) | — | Strongly-typed client covering every backend endpoint |
@@ -112,6 +113,7 @@ Devices       GET  /connects         POST /connects         GET /connects/status
 Discovery     GET  /ros/scan
 Diagnostics   GET  /diagnostics      GET  /diagnostics/boot
 Agent         POST /agent/llm-config POST /agent/api-key    GET  /agent/api-keys
+              GET  /agent/world      PUT  /agent/world
 Buttons       GET  /buttons          POST /buttons          POST /buttons/reorder ...
 
 Streaming     WS   /ws/camera/<id>   WS   /ws/agent

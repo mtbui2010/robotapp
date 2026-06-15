@@ -1,0 +1,88 @@
+<mxfile host="app.diagrams.net" agent="claude-code" version="24.0.0">
+  <diagram name="System Overview (simple)" id="kcare-system-overview">
+    <mxGraphModel dx="1200" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- title -->
+        <mxCell id="title" value="kcare care-robot &#8212; system overview" style="text;html=1;align=left;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1f3b57;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="900" height="36" as="geometry" />
+        </mxCell>
+
+        <!-- ===== MAIN PIPELINE (left -> right) ===== -->
+        <mxCell id="b_user" value="User &amp; Dashboard&#10;(voice &#183; web app)&#10;&#10;Gives a natural-language task" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;fillColor=#dfeede;strokeColor=#3a7a3a;arcSize=6;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="240" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="b_brain" value="robot_agent &#8212; Closed-loop brain&#10;&#10;Understand &#8594; Plan &#8594; Act&#10;&#8594; Verify &#8594; Self-repair" style="rounded=1;whiteSpace=wrap;html=1;fontSize=19;fontStyle=1;fillColor=#cfe3f7;strokeColor=#1f6fb2;strokeWidth=3;arcSize=6;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="360" y="140" width="440" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="b_skills" value="Skills&#10;&#10;move &#183; see &#183; grasp" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;fillColor=#ededed;strokeColor=#707070;arcSize=6;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="880" y="140" width="230" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="b_robot" value="Robot&#10;&#10;arm &#183; gripper &#183; base&#10;RGB-D cameras" style="rounded=1;whiteSpace=wrap;html=1;fontSize=18;fillColor=#eef1f4;strokeColor=#465562;arcSize=6;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="140" width="260" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- ===== SUPPORTING BLOCKS (below) ===== -->
+        <mxCell id="b_sage" value="SAGE &#8212; LLM planner&#10;&#10;Turns the task into a&#10;step-by-step plan" style="rounded=1;whiteSpace=wrap;html=1;fontSize=17;fillColor=#fdecea;strokeColor=#c0392b;strokeWidth=2;arcSize=6;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="300" y="420" width="240" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="b_world" value="World State (memory)&#10;&#10;where it is &#183; what it holds&#10;&#183; what is open" style="rounded=1;whiteSpace=wrap;html=1;fontSize=17;fillColor=#ede6f6;strokeColor=#6a3fa0;arcSize=6;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="580" y="420" width="240" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="b_vision" value="VisionServe &#8212; Vision AI (GPU)&#10;&#10;Detects objects + grasp points" style="rounded=1;whiteSpace=wrap;html=1;fontSize=17;fillColor=#f8d3a3;strokeColor=#d2730a;arcSize=6;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="940" y="420" width="320" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES ===== -->
+        <mxCell id="e_user_brain" value="natural-language task" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#333333;" edge="1" parent="1" source="b_user" target="b_brain">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_brain_skills" value="execute each step" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#333333;" edge="1" parent="1" source="b_brain" target="b_skills">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_skills_robot" value="actuate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#333333;" edge="1" parent="1" source="b_skills" target="b_robot">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- feedback: robot observed -> brain verify (arc over the top) -->
+        <mxCell id="e_robot_brain" value="observe &amp; verify &#8594; replan" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;strokeWidth=2;fontSize=13;strokeColor=#1f6fb2;fontColor=#1f6fb2;exitX=0.5;exitY=0;entryX=0.8;entryY=0;" edge="1" parent="1" source="b_robot" target="b_brain">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1310" y="70" />
+              <mxPoint x="712" y="70" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- voice + live updates back to user -->
+        <mxCell id="e_brain_user" value="voice + live updates (vi/ko/en)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;strokeWidth=2;fontSize=13;strokeColor=#3a7a3a;fontColor=#3a7a3a;exitX=0.2;exitY=0;entryX=0.5;entryY=0;" edge="1" parent="1" source="b_brain" target="b_user">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="448" y="108" />
+              <mxPoint x="160" y="108" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- supporting -> brain / skills -->
+        <mxCell id="e_sage_brain" value="plan" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#c0392b;fontColor=#c0392b;exitX=0.5;exitY=0;entryX=0.25;entryY=1;" edge="1" parent="1" source="b_sage" target="b_brain">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_world_brain" value="read / update belief" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=block;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#6a3fa0;fontColor=#6a3fa0;exitX=0.5;exitY=0;entryX=0.6;entryY=1;" edge="1" parent="1" source="b_world" target="b_brain">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vision_skills" value="objects + grasp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#d2730a;fontColor=#d2730a;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="b_vision" target="b_skills">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- caption -->
+        <mxCell id="caption" value="Red = SAGE (our LLM planner).   Solid arrows = command flow (top row).   Dashed arrows = feedback (verify / voice).   Lower row = what the brain relies on." style="text;html=1;align=left;verticalAlign=middle;fontSize=13;fontStyle=2;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="610" width="1320" height="24" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

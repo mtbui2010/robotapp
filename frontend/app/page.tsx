@@ -5,10 +5,13 @@ import AgentPanel   from '../components/AgentPanel'
 import CameraFeed   from '../components/CameraFeed'
 import SkillPanel   from '../components/SkillPanel'
 import EnvPanel     from '../components/EnvPanel'
+import GuideEditorPanel from '../components/GuideEditorPanel'
 import GuidePanel   from '../components/GuidePanel'
 import PlanPanel    from '../components/PlanPanel'
 import ButtonPanel  from '../components/ButtonPanel'
 import { api }      from '../lib/api'
+import { useVoiceOutput } from '../lib/useVoiceOutput'
+import { useScreenRecorder } from '../lib/useScreenRecorder'
 import type { ClientEntry, AgentEvent } from '../lib/types'
 import type { Step } from '../components/PlanPanel'
 
@@ -21,9 +24,16 @@ export default function Home() {
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
   const [agentSteps, setAgentSteps]   = useState<Step[]>([])
   const [logImage, setLogImage]       = useState<string | null>(null)
+  const [voiceOut, setVoiceOut]       = useState(false)
+  const [voiceLang, setVoiceLang]     = useState('en')
   const wsRef     = useRef<WebSocket | null>(null)
   const eventsRef = useRef<AgentEvent[]>([])
   const stepsRef  = useRef<Step[]>([])
+  const runStartRef = useRef<number>(0)
+
+  // Dashboard voice output — speaks each event's `say` (robot also speaks via backend).
+  const { speak, supported: voiceSupported } = useVoiceOutput({ enabled: voiceOut, lang: voiceLang })
+  const { recordEnabled, toggleRecord, beginRecording, endRecording } = useScreenRecorder()
 
   const emit = useCallback((events: AgentEvent[], steps: Step[]) => {
     eventsRef.current = events
@@ -32,21 +42,27 @@ export default function Home() {
     setAgentSteps(steps)
   }, [])
 
-  const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en') => {
+  const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' = 'grace', planOnly = false, logData = false) => {
     if (!finalPrompt.trim() || running) return
     wsRef.current?.close()
     emit([], [])
     setRunning(true)
+    setVoiceLang(lang)
+    runStartRef.current = Date.now()
+    beginRecording()  // no-op unless screen recording is enabled
 
     const ws = api.agentWs()
     wsRef.current = ws
 
-    ws.onopen = () => ws.send(JSON.stringify({ prompt: finalPrompt, lang, direct }))
+    ws.onopen = () => ws.send(JSON.stringify({ prompt: finalPrompt, lang, direct, planner, plan_only: planOnly, log_data: logData }))
 
     ws.onmessage = e => {
       const ev: AgentEvent = JSON.parse(e.data)
       const newEvents = [...eventsRef.current, ev]
       let newSteps = stepsRef.current
+
+      // Speak the milestone phrase on the dashboard (no-op if voice output is off).
+      if (ev.say) speak(ev.say)
 
       if (ev.event === 'step_start') {
         newSteps = [...newSteps, {
@@ -54,11 +70,12 @@ export default function Home() {
           total: ev.total!,
           task: ev.task!,
           status: 'running' as const,
+          startedAt: Date.now(),
         }]
       } else if (ev.event === 'step_done') {
         newSteps = newSteps.map(s =>
           s.index === ev.step
-            ? { ...s, status: (ev.result?.isdone ? 'done' : 'failed') as Step['status'], result: ev.result }
+            ? { ...s, status: (ev.result?.isdone ? 'done' : 'failed') as Step['status'], result: ev.result, endedAt: Date.now() }
             : s
         )
       } else if (ev.event === 'step_log') {
@@ -68,20 +85,23 @@ export default function Home() {
         )
         if (ev.log_image) setLogImage(ev.log_image)
       } else if (ev.event === 'done' || ev.event === 'error') {
+        ev.elapsed_ms = Date.now() - runStartRef.current
         setRunning(false)
+        endRecording()
       }
 
       emit(newEvents, newSteps)
     }
 
-    ws.onclose = () => setRunning(false)
-    ws.onerror = () => setRunning(false)
-  }, [running, emit])
+    ws.onclose = () => { setRunning(false); endRecording() }
+    ws.onerror = () => { setRunning(false); endRecording() }
+  }, [running, emit, speak, beginRecording, endRecording])
 
   const stop = useCallback(() => {
     wsRef.current?.close()
     setRunning(false)
-  }, [])
+    endRecording()
+  }, [endRecording])
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
@@ -91,7 +111,14 @@ export default function Home() {
         <span className="font-bold text-lg tracking-tight">RobotApp</span>
         <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">v2</span>
         <span className="text-xs text-gray-400 ml-1">powered by pyconnect</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          <label
+            title={voiceSupported ? 'Read agent milestones aloud in the browser' : 'Browser does not support speech synthesis'}
+            className={`flex items-center gap-1.5 text-xs cursor-pointer ${voiceSupported ? 'text-gray-600' : 'text-gray-300 cursor-not-allowed'}`}>
+            <input type="checkbox" checked={voiceOut} disabled={!voiceSupported}
+              onChange={e => setVoiceOut(e.target.checked)} className="accent-blue-600" />
+            🔊 voice
+          </label>
           <GuidePanel />
         </div>
       </header>
@@ -110,6 +137,9 @@ export default function Home() {
             </div>
             <div className="p-4 border-t border-gray-200">
               <EnvPanel refreshKey={skillRefreshKey} />
+            </div>
+            <div className="p-4 border-t border-gray-200">
+              <GuideEditorPanel refreshKey={skillRefreshKey} />
             </div>
           </div>
           <button
@@ -142,11 +172,11 @@ export default function Home() {
         <main className="flex-1 flex flex-col overflow-y-auto">
 
           <section className="px-5 pt-2 pb-1 border-b border-gray-200">
-            <AgentPanel running={running} onRun={run} onStop={stop} />
+            <AgentPanel running={running} onRun={run} onStop={stop} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} />
           </section>
 
           <section className="px-5 pt-1 pb-3">
-            <CameraFeed clients={clients} logImage={logImage} />
+            <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} />
           </section>
 
         </main>

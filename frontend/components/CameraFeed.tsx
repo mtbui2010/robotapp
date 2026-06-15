@@ -2,12 +2,16 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
 import type { ClientEntry } from '../lib/types'
+import CameraCell from './CameraCell'
 
 type Channel = 'rgb' | 'depth'
 type DepthMode = 'colored' | 'raw'
+type Layout = 'tab' | 'grid'
 
 const LOG_TAB = '__log_image__'
+const OBSERVE_TAB = '__observe__'
 const TAB_ORDER_KEY = 'cameraTabOrder'
+const WEBCAM_DEVICE_KEY = 'robotapp_webcam_device'
 
 interface RawDepth {
   data: Uint16Array
@@ -45,7 +49,7 @@ function jet(t: number): [number, number, number] {
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)]
 }
 
-export default function CameraFeed({ clients, logImage }: { clients: ClientEntry[]; logImage?: string | null }) {
+export default function CameraFeed({ clients, logImage, onClearLog }: { clients: ClientEntry[]; logImage?: string | null; onClearLog?: () => void }) {
   const cameras = clients.filter(c => c.is_camera)
   const [selectedId, setSelectedId] = useState<string>('')
 
@@ -88,10 +92,49 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
     return out
   }, [cameras, tabOrder])
   const isLogTab = selectedId === LOG_TAB
+
+  // ── Layout (tab | grid) ───────────────────────────────────────────────────
+  const [layout, setLayout] = useState<Layout>('tab')
+
+  // ── Observe tab (operator's local webcam, live only) ──────────────────────
+  const [observeOn, setObserveOn] = useState(false)
+  const webcamStreamRef = useRef<MediaStream | null>(null)
+  const observeVideoRef = useRef<HTMLVideoElement | null>(null)
+  const gridObserveVideoRef = useRef<HTMLVideoElement | null>(null)
+
+  // Webcam device selection (multiple cameras → operator picks which feeds observe)
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([])
+  const [webcamDeviceId, setWebcamDeviceId] = useState<string>('')
+  const webcamDeviceIdRef = useRef<string>('')   // mirror for use inside callbacks
+  useEffect(() => { webcamDeviceIdRef.current = webcamDeviceId }, [webcamDeviceId])
+
+  // Load persisted device choice once.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(WEBCAM_DEVICE_KEY)
+      if (saved) setWebcamDeviceId(saved)
+    } catch { /* ignore */ }
+  }, [])
+
+  // Refresh the list of video input devices. Labels are only populated after a
+  // getUserMedia permission grant, so this is most useful post-enable.
+  const refreshVideoDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      setVideoDevices(devices.filter(d => d.kind === 'videoinput'))
+    } catch { /* ignore */ }
+  }, [])
+
+  // ── Grid selection: which tabs are shown together in grid mode ────────────
+  const [gridIds, setGridIds] = useState<string[]>([])
+  const gridInit = useRef(false)
+
   const [channel, setChannel]       = useState<Channel>('rgb')
   const [live, setLive]             = useState(true)
   const [srcs, setSrcs]             = useState<{ rgb: string; depth: string }>({ rgb: '', depth: '' })
   const [fps, setFps]               = useState(0)
+  const [error, setError]           = useState<string | null>(null)
+  const pendingSaveRef              = useRef(false)   // set on Capture; next frame is downloaded
 
   // ── Depth controls ────────────────────────────────────────────────────────
   const [depthMode, setDepthMode]       = useState<DepthMode>('colored')
@@ -124,6 +167,105 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
     else setSelectedId(LOG_TAB)
   }, [cameras, selectedId])
 
+  // Default grid selection once cameras are known: all cameras (+ log) included.
+  useEffect(() => {
+    if (gridInit.current) return
+    if (cameras.length === 0) return
+    setGridIds([...cameras.map(c => c.id), LOG_TAB])
+    gridInit.current = true
+  }, [cameras])
+
+  // ── Webcam (observe) lifecycle ────────────────────────────────────────────
+  // Toggled from the activation checkbox (a user gesture → permission allowed).
+  const enableObserve = async () => {
+    try {
+      // Prefer the saved device if it's still present; otherwise let the browser pick.
+      let devices: MediaDeviceInfo[] = []
+      try {
+        devices = (await navigator.mediaDevices.enumerateDevices())
+          .filter(d => d.kind === 'videoinput')
+      } catch { /* labels/ids may be empty pre-permission; that's fine */ }
+      const saved = webcamDeviceIdRef.current
+      const wantId = saved && devices.some(d => d.deviceId === saved) ? saved : ''
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: wantId ? { deviceId: { exact: wantId } } : true,
+        audio: false,
+      })
+      webcamStreamRef.current = stream
+      // Record the device actually in use (labels are now available).
+      const track = stream.getVideoTracks()[0]
+      const activeId = wantId || track?.getSettings().deviceId || ''
+      if (activeId) setWebcamDeviceId(activeId)
+      setObserveOn(true)
+      // Labels are populated only after the grant — refresh the picker now.
+      refreshVideoDevices()
+    } catch {
+      // denied / unavailable — leave it unchecked
+      setObserveOn(false)
+    }
+  }
+
+  const disableObserve = () => {
+    webcamStreamRef.current?.getTracks().forEach(t => t.stop())
+    webcamStreamRef.current = null
+    setObserveOn(false)
+    // If the observe tab was selected, fall back to a camera or the log tab.
+    setSelectedId(prev => prev === OBSERVE_TAB ? (cameras[0]?.id ?? LOG_TAB) : prev)
+  }
+
+  // Switch the live observe stream to a different webcam (while observe is ON).
+  const switchWebcam = async (deviceId: string) => {
+    const prevId = webcamDeviceIdRef.current
+    const prevStream = webcamStreamRef.current
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: false,
+      })
+      // New stream acquired — stop the old one and swap it in.
+      prevStream?.getTracks().forEach(t => t.stop())
+      webcamStreamRef.current = stream
+      setWebcamDeviceId(deviceId)
+      if (observeVideoRef.current) observeVideoRef.current.srcObject = stream
+      if (gridObserveVideoRef.current) gridObserveVideoRef.current.srcObject = stream
+      refreshVideoDevices()
+    } catch {
+      // Switch failed — keep the previous stream/selection (revert gracefully).
+      setWebcamDeviceId(prevId)
+    }
+  }
+
+  // Persist the chosen device id.
+  useEffect(() => {
+    try {
+      if (webcamDeviceId) localStorage.setItem(WEBCAM_DEVICE_KEY, webcamDeviceId)
+    } catch { /* ignore */ }
+  }, [webcamDeviceId])
+
+  // Keep the device list fresh when cameras are plugged/unplugged.
+  useEffect(() => {
+    const md = navigator.mediaDevices
+    if (!md) return
+    const handler = () => { refreshVideoDevices() }
+    md.addEventListener?.('devicechange', handler)
+    return () => md.removeEventListener?.('devicechange', handler)
+  }, [refreshVideoDevices])
+
+  // Attach the live stream to whichever <video> is currently mounted
+  // (single observe view in tab mode, and/or the grid observe cell).
+  useEffect(() => {
+    const stream = webcamStreamRef.current
+    if (observeVideoRef.current) observeVideoRef.current.srcObject = observeOn ? stream : null
+    if (gridObserveVideoRef.current) gridObserveVideoRef.current.srcObject = observeOn ? stream : null
+  }, [observeOn, selectedId, layout])
+
+  // Stop tracks on unmount.
+  useEffect(() => () => {
+    webcamStreamRef.current?.getTracks().forEach(t => t.stop())
+    webcamStreamRef.current = null
+  }, [])
+
   // Connect / disconnect WebSocket
   useEffect(() => {
     wsRef.current?.close()
@@ -134,8 +276,12 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
     setImgNat(null)
     setChannel('rgb')   // reset; auto-switch will flip to depth if the stream is depth-only
     setFps(0)
+    setError(null)
+    pendingSaveRef.current = false
 
-    if (!selectedId || isLogTab) return
+    // Grid mode renders its own per-cell sockets; the observe tab is a webcam.
+    if (layout === 'grid') return
+    if (!selectedId || isLogTab || selectedId === OBSERVE_TAB) return
     if (hasLive && !live) return
 
     const ws = api.cameraWs(selectedId)
@@ -154,6 +300,12 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
     }
     ws.onmessage = e => {
       const data = JSON.parse(e.data)
+      if (data.error) {
+        setError(String(data.error))
+        pendingSaveRef.current = false   // capture failed — nothing to save
+        return
+      }
+      setError(null)
       setSrcs(prev => ({
         rgb:   data.rgb   ? `data:image/jpeg;base64,${data.rgb}`   : prev.rgb,
         depth: data.depth ? `data:image/jpeg;base64,${data.depth}` : prev.depth,
@@ -188,7 +340,7 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
 
     return () => ws.close()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, live, hasLive, isLogTab])
+  }, [selectedId, live, hasLive, isLogTab, layout])
 
   // Send mode change as a separate effect to avoid reconnect
   useEffect(() => {
@@ -233,7 +385,11 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
 
   const capture = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
+      pendingSaveRef.current = true   // download the frame that comes back
+      setError(null)
       wsRef.current.send(JSON.stringify({ capture: true }))
+    } else {
+      setError('Camera not connected')
     }
   }
 
@@ -267,6 +423,40 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
   const imgSrc = showRgbImg ? srcs.rgb : showColoredImg ? srcs.depth : ''
   const haveSomething = showRawCanvas ? rawDepth !== null : Boolean(imgSrc)
   const logSrc = logImage ? `data:image/jpeg;base64,${logImage}` : ''
+
+  const saveLog = () => {
+    if (!logSrc) return
+    const a = document.createElement('a')
+    a.href = logSrc
+    a.download = `log_image_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+
+  // After Capture, download the frame that arrives (browser download).
+  // Runs after the raw-depth render effect so the canvas is painted first.
+  useEffect(() => {
+    if (!pendingSaveRef.current) return
+    let dataUrl = ''
+    let ext = 'jpg'
+    if (showRgbImg && srcs.rgb) {
+      dataUrl = srcs.rgb
+    } else if (showColoredImg && srcs.depth) {
+      dataUrl = srcs.depth
+    } else if (showRawCanvas && rawDepth && canvasRef.current) {
+      dataUrl = canvasRef.current.toDataURL('image/png')
+      ext = 'png'
+    }
+    if (!dataUrl) return   // nothing rendered yet — wait for the next frame
+    pendingSaveRef.current = false
+    const name  = (selected?.name || selected?.id || 'camera').replace(/[^\w.-]+/g, '_')
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `capture_${name}_${channel}_${stamp}.${ext}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }, [srcs, rawDepth, showRgbImg, showColoredImg, showRawCanvas, channel, selected])
 
   // Natural pixel size of whatever is currently displayed (rect coords live in this space)
   const natSize: { w: number; h: number } | null =
@@ -368,42 +558,217 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
     setDragOverId(null)
   }
 
+  const toggleGridId = (id: string) => {
+    setGridIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  // Tabs included in the grid, kept in the visible (ordered) tab order.
+  const gridTabs = useMemo(() => {
+    const order: string[] = [...orderedCameras.map(c => c.id), LOG_TAB]
+    if (observeOn) order.push(OBSERVE_TAB)
+    return order.filter(id => gridIds.includes(id))
+  }, [orderedCameras, observeOn, gridIds])
+
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex gap-1 border-b border-gray-200">
-        {orderedCameras.map(c => (
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        {/* Layout toggle (Tab | Grid) */}
+        <div className="flex bg-gray-100 rounded overflow-hidden text-[11px] mr-1 self-center">
           <button
+            onClick={() => setLayout('tab')}
+            className={`px-2 py-0.5 ${layout === 'tab' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+          >Tab</button>
+          <button
+            onClick={() => setLayout('grid')}
+            className={`px-2 py-0.5 ${layout === 'grid' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+          >Grid</button>
+        </div>
+
+        {orderedCameras.map(c => (
+          <div
             key={c.id}
-            draggable
-            onDragStart={(e) => onTabDragStart(e, c.id)}
-            onDragOver={(e) => onTabDragOver(e, c.id)}
-            onDragLeave={() => onTabDragLeave(c.id)}
-            onDrop={(e) => onTabDrop(e, c.id)}
-            onDragEnd={onTabDragEnd}
-            onClick={() => setSelectedId(c.id)}
-            title="Drag to reorder"
-            className={`px-3 py-1 text-xs rounded-t border-b-2 transition-colors cursor-grab active:cursor-grabbing ${
-              selectedId === c.id
-                ? 'border-blue-500 text-blue-600 font-medium'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            } ${dragId === c.id ? 'opacity-40' : ''} ${dragOverId === c.id ? 'bg-blue-50' : ''}`}
+            className={`flex items-center rounded-t border-b-2 transition-colors ${
+              selectedId === c.id && layout === 'tab'
+                ? 'border-blue-500'
+                : 'border-transparent'
+            } ${dragOverId === c.id ? 'bg-blue-50' : ''}`}
           >
-            {c.name || c.id}
-          </button>
+            {layout === 'grid' && (
+              <input
+                type="checkbox"
+                checked={gridIds.includes(c.id)}
+                onChange={() => toggleGridId(c.id)}
+                title="Show in grid"
+                className="ml-1.5"
+              />
+            )}
+            <button
+              draggable
+              onDragStart={(e) => onTabDragStart(e, c.id)}
+              onDragOver={(e) => onTabDragOver(e, c.id)}
+              onDragLeave={() => onTabDragLeave(c.id)}
+              onDrop={(e) => onTabDrop(e, c.id)}
+              onDragEnd={onTabDragEnd}
+              onClick={() => setSelectedId(c.id)}
+              title="Drag to reorder"
+              className={`px-3 py-1 text-xs transition-colors cursor-grab active:cursor-grabbing ${
+                selectedId === c.id && layout === 'tab'
+                  ? 'text-blue-600 font-medium'
+                  : 'text-gray-500 hover:text-gray-700'
+              } ${dragId === c.id ? 'opacity-40' : ''}`}
+            >
+              {c.name || c.id}
+            </button>
+          </div>
         ))}
-        <button
-          key={LOG_TAB}
-          onClick={() => setSelectedId(LOG_TAB)}
-          className={`px-3 py-1 text-xs rounded-t border-b-2 transition-colors ${
-            isLogTab
-              ? 'border-blue-500 text-blue-600 font-medium'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
+
+        {/* log_image tab */}
+        <div
+          className={`flex items-center rounded-t border-b-2 transition-colors ${
+            isLogTab && layout === 'tab' ? 'border-blue-500' : 'border-transparent'
           }`}
         >
-          log_image
-        </button>
+          {layout === 'grid' && (
+            <input
+              type="checkbox"
+              checked={gridIds.includes(LOG_TAB)}
+              onChange={() => toggleGridId(LOG_TAB)}
+              title="Show in grid"
+              className="ml-1.5"
+            />
+          )}
+          <button
+            onClick={() => setSelectedId(LOG_TAB)}
+            className={`px-3 py-1 text-xs transition-colors ${
+              isLogTab && layout === 'tab'
+                ? 'text-blue-600 font-medium'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            log_image
+          </button>
+        </div>
+
+        {/* observe (webcam) tab — only present when activated */}
+        {observeOn && (
+          <div
+            className={`flex items-center rounded-t border-b-2 transition-colors ${
+              selectedId === OBSERVE_TAB && layout === 'tab' ? 'border-blue-500' : 'border-transparent'
+            }`}
+          >
+            {layout === 'grid' && (
+              <input
+                type="checkbox"
+                checked={gridIds.includes(OBSERVE_TAB)}
+                onChange={() => toggleGridId(OBSERVE_TAB)}
+                title="Show in grid"
+                className="ml-1.5"
+              />
+            )}
+            <button
+              onClick={() => setSelectedId(OBSERVE_TAB)}
+              className={`px-3 py-1 text-xs transition-colors ${
+                selectedId === OBSERVE_TAB && layout === 'tab'
+                  ? 'text-blue-600 font-medium'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              observe
+            </button>
+          </div>
+        )}
+
+        {/* observe activation checkbox + device picker — same row, right-aligned */}
+        <div className="ml-auto mr-1 flex items-center gap-1.5 self-center">
+          <label className="flex items-center gap-1 text-[11px] text-gray-500 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={observeOn}
+              onChange={e => { if (e.target.checked) enableObserve(); else disableObserve() }}
+            />
+            observe (webcam)
+          </label>
+          {observeOn && (
+            <select
+              value={webcamDeviceId}
+              onChange={e => switchWebcam(e.target.value)}
+              title="Choose which webcam feeds the observe tab"
+              className="text-[11px] text-gray-600 bg-gray-100 border border-gray-200 rounded px-1 py-0.5 max-w-[10rem]"
+            >
+              {/* Empty option only when no device is selected yet */}
+              {!webcamDeviceId && <option value="">Default camera</option>}
+              {videoDevices.map((d, i) => (
+                <option key={d.deviceId || i} value={d.deviceId}>
+                  {d.label || `Camera ${i + 1}`}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
+      {/* ── Grid mode: every selected tab live simultaneously ──────────────── */}
+      {layout === 'grid' ? (
+        gridTabs.length === 0 ? (
+          <div className="bg-gray-900 rounded-lg aspect-video flex items-center justify-center text-gray-400 text-sm">
+            Select tabs (checkboxes) to show in the grid
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {gridTabs.map(id => {
+              if (id === LOG_TAB) {
+                return (
+                  <div key={id} className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
+                    {logSrc ? (
+                      <img src={logSrc} alt="Skill log image" className="w-full h-full object-contain" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center px-4">
+                        No log image yet
+                      </div>
+                    )}
+                    <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                      log_image
+                    </div>
+                  </div>
+                )
+              }
+              if (id === OBSERVE_TAB) {
+                return (
+                  <div key={id} className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
+                    <video
+                      ref={gridObserveVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                    <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                      observe
+                    </div>
+                  </div>
+                )
+              }
+              const cam = cameras.find(c => c.id === id)
+              if (!cam) return null
+              return <CameraCell key={id} id={cam.id} name={cam.name || cam.id} />
+            })}
+          </div>
+        )
+      ) : selectedId === OBSERVE_TAB ? (
+        /* ── Observe (webcam) single view ─────────────────────────────────── */
+        <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
+          <video
+            ref={observeVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-contain"
+          />
+          <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+            observe (local webcam)
+          </div>
+        </div>
+      ) : (
       <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
         {isLogTab ? (
           logSrc ? (
@@ -475,6 +840,13 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
           </svg>
         )}
 
+        {/* Error banner (e.g. capture failed on the robot side) */}
+        {error && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-red-900/85 text-red-100 text-[11px] px-2 py-1 rounded max-w-[70%] text-center">
+            ⚠ {error}
+          </div>
+        )}
+
         {/* Top-right controls */}
         <div className="absolute top-2 right-2 flex items-center gap-1.5">
           {!isLogTab && cameras.length > 0 && (
@@ -526,6 +898,20 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
               }`}
               title="Drag on the image to draw a rectangle"
             >{drawMode ? 'Drawing…' : 'Draw'}</button>
+          )}
+          {isLogTab && logSrc && (
+            <>
+              <button
+                onClick={saveLog}
+                className="text-[11px] px-2 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
+                title="Download the annotated log image"
+              >Save</button>
+              <button
+                onClick={() => onClearLog?.()}
+                className="text-[11px] px-2 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
+                title="Reset log image to the initial (no-detection) state"
+              >Clear</button>
+            </>
           )}
           {rect && (
             <button
@@ -610,6 +996,7 @@ export default function CameraFeed({ clients, logImage }: { clients: ClientEntry
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

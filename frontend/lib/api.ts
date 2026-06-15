@@ -1,4 +1,4 @@
-import type { ClientEntry, ClientType, SkillDef } from './types'
+import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, LlmInfo } from './types'
 
 // ------------------------------------------------------------------
 // Robot registry — multiple named robots, one active at a time.
@@ -276,6 +276,14 @@ export const api = {
     return r.json()
   },
 
+  async getLlmConfig(): Promise<LlmInfo> {
+    try {
+      const r = await fetch(`${getAgentUrl()}/agent/llm-config`)
+      if (!r.ok) return {}
+      return r.json()
+    } catch { return {} }
+  },
+
   async setApiKey(provider: string, key: string) {
     const r = await fetch(`${getAgentUrl()}/agent/api-key`, {
       method: 'POST',
@@ -288,6 +296,77 @@ export const api = {
   async getApiKeys(): Promise<Record<string, boolean>> {
     const r = await fetch(`${getAgentUrl()}/agent/api-keys`)
     if (!r.ok) return {}
+    return r.json()
+  },
+
+  // ── World state (persistent symbolic belief) ───────────────
+  async getWorld(): Promise<WorldState> {
+    const r = await fetch(`${getAgentUrl()}/agent/world`)
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
+  },
+
+  async setWorld(patch: Partial<WorldState>): Promise<WorldState> {
+    const r = await fetch(`${getAgentUrl()}/agent/world`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
+  },
+
+  // ── Planner guides (versioned, server-side) ─────────────────
+  async listGuides(): Promise<{ active: string | null; versions: GuideVersion[] }> {
+    try {
+      const r = await fetch(`${getAgentUrl()}/guides`)
+      if (!r.ok) return { active: null, versions: [] }
+      return r.json()
+    } catch { return { active: null, versions: [] } }
+  },
+
+  async createGuide(v: GuideVersion): Promise<GuideVersion> {
+    const r = await fetch(`${getAgentUrl()}/guides`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(v),
+    })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
+  },
+
+  async updateGuide(name: string, body: { guide: string; format: Record<string, unknown> | null }): Promise<GuideVersion> {
+    const r = await fetch(`${getAgentUrl()}/guides/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!r.ok) {
+      const b = await r.json().catch(() => ({}))
+      throw new Error((b as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
+  },
+
+  async deleteGuide(name: string): Promise<void> {
+    await fetch(`${getAgentUrl()}/guides/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  },
+
+  async activateGuide(name: string): Promise<{ active: string }> {
+    const r = await fetch(`${getAgentUrl()}/guides/${encodeURIComponent(name)}/activate`, { method: 'POST' })
+    if (!r.ok) {
+      const b = await r.json().catch(() => ({}))
+      throw new Error((b as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
     return r.json()
   },
 

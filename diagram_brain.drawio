@@ -1,0 +1,160 @@
+<mxfile host="app.diagrams.net" agent="claude-code" version="24.0.0">
+  <diagram name="Brain (robot_agent + planner + world state + LLM)" id="kcare-brain">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Diagram A &#8212; Cognition: robot_agent + SAGE planner + World State + LLM" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;fontColor=#1f3b57;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1200" height="34" as="geometry" />
+        </mxCell>
+
+        <!-- UnifiedAgent -->
+        <mxCell id="ua" value="&lt;b&gt;UnifiedAgent&lt;/b&gt;&lt;br&gt;translate (vi/ko&#8594;en) &#183; route (planner = grace | direct, plan_only)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#e8f0fb;strokeColor=#2c5d92;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="470" y="90" width="560" height="56" as="geometry" />
+        </mxCell>
+
+        <!-- ===== closed-loop panel ===== -->
+        <mxCell id="p_cl" value="Closed-loop driver  (ClosedLoop.run_blocking)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=6;fillColor=#eaf3fc;strokeColor=#1f6fb2;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="40" y="200" width="740" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="cl_perc" value="&lt;b&gt;&#9312; Perceive&lt;/b&gt;&lt;br&gt;observe(node) &#8594; obs, visible" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#cfe3f7;strokeColor=#1f6fb2;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="90" y="275" width="210" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cl_plan" value="&lt;b&gt;&#9313; Plan&lt;/b&gt;&lt;br&gt;generate_plan() via planner" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#cfe3f7;strokeColor=#1f6fb2;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="265" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cl_map" value="&lt;b&gt;&#9314; Map &#183; ActionMapper&lt;/b&gt;&lt;br&gt;action &#8594; skill, apply_effect" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#cfe3f7;strokeColor=#1f6fb2;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="540" y="405" width="215" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cl_act" value="&lt;b&gt;&#9315; Act &#183; SkillRegistry&lt;/b&gt;&lt;br&gt;execute(name, params, node)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#cfe3f7;strokeColor=#1f6fb2;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="525" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cl_ver" value="&lt;b&gt;&#9316; Verify &#183; StepVerifier&lt;/b&gt;&lt;br&gt;isdone &#8594; symbolic &#8594; VLM" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#cfe3f7;strokeColor=#1f6fb2;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="75" y="525" width="255" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cl_rep" value="&lt;b&gt;&#9317; Replan&lt;/b&gt;&lt;br&gt;planner.replan() suffix (&#8804;3)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#cfe3f7;strokeColor=#1f6fb2;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="110" y="395" width="210" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- ===== runtime services ===== -->
+        <mxCell id="p_sv" value="Runtime services" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=6;fillColor=#f3effa;strokeColor=#6a3fa0;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="820" y="200" width="450" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="sv_ws" value="&lt;b&gt;WorldState&lt;/b&gt; &#8212; persistent belief&lt;br&gt;arrived &#183; found &#183; holding &#183; opened &#183; on &#183; found_pose" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#ede6f6;strokeColor=#6a3fa0;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="840" y="250" width="410" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="sv_an" value="&lt;b&gt;Announcer&lt;/b&gt;&lt;br&gt;TTS milestones (vi/ko/en)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#ede6f6;strokeColor=#6a3fa0;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="840" y="348" width="410" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="sv_rl" value="&lt;b&gt;RunLogger&lt;/b&gt;&lt;br&gt;TaskRecord &#8594; JSONL task_runs/" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#ede6f6;strokeColor=#6a3fa0;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="840" y="425" width="410" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- DeviceManager + stub to Diagram B -->
+        <mxCell id="dm" value="&lt;b&gt;DeviceManager&lt;/b&gt;&lt;br&gt;connection registry &#183; owns ROS2 node" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#e8f0fb;strokeColor=#2c5d92;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="820" y="525" width="300" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="stub_b" value="&#8594; Skills &#183; Robot &#183; Vision&lt;br&gt;&lt;i&gt;(see Diagram B)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;dashed=1;fillColor=#f6f6f6;strokeColor=#707070;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="525" width="290" height="75" as="geometry" />
+        </mxCell>
+
+        <!-- planner protocol label -->
+        <mxCell id="pp_label" value="&lt;b&gt;Planner Protocol&lt;/b&gt;&lt;br&gt;generate_plan / replan &#8596; (steps, metrics)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;fillColor=#ffffff;strokeColor=#c0392b;fontColor=#c0392b;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="645" width="300" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===== SAGE planner ===== -->
+        <mxCell id="p_sage" value="&#9733; pyplanner &#183; SAGE   (Planner Protocol backend &#8212; this paper)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fontStyle=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=6;dashed=1;dashPattern=8 4;fillColor=#fdecea;strokeColor=#c0392b;strokeWidth=2;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="140" y="710" width="800" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="sg_dec" value="&lt;b&gt;Hierarchical decompose&lt;/b&gt;&lt;br&gt;task &#8594; sub-goals (1 LLM call)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;fillColor=#f7dcd7;strokeColor=#c0392b;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="165" y="775" width="185" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="sg_mem" value="&lt;b&gt;Hybrid memory&lt;/b&gt;&lt;br&gt;seed GT + live episodes&lt;br&gt;(Chroma / Jaccard)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;fillColor=#f7dcd7;strokeColor=#c0392b;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="370" y="775" width="185" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="sg_gate" value="&lt;b&gt;Symbolic gate&lt;/b&gt;&lt;br&gt;precondition verifier&lt;br&gt;(0-token, typed feedback)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;fontStyle=1;fillColor=#f7dcd7;strokeColor=#c0392b;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="575" y="775" width="175" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="sg_edit" value="&lt;b&gt;Suffix edit&lt;/b&gt;&lt;br&gt;local repair of the&lt;br&gt;failed sub-goal" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;fontStyle=1;fillColor=#f7dcd7;strokeColor=#c0392b;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="765" y="775" width="160" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="llm" value="&lt;b&gt;LLM backend (open-weight)&lt;/b&gt;&lt;br&gt;Ollama &#183; OpenAI &#183; Gemini&lt;br&gt;single model, seeded (HTTP)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;fillColor=#fff3cd;strokeColor=#9c7a00;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="775" width="300" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES ===== -->
+        <mxCell id="e_ua_cl" value="run closed loop" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#2c5d92;entryX=0.5;entryY=0;" edge="1" parent="1" source="ua" target="cl_perc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_perc_plan" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#1f6fb2;" edge="1" parent="1" source="cl_perc" target="cl_plan">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_plan_map" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#1f6fb2;" edge="1" parent="1" source="cl_plan" target="cl_map">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_map_act" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#1f6fb2;" edge="1" parent="1" source="cl_map" target="cl_act">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_act_ver" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#1f6fb2;" edge="1" parent="1" source="cl_act" target="cl_ver">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ver_perc" value="&#10003; pass &#183; next step" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;strokeColor=#2e8b57;fontColor=#2e8b57;fontStyle=1;fontSize=13;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="cl_ver" target="cl_perc">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="55" y="565" />
+              <mxPoint x="55" y="315" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_ver_rep" value="&#10007; fail" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#c0392b;fontColor=#c0392b;fontStyle=1;fontSize=13;" edge="1" parent="1" source="cl_ver" target="cl_rep">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_rep_map" value="splice suffix" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#b8860b;fontColor=#b8860b;fontStyle=1;fontSize=13;" edge="1" parent="1" source="cl_rep" target="cl_map">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_cl_sv" value="reads / writes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=block;endArrow=block;dashed=1;strokeWidth=2;strokeColor=#888888;fontSize=13;fontColor=#666666;exitX=1;exitY=0.4;entryX=0;entryY=0.4;" edge="1" parent="1" source="p_cl" target="p_sv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_act_stub" value="calls skills" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#707070;" edge="1" parent="1" source="cl_act" target="stub_b">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="510" y="650" /><mxPoint x="1295" y="650" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dm_stub" value="device I/O" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeWidth=2;fontSize=13;strokeColor=#707070;" edge="1" parent="1" source="dm" target="stub_b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- planner protocol -->
+        <mxCell id="e_cl_pp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=none;strokeWidth=2;strokeColor=#c0392b;exitX=0.4;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="p_cl" target="pp_label">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_pp_sage" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=block;endArrow=block;strokeWidth=2;strokeColor=#c0392b;exitX=0.5;exitY=1;entryX=0.4;entryY=0;" edge="1" parent="1" source="pp_label" target="p_sage">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- sage internal -->
+        <mxCell id="e_dec_mem" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#c0392b;" edge="1" parent="1" source="sg_dec" target="sg_mem">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mem_gate" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#c0392b;" edge="1" parent="1" source="sg_mem" target="sg_gate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_gate_edit" style="edgeStyle=none;html=1;endArrow=block;strokeWidth=2;strokeColor=#c0392b;" edge="1" parent="1" source="sg_gate" target="sg_edit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_edit_gate" value="refine" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;strokeWidth=2;strokeColor=#c0392b;fontColor=#c0392b;fontSize=12;exitX=0.5;exitY=0;entryX=0.5;entryY=0;" edge="1" parent="1" source="sg_edit" target="sg_gate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_llm_sage" value="HTTP (chat)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=block;endArrow=block;dashed=1;strokeWidth=2;strokeColor=#9c7a00;fontColor=#9c7a00;fontSize=13;" edge="1" parent="1" source="llm" target="sg_edit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

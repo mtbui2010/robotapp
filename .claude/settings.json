@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(pdftotext *)",
-      "Bash(pdfinfo *)"
+      "Bash(pdfinfo *)",
+      "Bash(pdffonts *)",
+      "Bash(tsc --noEmit *)",
+      "Bash(./node_modules/.bin/tsc --noEmit*)",
+      "Bash(npm view *)",
+      "Bash(make help)",
+      "Bash(nvidia-smi*)"
     ]
   }
 }
