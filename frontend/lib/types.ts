@@ -63,9 +63,29 @@ export interface AgentEvent {
   trace?: string
   data?: Record<string, unknown>
   log_image?: string | null
+  log_dir?: string                   // backend vision-capture dir when log_data=backend
+  // Streamed vision dataset (log_data=frontend): base64 PNG rgb/annotated,
+  // zlib-compressed uint16 depth + shape, and the raw detection results.
+  dataset?: {
+    tag?: string
+    ts?: number
+    rgb?: string | null
+    annotated?: string | null
+    depth?: string | null
+    depth_w?: number
+    depth_h?: number
+    results?: unknown
+  }
   ts?: number
   // Closed-loop (GRACE) events
   say?: string                       // localized phrase for voice output
+  // HRI skills (kcare hri.reply / hri.ask, source='dashboard'). `speak` is
+  // always voiced — it is the skill's own output, not narration like `say`.
+  // `listen` asks the dashboard to capture one phrase and POST it back to
+  // /agent/listen/{id}.
+  speak?: string
+  speak_lang?: string | null
+  listen?: { id: string; lang?: string; max_sec?: number; prompt?: string }
   index?: number                     // step index (closed-loop)
   action?: string                    // GRACE action
   object?: string                    // GRACE object
@@ -85,6 +105,10 @@ export interface AgentEvent {
   subgoals?: string[]
   subgoal?: string
   attempt?: number
+  // GRACE per-sub-goal planning detail (plan_step): expanded steps, symbolic
+  // violations, and the final verify verdict.
+  ok?: boolean
+  violations?: Array<Record<string, unknown>>
 }
 
 export interface LlmInfo {

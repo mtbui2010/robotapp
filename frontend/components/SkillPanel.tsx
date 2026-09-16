@@ -1,8 +1,10 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import type { ReactNode } from 'react'
 import { api } from '../lib/api'
 import type { SkillDef } from '../lib/types'
 import SKILL_CONFIGS_RAW from '../lib/skill_configs.json'
+import { ConfigFieldsEditor, type ConfigView } from './ConfigFields'
 
 const SKILL_CONFIG_MAP = SKILL_CONFIGS_RAW.skill_config_map as Record<string, string[]>
 
@@ -38,6 +40,8 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
   const [loadingConfigs, setLoadingConfigs] = useState<Set<string>>(new Set())
   const [loadErrors, setLoadErrors] = useState<Record<string, string>>({})
   const [configErrors, setConfigErrors] = useState<Record<string, string>>({})
+  // per-config view toggle: 'fields' (form) | 'json' (raw textarea). Default fields.
+  const [configView, setConfigView] = useState<Record<string, ConfigView>>({})
 
   const [form, setForm] = useState({
     name: '',
@@ -143,17 +147,22 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
       .finally(() => setLoadingConfigs(prev => { const next = new Set(prev); next.delete(cn); return next }))
   }
 
-  const renderConfigSection = (skillName: string) => {
+  const renderConfigSection = (skillName: string, actions: ReactNode) => {
     const configNames = SKILL_CONFIG_MAP[skillName] ?? []
     if (configNames.length === 0) return null
 
     return (
       <div className="flex flex-col gap-2 mt-1">
-        <span className="text-gray-500 font-medium">Configs</span>
+        <div className="flex items-center justify-between">
+          <span className="text-gray-500 font-medium">Configs</span>
+          {actions}
+        </div>
         {configNames.map(cn => {
           const loading = loadingConfigs.has(cn)
           const loadErr = loadErrors[cn]
           const text    = editConfigs[cn]
+          const view    = configView[cn] ?? 'fields'
+          const setView = (v: ConfigView) => setConfigView(prev => ({ ...prev, [cn]: v }))
           return (
             <div key={cn} className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
@@ -167,6 +176,20 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
                     className="text-gray-400 hover:text-blue-500 text-[10px] leading-none"
                   >⟳</button>
                 )}
+                {!loading && !loadErr && text !== undefined && (
+                  <div className="ml-auto inline-flex rounded border border-gray-200 overflow-hidden text-[10px]">
+                    {(['fields', 'json'] as ConfigView[]).map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setView(v)}
+                        className={`px-1.5 py-0.5 ${
+                          view === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'
+                        }`}
+                      >{v === 'fields' ? 'Fields' : 'JSON'}</button>
+                    ))}
+                  </div>
+                )}
               </div>
               {loadErr ? (
                 <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded px-2 py-1.5">
@@ -176,6 +199,11 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
                 <div className="font-mono text-[11px] bg-gray-50 border border-gray-200 rounded px-2 py-3 text-gray-400">
                   Loading live value…
                 </div>
+              ) : view === 'fields' ? (
+                <ConfigFieldsEditor
+                  text={text}
+                  onChange={t => setEditConfigs(prev => ({ ...prev, [cn]: t }))}
+                />
               ) : (
                 <textarea
                   value={text}
@@ -228,19 +256,26 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
         onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
         className={INPUT_CLS}
       />
-      {renderConfigSection(s.name)}
-      <div className="flex gap-2 pt-0.5">
-        <button
-          onClick={submitEdit}
-          disabled={loadingConfigs.size > 0 || Object.keys(loadErrors).length > 0}
-          title={
-            loadingConfigs.size > 0 ? 'Wait for configs to load' :
-            Object.keys(loadErrors).length > 0 ? 'Fix config load errors first' : ''
-          }
-          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs">Save</button>
-        <button onClick={cancelEdit}
-          className="px-2.5 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs">Cancel</button>
-      </div>
+      {(() => {
+        const actions = (
+          <div className="flex gap-2">
+            <button
+              onClick={submitEdit}
+              disabled={loadingConfigs.size > 0 || Object.keys(loadErrors).length > 0}
+              title={
+                loadingConfigs.size > 0 ? 'Wait for configs to load' :
+                Object.keys(loadErrors).length > 0 ? 'Fix config load errors first' : ''
+              }
+              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs">Save</button>
+            <button onClick={cancelEdit}
+              className="px-2.5 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs">Cancel</button>
+          </div>
+        )
+        const hasConfigs = (SKILL_CONFIG_MAP[s.name] ?? []).length > 0
+        return hasConfigs
+          ? renderConfigSection(s.name, actions)
+          : <div className="pt-0.5">{actions}</div>
+      })()}
     </div>
   )
 

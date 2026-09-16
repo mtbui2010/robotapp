@@ -309,6 +309,24 @@ export const api = {
     return r.json()
   },
 
+  // Transcript for a pending HRI listen request from a running skill
+  // (kcare hri.reply / hri.ask with source='dashboard'). A 404 just means
+  // the skill stopped waiting; nothing to do about it here.
+  async answerListen(id: string, text: string, error?: string): Promise<void> {
+    await fetch(`${getAgentUrl()}/agent/listen/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, error: error ?? null }),
+    })
+  },
+
+  // Stop the robot: the backend cancels every ROS command in flight and ends
+  // the run. Closing the agent WebSocket alone does not reach the robot — the
+  // plan keeps executing in a backend thread.
+  async cancelRun(): Promise<void> {
+    await fetch(`${getAgentUrl()}/agent/cancel`, { method: 'POST' })
+  },
+
   async setWorld(patch: Partial<WorldState>): Promise<WorldState> {
     const r = await fetch(`${getAgentUrl()}/agent/world`, {
       method: 'PUT',

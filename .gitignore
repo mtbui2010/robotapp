@@ -36,3 +36,4 @@ Thumbs.db
 # Source screenshot kept locally for re-crops; published versions live in
 # docs/src/assets/ and docs/public/.
 docs-hero.png
+data/*

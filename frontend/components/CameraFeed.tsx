@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
 import type { ClientEntry } from '../lib/types'
 import CameraCell from './CameraCell'
+import { decodeRawDepth, encode16BitGrayPng, downloadBlob } from '../lib/depthPng'
 
 type Channel = 'rgb' | 'depth'
 type DepthMode = 'colored' | 'raw'
@@ -94,7 +95,7 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
   const isLogTab = selectedId === LOG_TAB
 
   // ── Layout (tab | grid) ───────────────────────────────────────────────────
-  const [layout, setLayout] = useState<Layout>('tab')
+  const [layout, setLayout] = useState<Layout>('grid')
 
   // ── Observe tab (operator's local webcam, live only) ──────────────────────
   const [observeOn, setObserveOn] = useState(false)
@@ -129,12 +130,19 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
   const [gridIds, setGridIds] = useState<string[]>([])
   const gridInit = useRef(false)
 
+  // Grid cell drag-and-drop reorder (separate state from tab reorder above).
+  const [gridDragId, setGridDragId]         = useState<string | null>(null)
+  const [gridDragOverId, setGridDragOverId] = useState<string | null>(null)
+
   const [channel, setChannel]       = useState<Channel>('rgb')
   const [live, setLive]             = useState(true)
   const [srcs, setSrcs]             = useState<{ rgb: string; depth: string }>({ rgb: '', depth: '' })
   const [fps, setFps]               = useState(0)
   const [error, setError]           = useState<string | null>(null)
   const pendingSaveRef              = useRef(false)   // set on Capture; next frame is downloaded
+  // One-shot raw-depth PNG save: set when save_raw is clicked in colored mode.
+  // Holds the depthMode to restore on the wire once the raw frame is captured.
+  const pendingRawSaveRef           = useRef<DepthMode | null>(null)
 
   // ── Depth controls ────────────────────────────────────────────────────────
   const [depthMode, setDepthMode]       = useState<DepthMode>('colored')
@@ -167,11 +175,13 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
     else setSelectedId(LOG_TAB)
   }, [cameras, selectedId])
 
-  // Default grid selection once cameras are known: all cameras (+ log) included.
+  // Default grid selection once cameras are known: RGB cameras (+ log) included.
+  // Depth screens start unchecked (user can tick them in the grid checkboxes).
   useEffect(() => {
     if (gridInit.current) return
     if (cameras.length === 0) return
-    setGridIds([...cameras.map(c => c.id), LOG_TAB])
+    const nonDepth = cameras.filter(c => !/depth/i.test(`${c.name ?? ''} ${c.id}`))
+    setGridIds([...nonDepth.map(c => c.id), LOG_TAB])
     gridInit.current = true
   }, [cameras])
 
@@ -278,6 +288,7 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
     setFps(0)
     setError(null)
     pendingSaveRef.current = false
+    pendingRawSaveRef.current = null
 
     // Grid mode renders its own per-cell sockets; the observe tab is a webcam.
     if (layout === 'grid') return
@@ -319,10 +330,30 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
         setActiveMeta(data.depth_meta as DepthMeta)
       }
       if (data.depth_raw && typeof data.depth_w === 'number' && typeof data.depth_h === 'number') {
+        const w = data.depth_w as number
+        const h = data.depth_h as number
+        // One-shot raw save (triggered while in colored mode): encode & download
+        // this frame, then restore the prior depth mode on the wire. Don't touch
+        // rawDepth/depthMode state so the live colored view is undisturbed.
+        if (pendingRawSaveRef.current !== null) {
+          const restore = pendingRawSaveRef.current
+          pendingRawSaveRef.current = null
+          const camName = (selected?.name || selected?.id || 'camera').replace(/[^\w.-]+/g, '_')
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+          decodeRawDepth(data.depth_raw)
+            .then(u16 => encode16BitGrayPng(u16, w, h))
+            .then(blob => downloadBlob(blob, `depth_raw_${camName}_${stamp}.png`))
+            .catch(err => console.error('save_raw (one-shot):', err))
+            .finally(() => {
+              if (wsRef.current?.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({ depth_mode: restore }))
+              }
+            })
+        }
         decompressDepth(data.depth_raw).then(bytes => {
           // bytes is little-endian uint16
           const u16 = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2)
-          setRawDepth({ data: u16, w: data.depth_w, h: data.depth_h })
+          setRawDepth({ data: u16, w, h })
         }).catch(err => console.error('depth_raw decompress:', err))
       }
       frameRef.current++
@@ -388,6 +419,27 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
       pendingSaveRef.current = true   // download the frame that comes back
       setError(null)
       wsRef.current.send(JSON.stringify({ capture: true }))
+    } else {
+      setError('Camera not connected')
+    }
+  }
+
+  // Save the RAW depth as a 16-bit grayscale PNG.
+  // If raw depth is already streaming (raw mode), encode the held frame directly.
+  // Otherwise do a one-shot raw capture on the wire and restore the mode after.
+  const saveRaw = () => {
+    if (rawDepth) {
+      const camName = (selected?.name || selected?.id || 'camera').replace(/[^\w.-]+/g, '_')
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+      encode16BitGrayPng(rawDepth.data, rawDepth.w, rawDepth.h)
+        .then(blob => downloadBlob(blob, `depth_raw_${camName}_${stamp}.png`))
+        .catch(err => console.error('save_raw:', err))
+      return
+    }
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      setError(null)
+      pendingRawSaveRef.current = depthMode   // restore current mode after capture
+      wsRef.current.send(JSON.stringify({ depth_mode: 'raw' }))
     } else {
       setError('Camera not connected')
     }
@@ -461,6 +513,11 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
   // Natural pixel size of whatever is currently displayed (rect coords live in this space)
   const natSize: { w: number; h: number } | null =
     showRawCanvas ? (rawDepth ? { w: rawDepth.w, h: rawDepth.h } : null) : imgNat
+
+  // Shape badge in numpy H×W×C order. C = 1 for depth (colored or raw), 3 for rgb.
+  // Log/observe images are rgb → C = 3.
+  const shapeChannels = !isLogTab && channel === 'depth' ? 1 : 3
+  const shapeLabel = natSize ? `${natSize.h}×${natSize.w}×${shapeChannels}` : null
 
   const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
@@ -562,12 +619,72 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
     setGridIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  // Tabs included in the grid, kept in the visible (ordered) tab order.
+  // Tabs included in the grid. Visual order follows the ordered `gridIds`
+  // array (drag-reorder mutates it); any newly-available, checked id not yet in
+  // gridIds appends in tab order. Hidden (unchecked / unavailable) ids drop out.
   const gridTabs = useMemo(() => {
-    const order: string[] = [...orderedCameras.map(c => c.id), LOG_TAB]
-    if (observeOn) order.push(OBSERVE_TAB)
-    return order.filter(id => gridIds.includes(id))
+    const available: string[] = [...orderedCameras.map(c => c.id), LOG_TAB]
+    if (observeOn) available.push(OBSERVE_TAB)
+    const availableSet = new Set(available)
+    const seen = new Set<string>()
+    const out: string[] = []
+    // LOG_TAB is pinned to the end (full-width row) — keep it out of the
+    // reorderable sequence so drag-and-drop can't push it up.
+    for (const id of gridIds) {
+      if (id === LOG_TAB) continue
+      if (availableSet.has(id) && !seen.has(id)) { out.push(id); seen.add(id) }
+    }
+    for (const id of available) {
+      if (id === LOG_TAB) continue
+      if (gridIds.includes(id) && !seen.has(id)) { out.push(id); seen.add(id) }
+    }
+    if (gridIds.includes(LOG_TAB)) out.push(LOG_TAB)   // always last
+    return out
   }, [orderedCameras, observeOn, gridIds])
+
+  // ── Grid cell drag-and-drop handlers (reorder gridIds) ────────────────────
+  const onGridDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+    setGridDragId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)   // Firefox needs data to start drag
+  }
+
+  const onGridDragOver = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+    if (!gridDragId || gridDragId === id) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (gridDragOverId !== id) setGridDragOverId(id)
+  }
+
+  const onGridDragLeave = (id: string) => {
+    setGridDragOverId(prev => (prev === id ? null : prev))
+  }
+
+  const onGridDrop = (e: React.DragEvent<HTMLDivElement>, targetId: string) => {
+    e.preventDefault()
+    const src = gridDragId
+    setGridDragId(null)
+    setGridDragOverId(null)
+    if (!src || src === targetId) return
+    // Reorder within the *visible* sequence, then write it back as the new
+    // gridIds order (preserving any hidden/unchecked ids that aren't shown).
+    const visible = gridTabs
+    const fromIdx = visible.indexOf(src)
+    const toIdx   = visible.indexOf(targetId)
+    if (fromIdx < 0 || toIdx < 0) return
+    const reordered = [...visible]
+    reordered.splice(fromIdx, 1)
+    reordered.splice(toIdx, 0, src)
+    setGridIds(prev => {
+      const hidden = prev.filter(id => !reordered.includes(id))
+      return [...reordered, ...hidden]
+    })
+  }
+
+  const onGridDragEnd = () => {
+    setGridDragId(null)
+    setGridDragOverId(null)
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -716,41 +833,74 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {gridTabs.map(id => {
+              // Drag wrapper props shared by every grid cell (reorders gridIds).
+              const dragProps = {
+                draggable: true,
+                onDragStart: (e: React.DragEvent<HTMLDivElement>) => onGridDragStart(e, id),
+                onDragOver:  (e: React.DragEvent<HTMLDivElement>) => onGridDragOver(e, id),
+                onDragLeave: () => onGridDragLeave(id),
+                onDrop:      (e: React.DragEvent<HTMLDivElement>) => onGridDrop(e, id),
+                onDragEnd:   onGridDragEnd,
+              }
+              const wrapCls = `cursor-grab active:cursor-grabbing transition-opacity ${
+                gridDragId === id ? 'opacity-40' : ''
+              } ${gridDragOverId === id ? 'ring-2 ring-blue-400 rounded-lg' : ''}`
+
               if (id === LOG_TAB) {
+                // Pinned at the end of the grid (not draggable). Since detect_object
+                // no longer emits the side-by-side head|arm image (fuse_islying is
+                // gone), render it as a normal single-column aspect-video cell like
+                // the other camera screens.
                 return (
-                  <div key={id} className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
-                    {logSrc ? (
-                      <img src={logSrc} alt="Skill log image" className="w-full h-full object-contain" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center px-4">
-                        No log image yet
+                  <div key={id}>
+                    <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
+                      {logSrc ? (
+                        <img src={logSrc} alt="Skill log image" className="w-full h-full object-contain" draggable={false} />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center px-4">
+                          No log image yet
+                        </div>
+                      )}
+                      {logSrc && (
+                        <div className="absolute top-1 right-1 flex gap-1" draggable={false} onDragStart={e => e.preventDefault()}>
+                          <button onClick={e => { e.stopPropagation(); saveLog() }} onMouseDown={e => e.stopPropagation()}
+                            className="px-1.5 py-0.5 text-[10px] bg-black/60 hover:bg-black/80 text-white rounded">Save</button>
+                          <button onClick={e => { e.stopPropagation(); onClearLog?.() }} onMouseDown={e => e.stopPropagation()}
+                            className="px-1.5 py-0.5 text-[10px] bg-black/60 hover:bg-black/80 text-white rounded">Clear</button>
+                        </div>
+                      )}
+                      <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                        log_image
                       </div>
-                    )}
-                    <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
-                      log_image
                     </div>
                   </div>
                 )
               }
               if (id === OBSERVE_TAB) {
                 return (
-                  <div key={id} className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
-                    <video
-                      ref={gridObserveVideoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      className="w-full h-full object-contain"
-                    />
-                    <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
-                      observe
+                  <div key={id} {...dragProps} className={wrapCls}>
+                    <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-video">
+                      <video
+                        ref={gridObserveVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-contain"
+                      />
+                      <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                        observe
+                      </div>
                     </div>
                   </div>
                 )
               }
               const cam = cameras.find(c => c.id === id)
               if (!cam) return null
-              return <CameraCell key={id} id={cam.id} name={cam.name || cam.id} />
+              return (
+                <div key={id} {...dragProps} className={wrapCls}>
+                  <CameraCell client={cam} />
+                </div>
+              )
             })}
           </div>
         )
@@ -840,6 +990,18 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
           </svg>
         )}
 
+        {/* Shape badge (numpy H×W×C) — whenever an image/canvas is on screen.
+            Sits above the depth controls when those are visible (depth view). */}
+        {shapeLabel && (
+          <div
+            className={`absolute left-2 z-10 bg-black/65 text-white text-[10px] rounded px-1.5 py-0.5 font-mono pointer-events-none ${
+              !isLogTab && channel === 'depth' ? 'bottom-10' : 'bottom-2'
+            }`}
+          >
+            {shapeLabel}
+          </div>
+        )}
+
         {/* Error banner (e.g. capture failed on the robot side) */}
         {error && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-red-900/85 text-red-100 text-[11px] px-2 py-1 rounded max-w-[70%] text-center">
@@ -874,6 +1036,15 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
                 onClick={capture}
                 className="text-[11px] px-2 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
               >Capture</button>
+
+              {/* save_raw — depth view only: 16-bit grayscale PNG of raw depth */}
+              {channel === 'depth' && (
+                <button
+                  onClick={saveRaw}
+                  title="Save RAW depth as a 16-bit grayscale PNG"
+                  className="text-[11px] px-2 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
+                >save_raw</button>
+              )}
 
               {/* Live / Stop — only webrtc + ros_topic */}
               {hasLive && (
@@ -984,7 +1155,7 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
               const r = drawing ?? rect!
               return (
                 <div className="bg-black/65 text-white text-[10px] rounded px-1.5 py-0.5 font-mono">
-                  L:{r.left} T:{r.top} R:{r.right} B:{r.bottom}
+                  L:{Math.round(r.left)} T:{Math.round(r.top)} R:{Math.round(r.right)} B:{Math.round(r.bottom)} ({Math.round(r.right - r.left)}×{Math.round(r.bottom - r.top)})
                 </div>
               )
             })()}

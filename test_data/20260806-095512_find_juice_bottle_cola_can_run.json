@@ -1,0 +1,285 @@
+{
+  "task": "~find::juice bottle, cola can",
+  "planner": "direct",
+  "failed": true,
+  "elapsed_ms": 2984,
+  "captures": 1,
+  "failure_events": [
+    {
+      "event": "step_done",
+      "step": 1,
+      "result": {
+        "isdone": false,
+        "ins": {
+          "juice bottle": {
+            "duration_ms": 128.467,
+            "device": "gpu:0",
+            "pose_3d": [
+              0.5952444597448219,
+              -0.2066534761839942,
+              0.41831795432010965
+            ],
+            "approach_pose": {
+              "x": 0.5952444597448219,
+              "y": -0.1066534761839942,
+              "z": 0.6183179543201096,
+              "rx": -180,
+              "ry": 0,
+              "rz": -90
+            },
+            "lift_to": 0.46831795432010964,
+            "mforward": 0,
+            "base_rotate": -60,
+            "approach_lying": true,
+            "box": [
+              122.4787220954895,
+              324.0188295841217,
+              267.84326791763306,
+              464.1486337184906
+            ],
+            "score": 0.8644886361119698,
+            "islying": true,
+            "mass_percents": [
+              50,
+              50
+            ],
+            "depths": {
+              "obj_min": 103,
+              "obj_median": 352,
+              "bound": null
+            }
+          },
+          "cola can": {
+            "duration_ms": 124.851,
+            "device": "gpu:0",
+            "pose_3d": [
+              0.6994074024402233,
+              -0.20204455734307802,
+              0.4129481760149131
+            ],
+            "approach_pose": {
+              "x": 0.4,
+              "y": 0.014461793603031653,
+              "z": 0.5129481760149132,
+              "rx": -180,
+              "ry": -75,
+              "rz": -130
+            },
+            "lift_to": 0.4629481760149131,
+            "mforward": 0.42440740244022324,
+            "base_rotate": -60,
+            "approach_lying": false,
+            "box": [
+              0,
+              328.7812306880951,
+              130.6977767944336,
+              478.7138330936432
+            ],
+            "score": 0.8169692613720961,
+            "islying": false,
+            "mass_percents": [
+              50,
+              50
+            ],
+            "depths": {
+              "obj_min": 104,
+              "obj_median": 351,
+              "bound": null
+            }
+          }
+        }
+      },
+      "say": "Failed to ~find juice bottle."
+    },
+    {
+      "event": "done",
+      "success": false,
+      "say": "Task failed",
+      "elapsed_ms": 2984
+    }
+  ],
+  "events": [
+    {
+      "event": "start",
+      "prompt": "~find::juice bottle, cola can"
+    },
+    {
+      "event": "plan",
+      "plan": "~find::juice bottle, cola can",
+      "say": "Plan ready"
+    },
+    {
+      "event": "world",
+      "world": {
+        "arrived": "drawer@kitchen",
+        "found": "juice bottle",
+        "holding": null,
+        "opened": [
+          "drawer2",
+          "drawer@kitchen",
+          "inputs=\"drawer@kitchen\",stay_here=True",
+          "remote"
+        ],
+        "on": [],
+        "holding_since": null,
+        "found_pose": {
+          "pose_3d": [
+            0.5936302963432998,
+            -0.20665561617516626,
+            0.4183161095958038
+          ],
+          "ts": 1785977536.5467093,
+          "robot_pose": [
+            -2.0677838613456396,
+            -1.9017950463195477,
+            179.93927224302135
+          ]
+        },
+        "holding_pose": null,
+        "found_pose_stale": false
+      }
+    },
+    {
+      "event": "step_start",
+      "step": 1,
+      "total": 1,
+      "task": "[['~find', 'juice bottle, cola can']]",
+      "say": "I will ~find juice bottle"
+    },
+    {
+      "event": "step_log",
+      "step": 1,
+      "data": {},
+      "ts": 1785977715.3703804
+    },
+    {
+      "event": "step_log",
+      "step": 1,
+      "data": {},
+      "ts": 1785977715.492797
+    },
+    {
+      "event": "step_done",
+      "step": 1,
+      "result": {
+        "isdone": false,
+        "ins": {
+          "juice bottle": {
+            "duration_ms": 128.467,
+            "device": "gpu:0",
+            "pose_3d": [
+              0.5952444597448219,
+              -0.2066534761839942,
+              0.41831795432010965
+            ],
+            "approach_pose": {
+              "x": 0.5952444597448219,
+              "y": -0.1066534761839942,
+              "z": 0.6183179543201096,
+              "rx": -180,
+              "ry": 0,
+              "rz": -90
+            },
+            "lift_to": 0.46831795432010964,
+            "mforward": 0,
+            "base_rotate": -60,
+            "approach_lying": true,
+            "box": [
+              122.4787220954895,
+              324.0188295841217,
+              267.84326791763306,
+              464.1486337184906
+            ],
+            "score": 0.8644886361119698,
+            "islying": true,
+            "mass_percents": [
+              50,
+              50
+            ],
+            "depths": {
+              "obj_min": 103,
+              "obj_median": 352,
+              "bound": null
+            }
+          },
+          "cola can": {
+            "duration_ms": 124.851,
+            "device": "gpu:0",
+            "pose_3d": [
+              0.6994074024402233,
+              -0.20204455734307802,
+              0.4129481760149131
+            ],
+            "approach_pose": {
+              "x": 0.4,
+              "y": 0.014461793603031653,
+              "z": 0.5129481760149132,
+              "rx": -180,
+              "ry": -75,
+              "rz": -130
+            },
+            "lift_to": 0.4629481760149131,
+            "mforward": 0.42440740244022324,
+            "base_rotate": -60,
+            "approach_lying": false,
+            "box": [
+              0,
+              328.7812306880951,
+              130.6977767944336,
+              478.7138330936432
+            ],
+            "score": 0.8169692613720961,
+            "islying": false,
+            "mass_percents": [
+              50,
+              50
+            ],
+            "depths": {
+              "obj_min": 104,
+              "obj_median": 351,
+              "bound": null
+            }
+          }
+        }
+      },
+      "say": "Failed to ~find juice bottle."
+    },
+    {
+      "event": "world",
+      "world": {
+        "arrived": "drawer@kitchen",
+        "found": "juice bottle",
+        "holding": null,
+        "opened": [
+          "drawer2",
+          "drawer@kitchen",
+          "inputs=\"drawer@kitchen\",stay_here=True",
+          "remote"
+        ],
+        "on": [],
+        "holding_since": null,
+        "found_pose": {
+          "pose_3d": [
+            0.5936302963432998,
+            -0.20665561617516626,
+            0.4183161095958038
+          ],
+          "ts": 1785977536.5467093,
+          "robot_pose": [
+            -2.0677838613456396,
+            -1.9017950463195477,
+            179.93927224302135
+          ]
+        },
+        "holding_pose": null,
+        "found_pose_stale": false
+      }
+    },
+    {
+      "event": "done",
+      "success": false,
+      "say": "Task failed",
+      "elapsed_ms": 2984
+    }
+  ]
+}

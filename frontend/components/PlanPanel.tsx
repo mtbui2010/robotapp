@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { ExpandEditor } from './ExpandEditor'
 import type { AgentEvent, WorldState, LlmInfo } from '../lib/types'
 
 export interface StepLog {
@@ -22,11 +23,35 @@ export interface Step {
 
 const SHORT_THRESHOLD = 80
 
-function JsonLine({ value, color = 'text-gray-400' }: { value: Record<string, unknown>; color?: string }) {
+function CopyBtn({ value }: { value: Record<string, unknown> }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    const text = JSON.stringify(value, null, 2)
+    navigator.clipboard?.writeText(text)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+      .catch(() => {})
+  }
+  return (
+    <button
+      onClick={copy}
+      title="Copy result to clipboard"
+      className="text-[10px] text-blue-400 hover:text-blue-600 ml-1"
+    >
+      {copied ? 'copied ✓' : '⎘ copy'}
+    </button>
+  )
+}
+
+function JsonLine({ value, color = 'text-gray-400', copyable = false }: { value: Record<string, unknown>; color?: string; copyable?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const short = JSON.stringify(value)
   if (short.length <= SHORT_THRESHOLD) {
-    return <div className={`text-[11px] ${color} font-mono`}>{short}</div>
+    return (
+      <div className={`text-[11px] ${color} font-mono`}>
+        {short}
+        {copyable && <CopyBtn value={value} />}
+      </div>
+    )
   }
   return (
     <div>
@@ -43,12 +68,13 @@ function JsonLine({ value, color = 'text-gray-400' }: { value: Record<string, un
       >
         {expanded ? '▴ collapse' : '▾ expand'}
       </button>
+      {copyable && <CopyBtn value={value} />}
     </div>
   )
 }
 
 function StepResult({ result }: { result: Record<string, unknown> }) {
-  return <div className="mt-0.5"><JsonLine value={result} /></div>
+  return <div className="mt-0.5"><JsonLine value={result} copyable /></div>
 }
 
 function StepLogs({ logs }: { logs: StepLog[] }) {
@@ -293,6 +319,168 @@ function WorldStateBlock({ events }: { events: AgentEvent[] }) {
 interface Props {
   events: AgentEvent[]
   steps: Step[]
+  planMethod?: string   // 'grace' | 'direct' — planner used by the active run
+}
+
+// ── GRACE planning trace ──────────────────────────────────
+// Reconstructs the per-sub-goal planning detail from the streamed `plan_step`
+// events (decompose → expand → refine → verify) so the operator can see the
+// concrete plan under each sub-goal, which steps violated symbolic
+// preconditions, and how each refine pass changed the steps.
+interface StepLite { action?: string; object?: string }
+interface Violation { index?: number; code?: string; reason?: string; action?: string; object?: string; severity?: string }
+interface SubgoalTrace {
+  index: number
+  subgoal: string
+  initialSteps: StepLite[]   // task sequence from the first expansion (pre-refine)
+  steps: StepLite[]          // final committed task sequence
+  ok: boolean | null
+  violations: Violation[]
+  refines: { attempt: number; violations: Violation[]; steps: StepLite[] }[]
+}
+
+const asSteps = (v: unknown): StepLite[] =>
+  Array.isArray(v) ? v.map(s => ({ action: (s as StepLite)?.action, object: (s as StepLite)?.object })) : []
+const asViolations = (v: unknown): Violation[] =>
+  Array.isArray(v) ? (v as Violation[]) : []
+
+function buildTraces(events: AgentEvent[]): SubgoalTrace[] {
+  const byIdx = new Map<number, SubgoalTrace>()
+  const ensure = (i: number, sg?: string): SubgoalTrace => {
+    let t = byIdx.get(i)
+    if (!t) { t = { index: i, subgoal: sg ?? '', initialSteps: [], steps: [], ok: null, violations: [], refines: [] }; byIdx.set(i, t) }
+    if (sg && !t.subgoal) t.subgoal = sg
+    return t
+  }
+  for (const e of events) {
+    if (e.event !== 'plan_step') continue
+    const i = e.index ?? -1
+    switch (e.phase) {
+      case 'decompose':
+        (e.subgoals ?? []).forEach((sg, k) => ensure(k, sg))
+        break
+      case 'expand':
+        if (i >= 0) ensure(i, e.subgoal)
+        break
+      case 'expanded':
+        if (i >= 0) {
+          const t = ensure(i, e.subgoal)
+          t.initialSteps = asSteps(e.steps)
+          t.steps = t.initialSteps
+        }
+        break
+      case 'refine':
+        if (i >= 0) ensure(i, e.subgoal).refines.push({ attempt: e.attempt ?? 0, violations: asViolations(e.violations), steps: [] })
+        break
+      case 'refined': {
+        if (i < 0) break
+        const t = ensure(i, e.subgoal)
+        const r = t.refines.find(x => x.attempt === (e.attempt ?? 0))
+        if (r) r.steps = asSteps(e.steps); else t.refines.push({ attempt: e.attempt ?? 0, violations: [], steps: asSteps(e.steps) })
+        t.steps = asSteps(e.steps)
+        break
+      }
+      case 'verified': {
+        if (i < 0) break
+        const t = ensure(i, e.subgoal)
+        t.ok = e.ok ?? null
+        t.violations = asViolations(e.violations)
+        if (Array.isArray(e.steps) && e.steps.length) t.steps = asSteps(e.steps)
+        break
+      }
+    }
+  }
+  return [...byIdx.values()].sort((a, b) => a.index - b.index)
+}
+
+const stepStr = (s: StepLite) => [s.action, s.object].filter(Boolean).join(' ')
+
+function ViolationList({ items }: { items: Violation[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="mt-0.5 flex flex-col gap-0.5">
+      {items.map((v, k) => (
+        <div key={k} className="text-[10px] text-red-600 font-mono">
+          ⚠ step {(v.index ?? 0) + 1}: [{v.code}] {v.reason}
+          {(v.action || v.object) ? ` (${[v.action, v.object].filter(Boolean).join(' ')})` : ''}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function GracePlanningTrace({ events }: { events: AgentEvent[] }) {
+  const [open, setOpen] = useState(false)
+  const traces = buildTraces(events)
+  if (traces.length === 0) return null
+  const totalViol = traces.reduce((n, t) => n + (t.ok === false ? t.violations.length : 0), 0)
+  const allOk = traces.every(t => t.ok !== false)
+
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded p-2 text-[11px]">
+      <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1.5 w-full text-left">
+        <span className="text-gray-600 text-[10px] w-3">{open ? '▾' : '▸'}</span>
+        <span className="text-gray-400 uppercase">GRACE planning trace</span>
+        <span className="text-gray-400">— {traces.length} sub-goal{traces.length > 1 ? 's' : ''}</span>
+        <span className={`ml-auto text-[10px] px-1 py-0.5 rounded border ${
+          allOk ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'
+        }`}>
+          {allOk ? '✓ verified' : `⚠ ${totalViol} violation${totalViol > 1 ? 's' : ''}`}
+        </span>
+      </button>
+
+      {open && (
+        <div className="mt-2 flex flex-col gap-2">
+          {traces.map(t => {
+            const initial = t.initialSteps.length ? t.initialSteps : t.steps
+            return (
+            <div key={t.index} className="border-l-2 border-gray-200 pl-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-gray-700 font-medium">{t.index + 1}. {t.subgoal || '(sub-goal)'}</span>
+                {t.ok === true && <span className="text-[10px] text-green-600">✓ verified</span>}
+                {t.ok === false && <span className="text-[10px] text-red-600">⚠ {t.violations.length} violation{t.violations.length > 1 ? 's' : ''}</span>}
+                {t.refines.length > 0 && <span className="text-[10px] text-amber-600">refined ×{t.refines.length}</span>}
+              </div>
+
+              {/* Initial task sequence (first expansion) */}
+              {initial.length > 0 && (
+                <div className="mt-0.5">
+                  <div className="text-[10px] text-gray-400 uppercase">{t.refines.length > 0 ? 'task sequence (initial)' : 'task sequence'}</div>
+                  <div className="mt-0.5 flex flex-col gap-0.5 font-mono text-[10px] text-gray-600">
+                    {initial.map((s, k) => <div key={k}>{k + 1}. {stepStr(s) || '—'}</div>)}
+                  </div>
+                </div>
+              )}
+
+              {/* Refinement passes: what violated → the corrected sequence */}
+              {t.refines.map((r, k) => (
+                <div key={k} className="mt-1 border-t border-gray-100 pt-1">
+                  <div className="text-[10px] text-amber-600 uppercase">refine #{r.attempt} — fixed violations:</div>
+                  <ViolationList items={r.violations} />
+                  {r.steps.length > 0 && (
+                    <>
+                      <div className="mt-0.5 text-[10px] text-gray-400 uppercase">→ sequence after refine</div>
+                      <div className="mt-0.5 flex flex-col gap-0.5 font-mono text-[10px] text-gray-500">
+                        {r.steps.map((s, j) => <div key={j}>{j + 1}. {stepStr(s) || '—'}</div>)}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+
+              {/* Violations still remaining after the last refine */}
+              {t.ok === false && (
+                <div className="mt-1 border-t border-gray-100 pt-1">
+                  <div className="text-[10px] text-red-600 uppercase">remaining violations</div>
+                  <ViolationList items={t.violations} />
+                </div>
+              )}
+            </div>
+          )})}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function PlannerMeta({ meta }: { meta: Record<string, unknown> }) {
@@ -324,7 +512,9 @@ function PlannerMeta({ meta }: { meta: Record<string, unknown> }) {
   )
 }
 
-export default function PlanPanel({ events, steps }: Props) {
+export default function PlanPanel({ events, steps, planMethod }: Props) {
+  // Plan block: full (uncapped) by default; unchecking collapses it to ~4 lines.
+  const [planFull, setPlanFull] = useState(true)
   // The 'plan' event differs by path: legacy/direct sends `plan` (a string),
   // the closed-loop (GRACE) sends `steps` (an array of {action, object}). Render
   // either — otherwise a GRACE plan never shows and "Generating…" stays stuck.
@@ -346,11 +536,17 @@ export default function PlanPanel({ events, steps }: Props) {
   const error  = events.find(e => e.event === 'error')
 
   const [llm, setLlm] = useState<LlmInfo | null>(null)
+  // Fetch on mount, then refetch at the start of each run — the active LLM is
+  // often chosen/changed after this panel mounts, so a one-time mount fetch goes
+  // stale (empty), which is why the model/URL beside "Generating task plan…"
+  // disappeared. `startCount` bumps on every new run (events reset then a 'start'
+  // event arrives), giving us the currently-effective LLM config each time.
+  const startCount = events.reduce((n, e) => (e.event === 'start' ? n + 1 : n), 0)
   useEffect(() => {
     let cancelled = false
     api.getLlmConfig().then(c => { if (!cancelled) setLlm(c) }).catch(() => {})
     return () => { cancelled = true }
-  }, [])
+  }, [startCount])
 
   // Latest live planner-progress step (GRACE multi-step).
   const lastStep = (() => {
@@ -360,6 +556,12 @@ export default function PlanPanel({ events, steps }: Props) {
   const planMeta = planEv?.plan_meta as Record<string, unknown> | undefined
 
   const empty = !plan && steps.length === 0 && !done && !error && !status
+
+  // Show the steps newest-first (current step on top, right under the "Execution"
+  // header) so the active step is always visible without any auto-scroll — earlier
+  // steps sit below and the user scrolls down to read them. This keeps every
+  // surrounding panel (camera, plan, robot state) completely still.
+  const stepsView = [...steps].reverse()
 
   // Two backends, two shapes: the closed-loop (GRACE) sends `status`
   // ('success'|'failed'|'planned'|'aborted'); run_direct / legacy `run` send a
@@ -382,11 +584,18 @@ export default function PlanPanel({ events, steps }: Props) {
     <div className="flex flex-col gap-3 h-full">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] text-gray-400 uppercase tracking-wide">Task Plan &amp; Execution</p>
-        {(llm?.model || llm?.url || llm?.name) && (
-          <span className="text-[10px] text-gray-400 font-mono truncate" title={llm?.url || ''}>
-            LLM: {llm?.model || llm?.name || '?'}{llm?.url ? ` @ ${llm.url.replace(/^https?:\/\//, '')}` : ''}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 min-w-0">
+          {planMethod && (
+            <span className="text-[10px] font-mono uppercase px-1 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
+              {planMethod}
+            </span>
+          )}
+          {(llm?.model || llm?.url || llm?.name) && (
+            <span className="text-[10px] text-gray-400 font-mono truncate" title={llm?.url || ''}>
+              LLM: {llm?.model || llm?.name || '?'}{llm?.url ? ` @ ${llm.url.replace(/^https?:\/\//, '')}` : ''}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Robot world state (editable, persistent) */}
@@ -396,10 +605,20 @@ export default function PlanPanel({ events, steps }: Props) {
         <p className="text-xs text-gray-400 text-center mt-6">No task running</p>
       )}
 
-      {/* Status */}
+      {/* Status — while generating the plan, show which model/server is being called */}
       {status && !plan && (
-        <p className="text-xs text-gray-500 flex items-center gap-2">
+        <p className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
           <span className="animate-pulse">●</span>{status}
+          {/task plan/i.test(status) && planMethod && (
+            <span className="text-[10px] font-mono uppercase px-1 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
+              {planMethod}
+            </span>
+          )}
+          {/task plan/i.test(status) && (llm?.model || llm?.name || llm?.url) && (
+            <span className="text-[10px] text-gray-400 font-mono" title={llm?.url || ''}>
+              {llm?.model || llm?.name || '?'}{llm?.url ? ` @ ${llm.url.replace(/^https?:\/\//, '')}` : ''}
+            </span>
+          )}
         </p>
       )}
 
@@ -420,25 +639,45 @@ export default function PlanPanel({ events, steps }: Props) {
       {/* Task plan */}
       {plan && (
         <div className="bg-gray-50 border border-gray-200 rounded p-3">
-          <p className="text-[11px] text-gray-400 uppercase mb-2">Plan</p>
-          <pre className="text-sm text-green-700 whitespace-pre-wrap leading-relaxed">{plan}</pre>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] text-gray-400 uppercase">Plan</p>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer"
+                title="Show the full plan, or collapse it to ~4 lines with scroll">
+                <input type="checkbox" checked={planFull}
+                  onChange={e => setPlanFull(e.target.checked)} className="accent-blue-600" />
+                full
+              </label>
+              <ExpandEditor
+                value={plan}
+                readOnly
+                title="Plan"
+                className="text-[11px] leading-none text-gray-400 hover:text-blue-600"
+              />
+            </div>
+          </div>
+          <pre className={`text-sm text-green-700 whitespace-pre-wrap leading-relaxed ${planFull ? '' : 'max-h-24 overflow-y-auto'}`}>{plan}</pre>
         </div>
       )}
 
       {/* Multi-step planner breakdown (post-hoc) */}
       {plan && planMeta && <PlannerMeta meta={planMeta} />}
 
+      {/* GRACE per-sub-goal plan / violations / refine trace */}
+      <GracePlanningTrace events={events} />
+
       {/* Execution timeline */}
       {steps.length > 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-2 flex-1 overflow-y-auto">
-          <div className="flex items-center justify-between mb-1">
+        <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-2 flex-1 min-h-0">
+          <div className="flex items-center justify-between">
             <p className="text-[11px] text-gray-400 uppercase">
               Execution — {steps.length} step{steps.length > 1 ? 's' : ''}
             </p>
             {doneBadge}
           </div>
-          {steps.map((step, i) => (
-            <div key={i} className="flex items-start gap-3">
+          <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
+          {stepsView.map((step) => (
+            <div key={step.index} className="flex items-start gap-3">
               <span className={`text-sm leading-5 flex-shrink-0 ${stepColor(step.status)} ${
                 step.status === 'running' ? 'animate-spin' : ''
               }`}>
@@ -455,6 +694,7 @@ export default function PlanPanel({ events, steps }: Props) {
               </div>
             </div>
           ))}
+          </div>
         </div>
       )}
 

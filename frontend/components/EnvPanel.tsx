@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
+import { ConfigFieldsEditor, type ConfigView } from './ConfigFields'
 
 // Proxies that aren't tied to a specific skill, exposed for global edit.
 const PROXY_NAMES = ['ENV', 'HOME_LOC'] as const
@@ -14,6 +15,8 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [loadErrors,  setLoadErrors]  = useState<Record<string, string>>({})
   const [saveErrors,  setSaveErrors]  = useState<Record<string, string>>({})
   const [savedAt,     setSavedAt]     = useState<Record<string, number>>({})
+  // per-config view toggle: 'fields' (form) | 'json' (raw textarea). Default fields.
+  const [configView,  setConfigView]  = useState<Record<string, ConfigView>>({})
   // Start with everything collapsed except ENV — keeps the panel compact.
   const [collapsed,   setCollapsed]   = useState<Set<string>>(
     new Set(PROXY_NAMES.filter(n => n !== 'ENV'))
@@ -79,6 +82,8 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
         const justSaved   = savedAt[name] && !saveErr
         const text        = texts[name]
         const isCollapsed = collapsed.has(name)
+        const view        = configView[name] ?? 'fields'
+        const setView     = (v: ConfigView) => setConfigView(prev => ({ ...prev, [name]: v }))
 
         return (
           <div key={name} className="border border-gray-200 rounded bg-white">
@@ -100,6 +105,34 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                   className="text-gray-400 hover:text-blue-500 text-[10px] leading-none"
                 >⟳</button>
               )}
+              {!isCollapsed && !isLoading && !loadErr && text !== undefined && (
+                <div className="inline-flex rounded border border-gray-200 overflow-hidden text-[10px]">
+                  {(['fields', 'json'] as ConfigView[]).map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setView(v)}
+                      className={`px-1.5 py-0.5 ${
+                        view === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'
+                      }`}
+                    >{v === 'fields' ? 'Fields' : 'JSON'}</button>
+                  ))}
+                </div>
+              )}
+              {!isCollapsed && (
+                <>
+                  {saveErr && <span className="text-[10px] text-red-500">{saveErr}</span>}
+                  {justSaved && <span className="text-[10px] text-green-600">✓ saved</span>}
+                  <button
+                    type="button"
+                    onClick={() => save(name)}
+                    disabled={isLoading || text === undefined || !!loadErr}
+                    className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-[10px]"
+                  >
+                    Save
+                  </button>
+                </>
+              )}
             </div>
 
             {!isCollapsed && (
@@ -110,6 +143,11 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                   <div className="font-mono text-[11px] bg-gray-50 border border-gray-200 rounded px-2 py-3 text-gray-400">
                     Loading live value…
                   </div>
+                ) : view === 'fields' ? (
+                  <ConfigFieldsEditor
+                    text={text}
+                    onChange={t => setTexts(prev => ({ ...prev, [name]: t }))}
+                  />
                 ) : (
                   <textarea
                     value={text}
@@ -123,18 +161,6 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                     }`}
                   />
                 )}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => save(name)}
-                    disabled={isLoading || text === undefined || !!loadErr}
-                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-[11px]"
-                  >
-                    Save
-                  </button>
-                  {saveErr && <span className="text-[10px] text-red-500">{saveErr}</span>}
-                  {justSaved && <span className="text-[10px] text-green-600">✓ saved</span>}
-                </div>
               </div>
             )}
           </div>

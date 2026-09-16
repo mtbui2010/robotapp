@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'RobotApp v2',
-  description: 'Robot control dashboard powered by pyconnect',
+  description: 'Robot control dashboard powered by robot_agent',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

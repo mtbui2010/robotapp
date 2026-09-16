@@ -15,6 +15,7 @@ interface RosTemplate {
   description: string
   encode_func: string | null
   decode_func: string | null
+  cancel_func?: string | null      // actions only — how to stop an unfinished goal
 }
 
 const TEMPLATES = TEMPLATES_RAW as RosTemplate[]
@@ -33,6 +34,15 @@ function recommendTemplates(iface: string, connType: string): RosTemplate[] {
   return scored.map(({ t }) => t)
 }
 
+// Prefilled into the `cancel_func` box whenever a ROS action connection is
+// created, so every new action starts from a working stop instead of a blank
+// editor. It spells out what the backend does by default (see
+// ActionClientAgent.cancel) — edit it when the action needs something else.
+const DEFAULT_CANCEL_FUNC = `def cancel_func(node, agent):
+    for h in list(agent._goal_handles):   # goals this process is waiting on
+        h.cancel_goal_async()
+    return agent.cancel_all_goals()       # + CANCEL_ALL for anything else`
+
 const TYPE_LABELS: Record<ClientType, string> = {
   ros_service: 'ROS Service',
   ros_topic:   'ROS Topic',
@@ -48,6 +58,17 @@ const TYPE_LABELS: Record<ClientType, string> = {
 
 type LLMProvider = 'llama' | 'chatgpt' | 'gemini'
 
+// Stable client identity (agent_name / connection id) per provider — kept
+// independent of the model so swapping the model edits the same connection in
+// place instead of orphaning the active one. The 'llama' backend is Ollama, so
+// its connection is named 'ollama' (the backend id `name` stays 'llama', which
+// is what robot_agent.connect.llm's init_llm_client requires).
+const PROVIDER_AGENT_NAME: Record<LLMProvider, string> = {
+  llama: 'ollama',
+  chatgpt: 'chatgpt',
+  gemini: 'gemini',
+}
+
 interface FormFields {
   type: ClientType
   // ROS
@@ -58,6 +79,7 @@ interface FormFields {
   isClient: boolean
   encodeFuncCode: string
   decodeFuncCode: string
+  cancelFuncCode: string
   selectedTemplateId: string | null
   // WebRTC / TCP / ZMQ / WebSocket
   host: string
@@ -81,7 +103,7 @@ interface FormFields {
 const DEFAULT_FORM: FormFields = {
   type: 'ros_service',
   agentName: '', connName: '', dataInterface: '', isCamera: false, isClient: true,
-  encodeFuncCode: '', decodeFuncCode: '', selectedTemplateId: null,
+  encodeFuncCode: '', decodeFuncCode: '', cancelFuncCode: '', selectedTemplateId: null,
   host: '192.168.1.10', port: '8443',
   runFuncCode: '',
   path: '/', secure: false,
@@ -125,6 +147,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     isClient: boolean
     encodeFuncCode: string
     decodeFuncCode: string
+    cancelFuncCode: string
     selectedTemplateId: string | null
   } | null>(null)
   const [form, setForm] = useState<FormFields>(DEFAULT_FORM)
@@ -404,13 +427,16 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     setQuickPending({
       connName, type, iface: dataInterface, agentName: '',
       isCamera: false, isClient: true,
-      encodeFuncCode: '', decodeFuncCode: '', selectedTemplateId: null,
+      encodeFuncCode: '', decodeFuncCode: '',
+      cancelFuncCode: type === 'ros_action' ? DEFAULT_CANCEL_FUNC : '',
+      selectedTemplateId: null,
     })
   }
 
   const confirmQuickConnect = async () => {
     if (!quickPending) return
-    const { connName, type, iface, agentName, isCamera, isClient, encodeFuncCode, decodeFuncCode } = quickPending
+    const { connName, type, iface, agentName, isCamera, isClient,
+            encodeFuncCode, decodeFuncCode, cancelFuncCode } = quickPending
     const resolvedAgent = agentName.trim() || connName
     await api.addClient(type, resolvedAgent, {
       conn_name: connName,
@@ -421,6 +447,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       ...(isCamera && { is_camera: true }),
       ...(encodeFuncCode.trim() && { encode_func: encodeFuncCode.trim() }),
       ...(decodeFuncCode.trim() && { decode_func: decodeFuncCode.trim() }),
+      ...(type === 'ros_action' && cancelFuncCode.trim() && { cancel_func: cancelFuncCode.trim() }),
     })
     setQuickPending(null)
     await refresh()
@@ -429,7 +456,11 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   const handleTypeChange = (type: ClientType) => {
     setForm(f => type === 'visionserve'
       ? { ...f, type, url: 'http://localhost:11435', model: f.model || 'rf-detr' }
-      : { ...f, type })
+      // Actions get the cancel sample to start from; an existing connection
+      // being edited keeps whatever it already has.
+      : type === 'ros_action' && !f.cancelFuncCode.trim()
+        ? { ...f, type, cancelFuncCode: DEFAULT_CANCEL_FUNC }
+        : { ...f, type })
   }
 
   const buildConfig = (f: FormFields): Record<string, unknown> => {
@@ -444,6 +475,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       if (f.isCamera) cfg.is_camera = true
       if (f.encodeFuncCode.trim()) cfg.encode_func = f.encodeFuncCode.trim()
       if (f.decodeFuncCode.trim()) cfg.decode_func = f.decodeFuncCode.trim()
+      // Actions only: replaces the default cancel (goal handles + CANCEL_ALL
+      // on <conn_name>/_action/cancel_goal).
+      if (f.type === 'ros_action' && f.cancelFuncCode.trim()) cfg.cancel_func = f.cancelFuncCode.trim()
       return cfg
     }
     if (f.type === 'webrtc') {
@@ -515,11 +549,15 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       if (f.timeout.trim()) cfg.timeout = parseFloat(f.timeout)
       return cfg
     }
-    // llm — pyconnect expects "name" key; agent_name used as id
-    const llmName = f.model.trim() || f.provider
-    const cfg: Record<string, unknown> = { name: f.provider, agent_name: llmName }
+    // llm — the backend reads `name` as the backend id (must stay 'llama' etc.).
+    // agent_name is the stable connection identity, decoupled from the model so
+    // changing the model updates this same connection instead of creating a new
+    // one (which would drop the active flag → planner falls back to a stale llm).
+    const cfg: Record<string, unknown> = { name: f.provider, agent_name: PROVIDER_AGENT_NAME[f.provider] }
     if (f.provider === 'llama') cfg.url = f.url
     if (f.model.trim()) cfg.model = f.model.trim()
+    // Preserve the active flag across an edit (a rebuilt entry loses it otherwise).
+    if (editId && clients.find(c => c.id === editId)?.is_active) cfg.is_active = true
     return cfg
   }
 
@@ -533,7 +571,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
 
     const config = buildConfig(form)
     const agentName = form.type === 'llm'
-      ? (form.model.trim() || form.provider)
+      ? PROVIDER_AGENT_NAME[form.provider]
       : form.type === 'visionserve'
       ? (form.agentName.trim() || form.model.trim() || form.url)
       : (form.agentName.trim() || form.connName.trim() ||
@@ -570,6 +608,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       f.isClient        = cfg.is_client !== false
       f.encodeFuncCode  = String(cfg.encode_func ?? '')
       f.decodeFuncCode  = String(cfg.decode_func ?? '')
+      f.cancelFuncCode  = String(cfg.cancel_func ?? '')
     } else if (c.type === 'webrtc') {
       f.host      = String(cfg.host ?? '')
       f.port      = String(cfg.port ?? '8443')
@@ -898,7 +937,11 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
             const showDecode = !isBuiltin && (form.type !== 'ros_topic' || form.isClient)
             const recs = iface ? recommendTemplates(iface, form.type) : []
             const applyTemplate = (t: RosTemplate) =>
-              setForm(f => ({ ...f, selectedTemplateId: t.id, encodeFuncCode: t.encode_func ?? '', decodeFuncCode: t.decode_func ?? '' }))
+              setForm(f => ({ ...f, selectedTemplateId: t.id, encodeFuncCode: t.encode_func ?? '',
+                              decodeFuncCode: t.decode_func ?? '',
+                              // Keep the sample already in the box when the
+                              // template carries no cancel of its own.
+                              cancelFuncCode: t.cancel_func ?? f.cancelFuncCode }))
             return (<>
               <input placeholder="conn_name  e.g. /skill_pick" value={form.connName}
                 onChange={e => setForm(f => ({ ...f, connName: e.target.value }))}
@@ -957,6 +1000,19 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
                     onChange={e => setForm(f => ({ ...f, decodeFuncCode: e.target.value, selectedTemplateId: null }))}
                     placeholder={"def decode_func(msg):\n    return {'isdone': True}"}
                     className="font-mono text-[11px] bg-white border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:border-blue-400 placeholder-gray-300" />
+                </div>
+              )}
+              {form.type === 'ros_action' && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-gray-500">cancel_func <span className="text-gray-400">(optional)</span></span>
+                  <textarea value={form.cancelFuncCode} rows={5} spellCheck={false}
+                    onChange={e => setForm(f => ({ ...f, cancelFuncCode: e.target.value, selectedTemplateId: null }))}
+                    placeholder={"def cancel_func(node, agent):\n    return agent.cancel_all_goals()"}
+                    className="font-mono text-[11px] bg-white border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:border-blue-400 placeholder-gray-300" />
+                  <span className="text-[10px] text-gray-400">
+                    Leave empty for the default stop. Define it only when this action needs
+                    something else (a stop service, a zero-velocity publish).
+                  </span>
                 </div>
               )}
             </>)
@@ -1143,7 +1199,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           {form.type === 'llm' && (<>
             <select value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value as LLMProvider }))}
               className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5">
-              <option value="llama">Llama (local)</option>
+              <option value="llama">Ollama (local)</option>
               <option value="chatgpt">ChatGPT</option>
               <option value="gemini">Gemini</option>
             </select>
@@ -1290,6 +1346,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
             selectedTemplateId: t.id,
             encodeFuncCode: t.encode_func ?? '',
             decodeFuncCode: t.decode_func ?? '',
+            // A template without a cancel sample says nothing about cancelling —
+            // keep the one already in the box instead of clearing it.
+            cancelFuncCode: t.cancel_func ?? p.cancelFuncCode,
           }))
         }
         return (
@@ -1397,6 +1456,21 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
                     </div>
                   )}
                 </>
+              )}
+
+              {/* cancel_func — actions only, prefilled with the default stop */}
+              {quickPending.type === 'ros_action' && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-gray-500">cancel_func</span>
+                  <textarea
+                    value={quickPending.cancelFuncCode}
+                    onChange={e => setQuickPending(p => p && ({ ...p, cancelFuncCode: e.target.value, selectedTemplateId: null }))}
+                    rows={5}
+                    spellCheck={false}
+                    placeholder={"def cancel_func(node, agent):\n    return agent.cancel_all_goals()"}
+                    className="font-mono text-[11px] bg-gray-50 border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:border-blue-400 placeholder-gray-300"
+                  />
+                </div>
               )}
 
               <div className="flex gap-2 justify-end pt-1">

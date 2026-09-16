@@ -2,9 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(pdftotext *)",
+      "Bash(pdftoppm *)",
       "Bash(pdfinfo *)",
       "Bash(pdffonts *)",
       "Bash(tsc --noEmit *)",
+      "Bash(npx tsc --noEmit *)",
       "Bash(./node_modules/.bin/tsc --noEmit*)",
       "Bash(npm view *)",
       "Bash(make help)",
