@@ -117,6 +117,43 @@ speak to completion, then `recognizeOnce` ([frontend/lib/hriVoice.ts](frontend/l
 Only runs started from the Agent panel have this channel; `/skill/<name>` and
 the CLI must use `source='robot'`.
 
+**Picking the mic.** Nothing in this frontend ever sends `source`, so it has to
+be typed into the plan input — and the plan parser is **not** the CLI parser.
+Check `_common` in [hri.py](../kcare_robot/kcare_robot/skills/hri.py) for the
+current default before assuming: it was `'robot'`, and is now `'dashboard'`
+(which makes CLI / `POST /skill/<name>` callers fail with "needs a run started
+from the dashboard's Agent panel", since they have no channel back).
+
+```
+reply::inputs='듣고 있어요', source='dashboard'     # browser mic
+reply::듣고 있어요                                  # robot mic (the default)
+```
+
+`UnifiedAgent._parse_inputs` treats a string with no `=` as the whole `inputs`,
+and otherwise runs `eval("dict(<string>)")`, **falling back to `inputs` when that
+raises**. So the CLI-looking forms (`reply::듣고 있어요 source=dashboard`,
+`reply::source=dashboard`) silently keep the robot mic and make the robot say
+the parameter out loud. Quotes are required.
+
+**HRI steps are not narrated.** `Announcer.SILENT_ACTIONS = {'reply', 'ask'}`
+([core/planning/announcer.py](../robot_agent/robot_agent/core/planning/announcer.py))
+makes `step_start` / `step_success` / `step_fail` return `''` for those skills.
+The milestone narrator runs on its own queue, separate from the HRI
+speak/listen queue, so without this it talks over the skill's question — and
+with the browser mic already open, the browser transcribes that narration as if
+the user had said it. An empty `say` is falsy, so the dashboard skips it and
+`Announcer.announce` never reaches the robot speaker either.
+
+That alone is not enough: `plan_ready` (and anything else narrated *before* the
+HRI step) carries no action, so it still plays — and it is spoken right as the
+mic opens. [page.tsx](frontend/app/page.tsx) therefore also gates the narrator
+on the HRI queue: `enqueueHri` keeps a `hriPending` counter, `speak(ev.say)`
+only runs at `hriPending === 0`, and each HRI job calls `silenceNarration()`
+(`speechSynthesis.cancel()`) before speaking, cutting a phrase that started
+earlier. This also fixes the reverse damage — `useVoiceOutput.speak` cancels
+in-flight speech by design ("newest milestone wins"), which used to truncate the
+skill's own question mid-sentence.
+
 ### Cancel / Stop
 
 Closing the agent WebSocket never reached the robot: the plan runs in a backend
@@ -180,6 +217,46 @@ Cancelling stops the client waiting, but `slamtec_bridge.py` keeps publishing
 domain, which `robot_agent` cannot reach. Making the base stop on cancel needs a
 stop service on the robot side (`keti_assist_ai_robot_ros2`); once it exists,
 register it with `node.add_cancel_hook(...)` — no change needed here.
+
+### Camera streaming (multiple viewers)
+
+`/ws/camera/<connect_id>` runs **one worker thread per camera**, shared by every
+browser watching it ([robot_agent/api/camera.py](../robot_agent/robot_agent/api/camera.py)).
+Each websocket used to start its own thread keyed by `connect_id`, so a second
+browser tore down the first one's stream and `CameraCell`'s 1.5 s auto-reconnect
+tore it back — two dashboards on one robot spent their time restarting each
+other's streams (and 3 s per round joining threads), which is what made
+*everything* on the robot feel slow, not just the video.
+
+The worker now:
+
+- encodes a frame **once per distinct depth setting** and sends the same JSON to
+  every subscriber sharing it. Settings (`depth_mode`, `depth_range`) stay
+  per-client, so one browser's one-shot raw-depth save does not push raw frames
+  at the others;
+- **skips encoding when no new frame arrived** — `TopicAgent.rev_seq`
+  ([connect/ros/node.py](../robot_agent/robot_agent/connect/ros/node.py)) is
+  bumped per message received. A viewer that just joined still gets the frame
+  the worker is holding, rather than a blank panel on a stalled camera;
+- **drops frames** for a client whose previous send has not completed, instead
+  of queueing sends into the event loop shared with `/ws/agent` and all HTTP;
+- lingers 15 s after the last viewer leaves, so a page reload or a grid ↔ tab
+  switch reuses the worker instead of rebuilding it.
+
+CPU no longer scales with the number of dashboards.
+
+`GET /connects/status` is cached the same way: the `DevicePanel` polls it every
+10 s *per browser* and a probe actively pings every device (a 1 s TCP connect for
+an unreachable webrtc camera), so `DeviceManager.get_status()` now serves a
+result cached for 5 s — one probe for all dashboards. The cache is dropped
+whenever the device set changes (add / remove / location switch), a probe that
+straddles such a change is discarded rather than cached, and a second caller
+arriving mid-probe is served the previous result instead of queueing behind it.
+`?fresh=1` forces a re-probe.
+
+One cost from the same investigation is still **not** addressed: `kcare_robot`'s
+`make run` passes `--reload` to uvicorn, which watches the whole (sshfs-mounted)
+tree.
 
 ### Planner guide versions
 

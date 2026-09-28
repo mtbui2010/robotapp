@@ -128,7 +128,20 @@ export default function Home() {
     // the skill asked, so the mic never opens while the browser is still
     // talking — it would transcribe the robot's own question.
     let hri: Promise<void> = Promise.resolve()
-    const enqueueHri = (job: () => Promise<void>) => { hri = hri.then(job).catch(() => {}) }
+    // Milestones are narrated by useVoiceOutput, which speaks outside this
+    // queue: without this counter a `plan_ready` / `step_start` phrase plays
+    // while the mic is open and comes back as the user's answer, and its
+    // speechSynthesis.cancel() can cut the skill's own question mid-sentence.
+    let hriPending = 0
+    const enqueueHri = (job: () => Promise<void>) => {
+      hriPending++
+      hri = hri.then(job).catch(() => {}).finally(() => { hriPending-- })
+    }
+    // Stop a milestone that is already playing, just before the browser speaks
+    // for the skill (a phrase queued before the HRI event still runs).
+    const silenceNarration = () => {
+      try { window.speechSynthesis.cancel() } catch { /* not supported */ }
+    }
 
     // Captures are grouped by the step that produced them and held until that
     // step reports back, because the outcome that names the file is not known
@@ -190,7 +203,7 @@ export default function Home() {
       // off, or for Button-panel shortcuts which run silently). Each milestone
       // also restarts the "still working" nudge, so it only fires when a step
       // goes quiet for a while.
-      if (a.voice && ev.say) {
+      if (a.voice && ev.say && hriPending === 0) {
         speak(ev.say)
         stopNudge()
         if (ev.event !== 'done' && ev.event !== 'error') {
@@ -205,12 +218,16 @@ export default function Home() {
       if (ev.speak) {
         const line = ev.speak
         const lang = ev.speak_lang ?? a.lang
-        enqueueHri(() => speakAndWait(line, lang))
+        enqueueHri(async () => {
+          silenceNarration()
+          await speakAndWait(line, lang)
+        })
       }
       if (ev.listen) {
         const req = ev.listen
         const lang = req.lang ?? a.lang
         enqueueHri(async () => {
+          silenceNarration()
           if (req.prompt) await speakAndWait(req.prompt, lang)
           const heard = await recognizeOnce(lang, req.max_sec ?? 8)
           await api.answerListen(req.id, heard.text, heard.error).catch(() => {})
