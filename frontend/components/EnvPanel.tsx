@@ -2,10 +2,22 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
 import { ConfigFieldsEditor, type ConfigView } from './ConfigFields'
+import { EnvNamesEditor } from './EnvNamesEditor'
+import PanelSearch from './PanelSearch'
 
 // Proxies that aren't tied to a specific skill, exposed for global edit.
 const PROXY_NAMES = ['ENV', 'HOME_LOC'] as const
 type ProxyName = typeof PROXY_NAMES[number]
+
+// ENV params the Location aliases block edits (`<location>.aliases`).
+const isNameLeaf = (path: string) => /^[^.]*\.aliases$/.test(path)
+
+const parseObject = (text: string): Record<string, unknown> | null => {
+  try {
+    const v = JSON.parse(text)
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? v : null
+  } catch { return null }
+}
 
 // `refreshKey` is bumped by the parent when the active robot connects or the
 // location (config site) changes, so the live global-config values are refetched.
@@ -17,10 +29,12 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [savedAt,     setSavedAt]     = useState<Record<string, number>>({})
   // per-config view toggle: 'fields' (form) | 'json' (raw textarea). Default fields.
   const [configView,  setConfigView]  = useState<Record<string, ConfigView>>({})
-  // Start with everything collapsed except ENV — keeps the panel compact.
-  const [collapsed,   setCollapsed]   = useState<Set<string>>(
-    new Set(PROXY_NAMES.filter(n => n !== 'ENV'))
-  )
+  // The whole block, and each config in it, start folded; the search box under
+  // the header stays visible and opens the configs holding a match.
+  const [collapsed,   setCollapsed]   = useState<Set<string>>(new Set(PROXY_NAMES))
+  const [panelOpen,   setPanelOpen]   = useState(false)
+  const [search,      setSearch]      = useState('')
+  const q = search.trim().toLowerCase()
 
   const fetchOne = useCallback((name: ProxyName) => {
     setLoading(s => { const n = new Set(s); n.add(name); return n })
@@ -73,15 +87,22 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="font-semibold text-gray-800">Global Configs</h2>
+      <button type="button" onClick={() => setPanelOpen(o => !o)}
+        className="flex items-center gap-2 text-left">
+        <span className="text-gray-600 text-[10px] w-3">{panelOpen || q ? '▾' : '▸'}</span>
+        <h2 className="font-semibold text-gray-800">Global Configs</h2>
+      </button>
+      <PanelSearch value={search} onChange={setSearch} placeholder="Search configs… (name, location, field)" />
 
-      {PROXY_NAMES.map(name => {
+      {(panelOpen || q) && PROXY_NAMES.map(name => {
         const isLoading   = loading.has(name)
         const loadErr     = loadErrors[name]
         const saveErr     = saveErrors[name]
         const justSaved   = savedAt[name] && !saveErr
         const text        = texts[name]
-        const isCollapsed = collapsed.has(name)
+        // While searching, show only the configs whose name or text matches, unfolded.
+        if (q && !name.toLowerCase().includes(q) && !(text ?? '').toLowerCase().includes(q)) return null
+        const isCollapsed = q ? false : collapsed.has(name)
         const view        = configView[name] ?? 'fields'
         const setView     = (v: ConfigView) => setConfigView(prev => ({ ...prev, [name]: v }))
 
@@ -144,10 +165,21 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                     Loading live value…
                   </div>
                 ) : view === 'fields' ? (
-                  <ConfigFieldsEditor
-                    text={text}
-                    onChange={t => setTexts(prev => ({ ...prev, [name]: t }))}
-                  />
+                  <>
+                    {name === 'ENV' && parseObject(text) && (
+                      <EnvNamesEditor
+                        filter={q}
+                        env={parseObject(text)!}
+                        onChange={env => setTexts(prev => ({ ...prev, ENV: JSON.stringify(env, null, 2) }))}
+                      />
+                    )}
+                    <ConfigFieldsEditor
+                      text={text}
+                      onChange={t => setTexts(prev => ({ ...prev, [name]: t }))}
+                      skipLeaf={name === 'ENV' ? isNameLeaf : undefined}
+                      filter={q && !name.toLowerCase().includes(q) ? q : undefined}
+                    />
+                  </>
                 ) : (
                   <textarea
                     value={text}

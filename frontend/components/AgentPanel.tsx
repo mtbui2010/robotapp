@@ -175,7 +175,7 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
   const [cells,      setCells]      = useState<string[]>(['', '', '', ''])
   const [activeCell, setActiveCell] = useState(0)
   const [prompt,     setPrompt]     = useState('')
-  const [lang,       setLang]       = useState('en')
+  const [lang,       setLang]       = useState('ko')
   const [planner,    setPlanner]    = useState<PlannerMethod>('grace')
   const [planOnly,   setPlanOnly]   = useState(true)
   const [logData,    setLogData]    = useState(true)
@@ -249,6 +249,8 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
   const updateRepeatN = (v: number) => { setRepeatN(v); localStorage.setItem(LS_REPEAT_N, String(v)) }
   const updateRepeatCOE = (v: boolean) => { setRepeatCOE(v); localStorage.setItem(LS_REPEAT_COE, v ? '1' : '0') }
 
+  // Structured mode runs the ACTIVE cell (blue border) — editing a cell through
+  // its ⤢ editor makes it active too, else Run would send another cell's plan.
   const run = () => {
     if (mode === 'structured') onRun(cells[activeCell], true, lang, undefined, undefined, logData, logTarget, repeatTimes, repeatCOE, logAll)
     else onRun(prompt, false, lang, planner, planOnly, logData, logTarget, 1, false, logAll)
@@ -335,6 +337,20 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
     return () => { keepRef.current = false; recognitionRef.current?.stop() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromMic, mode, voiceSupported])
+
+  // Cells 2-4 are one line tall and cell 1 about four: a preset loaded into a
+  // small cell left six hidden steps under the visible one, and they ran with
+  // whatever was typed there. Show how many steps a cell really holds.
+  const stepsIn = (text: string) => text.split('\n').filter(l => l.includes('::')).length
+  const stepBadge = (i: number, visible: number, cls: string) => {
+    const n = stepsIn(cells[i])
+    return n > visible ? (
+      <span title={cells[i]}
+        className={`absolute ${cls} text-[10px] leading-none px-1 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 pointer-events-auto cursor-help`}>
+        {n} steps
+      </span>
+    ) : null
+  }
 
   const cellClass = (i: number) =>
     `w-full h-full min-h-0 block bg-white text-gray-800 text-sm font-mono px-3 py-1 placeholder-gray-300 focus:outline-none resize-none border rounded ${
@@ -507,9 +523,10 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
                 placeholder={'find::apple\nnavigate::kitchen\npick::cup'}
                 className={cellClass(0)}
               />
+              {stepBadge(0, 4, 'bottom-1 right-1')}
               <ExpandEditor
                 value={cells[0]}
-                onChange={v => updateCell(0, v)}
+                onChange={v => { setActiveCell(0); updateCell(0, v) }}
                 title="Cell 1"
                 className="absolute top-1 right-1 text-[11px] leading-none text-gray-400 hover:text-blue-600 bg-white/85 rounded px-1 py-0.5"
               />
@@ -526,9 +543,10 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
                     placeholder="skill::params"
                     className={cellClass(i)}
                   />
+                  {stepBadge(i, 1, 'top-0.5 right-5')}
                   <ExpandEditor
                     value={cells[i]}
-                    onChange={v => updateCell(i, v)}
+                    onChange={v => { setActiveCell(i); updateCell(i, v) }}
                     title={`Cell ${i + 1}`}
                     className="absolute top-0.5 right-0.5 text-[10px] leading-none text-gray-400 hover:text-blue-600 bg-white/85 rounded px-1"
                   />
@@ -536,7 +554,7 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
               ))}
             </div>
           </div>
-          <p className="text-[11px] text-gray-400">Click cell to select · Ctrl+Enter = run active</p>
+          <p className="text-[11px] text-gray-400">Run → <span className="text-blue-600 font-medium">cell {activeCell + 1}</span> (blue border) · click a cell to select · Ctrl+Enter = run active</p>
         </div>
       ) : (
         <div className="flex flex-col gap-1">

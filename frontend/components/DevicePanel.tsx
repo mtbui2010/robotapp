@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import type { ClientEntry, ClientType, RosScanResult } from '../lib/types'
 import type { Robot } from '../lib/api'
 import TEMPLATES_RAW from '../lib/ros_templates.json'
+import PanelSearch from './PanelSearch'
 
 interface RosTemplate {
   id: string
@@ -43,6 +44,10 @@ const DEFAULT_CANCEL_FUNC = `def cancel_func(node, agent):
         h.cancel_goal_async()
     return agent.cancel_all_goals()       # + CANCEL_ALL for anything else`
 
+// Connection id of a SwitchBot from its place: 'laundry room' → 'switchbot_laundry_room'.
+const switchbotId = (loc: string) =>
+  'switchbot_' + (loc.trim().toLowerCase().replace(/[^a-z0-9가-힣]+/g, '_').replace(/^_|_$/g, '') || 'light')
+
 const TYPE_LABELS: Record<ClientType, string> = {
   ros_service: 'ROS Service',
   ros_topic:   'ROS Topic',
@@ -54,6 +59,8 @@ const TYPE_LABELS: Record<ClientType, string> = {
   websocket:   'WebSocket',
   http:        'HTTP / REST',
   visionserve: 'VisionServe',
+  switchbot:   'SwitchBot (BLE)',
+  stt:         'Speech-to-text (Whisper)',
 }
 
 type LLMProvider = 'llama' | 'chatgpt' | 'gemini'
@@ -98,6 +105,11 @@ interface FormFields {
   url: string
   model: string
   apiKey: string
+  numCtx: string         // Ollama context window sent with every request
+  // SwitchBot Bot (a light switch pusher): BLE address, the place it serves, default light
+  mac: string
+  loc: string
+  isDefault: boolean
 }
 
 const DEFAULT_FORM: FormFields = {
@@ -108,7 +120,8 @@ const DEFAULT_FORM: FormFields = {
   runFuncCode: '',
   path: '/', secure: false,
   method: 'POST', token: '', timeout: '',
-  provider: 'llama', url: 'http://localhost:11434', model: '', apiKey: '',
+  provider: 'llama', url: 'http://localhost:11434', model: '', apiKey: '', numCtx: '',
+  mac: '', loc: '', isDefault: false,
 }
 
 interface Props {
@@ -168,7 +181,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   const [connSearch, setConnSearch] = useState('')
   const [rosSearch, setRosSearch] = useState('')
   const [rosOpen, setRosOpen] = useState(false)
-  const [connOpen, setConnOpen] = useState(true)
+  const [connOpen, setConnOpen] = useState(false)   // folded on load; the search box stays visible
 
   // Location config profiles (per-robot, server-side)
   const [locations, setLocations]         = useState<string[]>([])
@@ -453,9 +466,17 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     await refresh()
   }
 
+  // Make a SwitchBot the default light; the backend clears the others' flag.
+  const setSwitchbotDefault = async (c: ClientEntry) => {
+    await api.updateClient(c.id, c.name, { ...(c.config ?? {}), default: true }).catch(() => {})
+    await refresh()
+  }
+
   const handleTypeChange = (type: ClientType) => {
     setForm(f => type === 'visionserve'
       ? { ...f, type, url: 'http://localhost:11435', model: f.model || 'rf-detr' }
+      : type === 'stt'
+      ? { ...f, type, url: 'http://192.168.0.6:8000', model: 'deepdml/faster-whisper-large-v3-turbo-ct2' }
       // Actions get the cancel sample to start from; an existing connection
       // being edited keeps whatever it already has.
       : type === 'ros_action' && !f.cancelFuncCode.trim()
@@ -549,13 +570,30 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       if (f.timeout.trim()) cfg.timeout = parseFloat(f.timeout)
       return cfg
     }
+    if (f.type === 'stt') {
+      // Whisper behind an OpenAI-compatible API (speaches); the HRI skills use
+      // it for the robot's mic and, with HRI_CONFIGS.dashboard_stt='whisper',
+      // for the dashboard's.
+      const cfg: Record<string, unknown> = { agent_name: f.agentName.trim() || 'whisper', url: f.url.trim() }
+      if (f.model.trim()) cfg.model = f.model.trim()
+      if (f.timeout.trim()) cfg.timeout = parseFloat(f.timeout)
+      return cfg
+    }
+    if (f.type === 'switchbot') {
+      // turn_light::loc='<loc>' picks this light; `default` is the one used without loc.
+      return { agent_name: f.agentName.trim() || switchbotId(f.loc), mac: f.mac.trim().toUpperCase(),
+               loc: f.loc.trim(), default: f.isDefault }
+    }
     // llm — the backend reads `name` as the backend id (must stay 'llama' etc.).
     // agent_name is the stable connection identity, decoupled from the model so
     // changing the model updates this same connection instead of creating a new
     // one (which would drop the active flag → planner falls back to a stale llm).
-    const cfg: Record<string, unknown> = { name: f.provider, agent_name: PROVIDER_AGENT_NAME[f.provider] }
+    // The connection name is free (e.g. 'task_planner' — the active one plans —
+    // or 'vlm', which the qa skill reads); blank keeps the per-provider default.
+    const cfg: Record<string, unknown> = { name: f.provider, agent_name: f.agentName.trim() || PROVIDER_AGENT_NAME[f.provider] }
     if (f.provider === 'llama') cfg.url = f.url
     if (f.model.trim()) cfg.model = f.model.trim()
+    if (f.provider === 'llama' && parseInt(f.numCtx) > 0) cfg.num_ctx = parseInt(f.numCtx)
     // Preserve the active flag across an edit (a rebuilt entry loses it otherwise).
     if (editId && clients.find(c => c.id === editId)?.is_active) cfg.is_active = true
     return cfg
@@ -571,9 +609,13 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
 
     const config = buildConfig(form)
     const agentName = form.type === 'llm'
-      ? PROVIDER_AGENT_NAME[form.provider]
+      ? (form.agentName.trim() || PROVIDER_AGENT_NAME[form.provider])
       : form.type === 'visionserve'
       ? (form.agentName.trim() || form.model.trim() || form.url)
+      : form.type === 'switchbot'
+      ? (form.agentName.trim() || switchbotId(form.loc))
+      : form.type === 'stt'
+      ? (form.agentName.trim() || 'whisper')
       : (form.agentName.trim() || form.connName.trim() ||
          (form.type === 'http' && form.isClient ? form.url : form.host))
 
@@ -647,15 +689,27 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       f.port        = String(cfg.port ?? '8888')
       f.path        = String(cfg.path ?? '/run')
       f.runFuncCode = String(cfg.run_func ?? '')
+    } else if (c.type === 'stt') {
+      f.agentName = String(cfg.agent_name ?? c.id)
+      f.url       = String(cfg.url ?? '')
+      f.model     = String(cfg.model ?? '')
+      f.timeout   = cfg.timeout != null ? String(cfg.timeout) : ''
+    } else if (c.type === 'switchbot') {
+      f.agentName = String(cfg.agent_name ?? c.id)
+      f.mac       = String(cfg.mac ?? '')
+      f.loc       = String(cfg.loc ?? c.name)
+      f.isDefault = cfg.default === true
     } else if (c.type === 'visionserve') {
       f.agentName = String(cfg.agent_name ?? c.name)
       f.url       = String(cfg.url ?? 'http://localhost:11435')
       f.model     = String(cfg.model ?? 'rf-detr')
       f.timeout   = cfg.timeout != null ? String(cfg.timeout) : ''
     } else {
-      f.provider = (cfg.name as LLMProvider) ?? (cfg.provider as LLMProvider) ?? 'llama'
-      f.url      = String(cfg.url ?? '')
-      f.model    = String(cfg.model ?? '')
+      f.provider  = (cfg.name as LLMProvider) ?? (cfg.provider as LLMProvider) ?? 'llama'
+      f.agentName = String(cfg.agent_name ?? c.id)
+      f.url       = String(cfg.url ?? '')
+      f.model     = String(cfg.model ?? '')
+      f.numCtx    = cfg.num_ctx != null ? String(cfg.num_ctx) : ''
     }
     setForm(f)
     setEditId(c.id)
@@ -885,7 +939,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
             onClick={() => setConnOpen(o => !o)}
             className="flex items-center gap-1.5 font-semibold text-gray-800 hover:text-gray-600 text-sm"
           >
-            <span className="text-[10px]">{connOpen ? '▾' : '▸'}</span>
+            <span className="text-[10px]">{connOpen || connSearch ? '▾' : '▸'}</span>
             Connections
           </button>
           <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
@@ -908,7 +962,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
               {scanning ? 'Scanning…' : 'Scan ROS'}
             </button>
             <button
-              onClick={() => { setShowAdd(!showAdd); setEditId(null) }}
+              onClick={() => { setShowAdd(!showAdd); setEditId(null); setConnOpen(true) }}
               className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
             >
               + Add
@@ -916,7 +970,13 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           </div>
         </div>
 
-      {connOpen && (<div className="p-2 flex flex-col gap-2">
+      {clients.length > 0 && (
+        <div className="px-2 pt-2">
+          <PanelSearch value={connSearch} onChange={setConnSearch} placeholder="Search connections…" />
+        </div>
+      )}
+
+      {(connOpen || connSearch) && (<div className="p-2 flex flex-col gap-2">
 
       {/* Add/Edit form */}
       {showAdd && (
@@ -1195,6 +1255,44 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
               className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
           </>)}
 
+          {/* Speech-to-text fields */}
+          {form.type === 'stt' && (<>
+            <input placeholder="agent_name  (default: whisper)" value={form.agentName}
+              onChange={e => setForm(f => ({ ...f, agentName: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="url  e.g. http://192.168.0.6:8000" value={form.url}
+              onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="model  e.g. deepdml/faster-whisper-large-v3-turbo-ct2" value={form.model}
+              onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder="timeout s  (default 30)" value={form.timeout}
+              onChange={e => setForm(f => ({ ...f, timeout: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <p className="text-[10px] text-gray-500">
+              Used by reply / ask / qa. Mic and engine: Global Configs → HRI_CONFIGS
+              (source: dashboard | robot · dashboard_stt: whisper | browser).
+            </p>
+          </>)}
+
+          {/* SwitchBot fields */}
+          {form.type === 'switchbot' && (<>
+            <input placeholder="loc  e.g. laundry room  (turn_light::loc='laundry room')" value={form.loc}
+              onChange={e => setForm(f => ({ ...f, loc: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 placeholder-gray-400" />
+            <input placeholder="mac  e.g. EB:6B:01:06:62:34" value={form.mac}
+              onChange={e => setForm(f => ({ ...f, mac: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <input placeholder={`agent_name  (default: ${switchbotId(form.loc)})`} value={form.agentName}
+              onChange={e => setForm(f => ({ ...f, agentName: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            <label className="flex items-center gap-1.5 text-gray-600">
+              <input type="checkbox" checked={form.isDefault}
+                onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))} />
+              default light (turn_light without loc)
+            </label>
+          </>)}
+
           {/* LLM fields */}
           {form.type === 'llm' && (<>
             <select value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value as LLMProvider }))}
@@ -1203,6 +1301,11 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
               <option value="chatgpt">ChatGPT</option>
               <option value="gemini">Gemini</option>
             </select>
+            <input placeholder={`connection name  e.g. task_planner, vlm  (default: ${PROVIDER_AGENT_NAME[form.provider]})`}
+              value={form.agentName}
+              onChange={e => setForm(f => ({ ...f, agentName: e.target.value }))}
+              title="task_planner: the active LLM plans · vlm: the qa skill's vision model"
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
             {form.provider === 'llama' && (
               <input placeholder="url  e.g. http://localhost:11434" value={form.url}
                 onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
@@ -1211,6 +1314,11 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
             <input placeholder="model  (optional)" value={form.model}
               onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
               className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            {form.provider === 'llama' && (
+              <input placeholder="num_ctx  e.g. 8192  (Ollama context; blank = server default)" value={form.numCtx}
+                onChange={e => setForm(f => ({ ...f, numCtx: e.target.value.replace(/[^0-9]/g, '') }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            )}
             {(form.provider === 'chatgpt' || form.provider === 'gemini') && (
               <div className="flex flex-col gap-1">
                 <input
@@ -1244,14 +1352,6 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
 
       {/* Client list */}
       <div className="flex flex-col gap-1">
-        {clients.length > 0 && (
-          <input
-            value={connSearch}
-            onChange={e => setConnSearch(e.target.value)}
-            placeholder="Search connections…"
-            className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1 text-xs placeholder-gray-400 mb-1"
-          />
-        )}
         {(() => {
           const filtered = clients.filter(c =>
             !connSearch || (c.name || c.id).toLowerCase().includes(connSearch.toLowerCase())
@@ -1272,6 +1372,16 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
                   className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.connected ? 'bg-green-500' : 'bg-red-400'}`}
                   title={c.connected ? 'Connected' : (c.error || 'Not connected')}
                 />
+                {c.type === 'switchbot' && (
+                  <input
+                    type="radio"
+                    name="switchbot-default"
+                    checked={c.config?.default === true}
+                    onChange={() => setSwitchbotDefault(c)}
+                    className="accent-amber-500 flex-shrink-0 cursor-pointer"
+                    title={c.config?.default === true ? 'Default light (turn_light without loc)' : 'Make this the default light'}
+                  />
+                )}
                 {c.type === 'llm' && (
                   <input
                     type="radio"
@@ -1282,7 +1392,12 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
                     title={c.is_active ? 'Active LLM (resolves dm.get_client("llm"))' : 'Set as active LLM'}
                   />
                 )}
-                <span className="text-xs text-gray-800 font-mono flex-1 truncate">{c.name || c.id}</span>
+                <span className="text-xs text-gray-800 font-mono flex-1 truncate">
+                  {c.name || c.id}
+                  {c.type === 'switchbot' && c.config?.loc != null && (
+                    <span className="text-gray-400 font-sans"> · {String(c.config.loc)}</span>
+                  )}
+                </span>
                 <span className="text-[10px] text-gray-400 flex-shrink-0">{TYPE_LABELS[c.type]}</span>
                 <button onClick={() => startEdit(c)}
                   className="text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 text-xs">edit</button>

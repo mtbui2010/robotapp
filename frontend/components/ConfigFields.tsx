@@ -97,8 +97,16 @@ function JsonLeafRow({
 }
 
 // Form view over a config JSON string. Parses internally; pushes edits back as JSON text.
-export function ConfigFieldsEditor({ text, onChange }: { text: string; onChange: (t: string) => void }) {
-  const [filter, setFilter] = useState('')
+// `skipLeaf` hides params another editor owns (EnvPanel shows ENV aliases /
+// label in its own Location names block).
+export function ConfigFieldsEditor({
+  text, onChange, skipLeaf, filter: outerFilter,
+}: {
+  text: string; onChange: (t: string) => void; skipLeaf?: (path: string) => boolean
+  filter?: string     // the panel's search box; replaces this editor's own filter while set
+}) {
+  const [ownFilter, setFilter] = useState('')
+  const filter = outerFilter || ownFilter
   let parsed: Record<string, unknown> | null = null
   let parseErr = ''
   try {
@@ -115,14 +123,14 @@ export function ConfigFieldsEditor({ text, onChange }: { text: string; onChange:
     )
   }
 
-  const leaves = flattenLeaves(parsed!)
+  const leaves = flattenLeaves(parsed!).filter(l => !skipLeaf?.(l.path))
   const q = filter.trim().toLowerCase()
   const shown = q ? leaves.filter(l => l.path.toLowerCase().includes(q)) : leaves
   const update = (p: string, v: unknown) => onChange(JSON.stringify(setByPath(parsed!, p, v), null, 2))
 
   return (
     <div className="flex flex-col gap-1 bg-white border border-gray-200 rounded p-2">
-      {leaves.length > 8 && (
+      {leaves.length > 8 && !outerFilter && (
         <input
           value={filter} onChange={e => setFilter(e.target.value)}
           placeholder={`Filter ${leaves.length} params…`}

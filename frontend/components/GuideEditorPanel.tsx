@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
 import type { GuideVersion } from '../lib/types'
+import PanelSearch from './PanelSearch'
 
 // Versioned planner guide (the LLM prompt). The active version is what the
 // backend plans with; an empty store falls back to the robot's guide modules.
@@ -15,6 +16,11 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
   const [formatText, setFormatText] = useState('')   // '' → freeform (FORMAT=null)
   const [dirty,     setDirty]     = useState(false)
   const [collapsed, setCollapsed] = useState(true)
+  // Search box under the header, visible while folded: typing opens the panel
+  // and keeps the versions whose name or guide text contains it.
+  const [search, setSearch] = useState('')
+  const q = search.trim().toLowerCase()
+  const showing = !collapsed || !!q
   const [showFormat, setShowFormat] = useState(false)
   const [busy,      setBusy]      = useState(false)
   const [error,     setError]     = useState('')
@@ -42,7 +48,7 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
     }
   }, [loadEditor])
 
-  useEffect(() => { if (!collapsed) refresh(selected || undefined) }, [collapsed, refreshKey])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (showing) refresh(selected || undefined) }, [showing, refreshKey])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectVersion = (name: string) => {
     setSelected(name)
@@ -100,6 +106,12 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
     } finally { setBusy(false) }
   }
 
+  // The selected version stays listed even when it does not match, so the
+  // picker never shows a value it has no option for.
+  const shownVersions = q
+    ? versions.filter(v => v.name === selected || v.name.toLowerCase().includes(q) || (v.guide || '').toLowerCase().includes(q))
+    : versions
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -108,19 +120,26 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
           onClick={() => setCollapsed(c => !c)}
           className="text-gray-600 text-[10px] w-3 text-left"
         >
-          {collapsed ? '▸' : '▾'}
+          {showing ? '▾' : '▸'}
         </button>
         <h2 className="font-semibold text-gray-800 flex-1">Planner Guide</h2>
         {active && <span className="text-[10px] text-gray-400 font-mono">active: {active}</span>}
-        {!collapsed && (
+        {showing && (
           <button type="button" onClick={() => refresh(selected || undefined)}
             title="Reload from agent"
             className="text-gray-400 hover:text-blue-500 text-[10px] leading-none">⟳</button>
         )}
       </div>
 
-      {!collapsed && (
+      <PanelSearch value={search} onChange={setSearch} placeholder="Search guides… (name or text)" />
+
+      {showing && (
         <div className="border border-gray-200 rounded bg-white p-2 flex flex-col gap-2">
+          {q && (
+            <span className="text-[10px] text-gray-500">
+              {shownVersions.length} of {versions.length} versions contain “{search.trim()}”
+            </span>
+          )}
           {/* Version picker + actions */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <select
@@ -129,7 +148,7 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
               className="flex-1 min-w-0 bg-white border border-gray-300 text-gray-800 text-[11px] rounded px-1.5 py-1"
             >
               {versions.length === 0 && <option value="">(no versions)</option>}
-              {versions.map(v => (
+              {shownVersions.map(v => (
                 <option key={v.name} value={v.name}>
                   {v.name}{v.name === active ? ' ●' : ''}{v.format ? ' (struct)' : ''}
                 </option>

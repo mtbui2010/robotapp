@@ -37,3 +37,5 @@ Thumbs.db
 # docs/src/assets/ and docs/public/.
 docs-hero.png
 data/*
+# installers downloaded into the repo root
+Miniconda3-*.sh

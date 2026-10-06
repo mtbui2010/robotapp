@@ -126,6 +126,17 @@ function getWsBase(): string {
   return getAgentUrl().replace('https://', 'wss://').replace('http://', 'ws://')
 }
 
+// Body of a skill add / update, or throw with the backend's reason — a plan
+// skill naming an unknown skill, or calling itself, is refused with a 400.
+async function skillResponse(r: Response) {
+  const body = await r.json().catch(() => ({}))
+  if (!r.ok) {
+    const detail = (body as { detail?: unknown }).detail
+    throw new Error(typeof detail === 'string' ? detail : `HTTP ${r.status}`)
+  }
+  return body
+}
+
 export const api = {
   // Agent URL helpers (used by DevicePanel)
   getAgentUrl,
@@ -228,7 +239,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(skill),
     })
-    return r.json()
+    return skillResponse(r)
   },
 
   // ── Skill Configs ────────────────────────────────────
@@ -246,7 +257,13 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(value),
     })
-    return r.json()
+    const body = await r.json().catch(() => ({}))
+    if (!r.ok) {
+      // e.g. an ENV alias that already names another location (400 + detail)
+      const detail = (body as { detail?: unknown }).detail
+      throw new Error(typeof detail === 'string' ? detail : `HTTP ${r.status}`)
+    }
+    return body
   },
 
   async updateSkill(name: string, data: Partial<SkillDef>) {
@@ -255,11 +272,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    return r.json()
+    return skillResponse(r)
   },
 
   async deleteSkill(name: string) {
-    await fetch(`${getAgentUrl()}/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
+    const r = await fetch(`${getAgentUrl()}/skills/${encodeURIComponent(name)}`, { method: 'DELETE' })
+    return skillResponse(r)      // refused while a plan skill still calls it
   },
 
   async reloadSkills(): Promise<{ ok: boolean; count: number }> {
@@ -312,11 +330,24 @@ export const api = {
   // Transcript for a pending HRI listen request from a running skill
   // (kcare hri.reply / hri.ask with source='dashboard'). A 404 just means
   // the skill stopped waiting; nothing to do about it here.
-  async answerListen(id: string, text: string, error?: string): Promise<void> {
+  /** A recorded phrase for a listen with capture='whisper'; the robot
+   *  transcribes it and returns the text ('' for none). */
+  async answerListenAudio(id: string, blob: Blob | null, mime: string, note?: string): Promise<string> {
+    const q = note ? `?note=${encodeURIComponent(note)}` : ''
+    const r = await fetch(`${getAgentUrl()}/agent/listen/${encodeURIComponent(id)}/audio${q}`, {
+      method: 'POST',
+      headers: { 'Content-Type': mime || 'audio/webm' },
+      body: blob ?? new Blob([]),
+    })
+    if (!r.ok) return ''
+    return String((await r.json().catch(() => ({})))?.text ?? '')
+  },
+
+  async answerListen(id: string, text: string, error?: string, note?: string): Promise<void> {
     await fetch(`${getAgentUrl()}/agent/listen/${encodeURIComponent(id)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, error: error ?? null }),
+      body: JSON.stringify({ text, error: error ?? null, note: note ?? null }),
     })
   },
 

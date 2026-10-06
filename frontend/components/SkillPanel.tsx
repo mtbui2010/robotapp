@@ -5,18 +5,22 @@ import { api } from '../lib/api'
 import type { SkillDef } from '../lib/types'
 import SKILL_CONFIGS_RAW from '../lib/skill_configs.json'
 import { ConfigFieldsEditor, type ConfigView } from './ConfigFields'
+import { PlanSkillEditor, checkPlan } from './PlanSkillEditor'
+import PanelSearch from './PanelSearch'
+import { SkillAliasesEditor } from './SkillAliasesEditor'
 
 const SKILL_CONFIG_MAP = SKILL_CONFIGS_RAW.skill_config_map as Record<string, string[]>
 
 function groupSkills(skills: SkillDef[]): { key: string; label: string; entries: SkillDef[] }[] {
   const map = new Map<string, SkillDef[]>()
   for (const s of skills) {
-    const key = s.module_path || `__ext__${s.url}`
+    const key = s.type === 'plan' ? '__plan__' : (s.module_path || `__ext__${s.url}`)
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push(s)
   }
   return Array.from(map.entries()).map(([key, entries]) => {
-    const label = key.startsWith('__ext__')
+    const label = key === '__plan__' ? 'plan skills'
+      : key.startsWith('__ext__')
       ? (entries[0].url || 'external')
       : key.split('.').pop() || key
     return { key, label, entries }
@@ -28,7 +32,7 @@ const INPUT_CLS = 'bg-white border border-gray-200 text-gray-800 rounded px-2 py
 export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [skills, setSkills]     = useState<SkillDef[]>([])
   const [status, setStatus]     = useState<Record<string, { ok: boolean; error: string }>>({})
-  const [open, setOpen]         = useState(true)
+  const [open, setOpen]         = useState(false)   // folded on load; the search box stays visible
   const [showAdd, setShowAdd]   = useState(false)
   const [reloading, setReloading] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -43,14 +47,21 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
   // per-config view toggle: 'fields' (form) | 'json' (raw textarea). Default fields.
   const [configView, setConfigView] = useState<Record<string, ConfigView>>({})
 
-  const [form, setForm] = useState({
+  const EMPTY_FORM = {
     name: '',
-    type: 'internal' as 'internal' | 'external',
+    type: 'internal' as SkillDef['type'],
     description: '',
     module_path: '',
     func_name: '',
     url: '',
-  })
+    plan: '',
+  }
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [addError, setAddError]   = useState('')
+  const [editError, setEditError] = useState('')
+  const [listError, setListError] = useState('')
+  // Names a plan may call: skill names and their aliases.
+  const known = skills.flatMap(s => [s.name, ...(s.aliases ?? [])])
 
   const refresh = useCallback(async () => {
     const [skills, status] = await Promise.all([api.listSkills(), api.getSkillsStatus()])
@@ -94,23 +105,39 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
 
   const submit = async () => {
     if (!form.name) return
-    await api.addSkill(form)
+    if (form.type === 'plan' && checkPlan(form.name, form.plan, known).errors.length) {
+      setAddError('Fix the plan first'); return
+    }
+    try {
+      await api.addSkill(form)
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : 'Add failed'); return
+    }
+    setAddError('')
     setShowAdd(false)
-    setForm({ name: '', type: 'internal', description: '', module_path: '', func_name: '', url: '' })
+    setForm(EMPTY_FORM)
     await refresh()
   }
 
   const remove = async (name: string) => {
-    await api.deleteSkill(name)
+    try {
+      await api.deleteSkill(name)
+      setListError('')
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : 'Delete failed')
+    }
     await refresh()
   }
 
   const startEdit = (s: SkillDef) => {
     setEditName(s.name)
-    setEditForm({ description: s.description, module_path: s.module_path, func_name: s.func_name, url: s.url })
+    setEditForm(s.type === 'plan'
+      ? { name: s.name, description: s.description, plan: s.plan ?? '' }
+      : { description: s.description, module_path: s.module_path, func_name: s.func_name, url: s.url })
+    setEditError('')
   }
 
-  const cancelEdit = () => { setEditName(null); setEditForm({}) }
+  const cancelEdit = () => { setEditName(null); setEditForm({}); setEditError('') }
 
   const submitEdit = async () => {
     if (!editName) return
@@ -124,15 +151,24 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
     }
     if (Object.keys(errors).length > 0) { setConfigErrors(errors); return }
 
-    // save skill def
-    await api.updateSkill(editName, editForm)
+    // save skill def; a refused plan (unknown skill, calls itself) keeps the form open
+    try {
+      await api.updateSkill(editName, editForm)
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Save failed'); return
+    }
 
-    // save each config (only the ones that loaded successfully)
+    // save each config (only the ones that loaded successfully); a refused
+    // save (e.g. a duplicate ENV alias) keeps the form open with its message
+    const failed: Record<string, string> = {}
     await Promise.all(
       Object.entries(editConfigs).map(([cn, text]) =>
-        api.updateSkillConfig(cn, JSON.parse(text))
+        api.updateSkillConfig(cn, JSON.parse(text)).catch(err => {
+          failed[cn] = err instanceof Error ? err.message : 'Save failed'
+        })
       )
     )
+    if (Object.keys(failed).length > 0) { setConfigErrors(failed); return }
     cancelEdit()
     await refresh()
   }
@@ -227,7 +263,28 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
 
   const renderEditForm = (s: SkillDef) => (
     <div className="ml-3 mb-1 bg-gray-50 border border-gray-200 rounded p-2 flex flex-col gap-1.5 text-xs max-h-[70vh] overflow-y-auto">
-      {s.type === 'internal' ? (
+      {s.type === 'plan' ? (
+        <>
+          <input
+            value={editForm.name ?? s.name}
+            onChange={e => setEditForm(f => ({ ...f, name: e.target.value.trim() }))}
+            placeholder="skill name"
+            title="Rename: plan skills that call it are updated; shortcut buttons and guides keep the old name"
+            className={INPUT_CLS}
+          />
+          {editForm.name && editForm.name !== s.name && (
+            <span className="text-[10px] text-amber-600">
+              Renaming {s.name} → {editForm.name}: plan skills calling it are updated; shortcut buttons and guides still say “{s.name}”.
+            </span>
+          )}
+          <PlanSkillEditor
+            name={editForm.name || s.name}
+            plan={editForm.plan ?? ''}
+            known={known.filter(k => k !== s.name).concat(editForm.name || s.name)}
+            onChange={plan => setEditForm(f => ({ ...f, plan }))}
+          />
+        </>
+      ) : s.type === 'internal' ? (
         <>
           <input
             placeholder="module_path  e.g. kcare_robot.skills.pick"
@@ -256,6 +313,7 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
         onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
         className={INPUT_CLS}
       />
+      {editError && <span className="text-[10px] text-red-500">⚠ {editError}</span>}
       {(() => {
         const actions = (
           <div className="flex gap-2">
@@ -284,11 +342,13 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
       <div
         className={`flex items-center gap-2 px-2 py-1 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 group ${indent ? 'ml-3' : ''}`}>
         <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
-          s.type === 'internal' ? 'bg-gray-200 text-gray-600' : 'bg-purple-100 text-purple-600'
+          s.type === 'internal' ? 'bg-gray-200 text-gray-600'
+            : s.type === 'plan' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-600'
         }`}>
-          {s.type === 'internal' ? 'int' : 'ext'}
+          {s.type === 'internal' ? 'int' : s.type === 'plan' ? 'plan' : 'ext'}
         </span>
-        <span className="text-xs text-gray-800 font-mono flex-1 truncate flex items-center gap-1.5" title={s.description || undefined}>
+        <span className="text-xs text-gray-800 font-mono flex-1 truncate flex items-center gap-1.5"
+          title={s.type === 'plan' ? [s.description, s.plan].filter(Boolean).join('\n\n') : (s.description || undefined)}>
           {s.type === 'internal' && (
             <span
               title={status[s.name]?.error || (status[s.name]?.ok ? 'ok' : 'not checked')}
@@ -299,9 +359,14 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
             />
           )}
           {s.name}
+          {(s.aliases?.length ?? 0) > 0 && (
+            <span className="text-[10px] text-blue-500 font-sans truncate" title={`aliases: ${s.aliases!.join(', ')}`}>
+              · {s.aliases!.join(', ')}
+            </span>
+          )}
         </span>
         <span className="text-[10px] text-gray-400 truncate max-w-28">
-          {s.url || s.func_name}
+          {s.type === 'plan' ? `${checkPlan(s.name, s.plan ?? '', known).steps} steps` : (s.url || s.func_name)}
         </span>
         <button
           onClick={() => editName === s.name ? cancelEdit() : startEdit(s)}
@@ -309,8 +374,8 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
         >
           {editName === s.name ? 'cancel' : 'edit'}
         </button>
-        {s.type === 'external' && (
-          <button onClick={() => remove(s.name)}
+        {s.type !== 'internal' && (
+          <button onClick={() => remove(s.name)} title={`Delete ${s.name}`}
             className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 text-base leading-none">×</button>
         )}
       </div>
@@ -326,7 +391,7 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
           onClick={() => setOpen(o => !o)}
           className="flex items-center gap-2 flex-1 text-left"
         >
-          <span className="text-[10px]">{open ? '▾' : '▸'}</span>
+          <span className="text-[10px]">{open || search ? '▾' : '▸'}</span>
           <span className="font-medium text-gray-700">Skills</span>
           <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded">{skills.length}</span>
         </button>
@@ -339,15 +404,21 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
           {reloading ? '…' : '⟳'}
         </button>
         <button
-          onClick={() => setShowAdd(v => !v)}
+          onClick={() => { setShowAdd(v => !v); setOpen(true) }}
           className="px-2 py-0.5 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
         >
           + Add
         </button>
       </div>
 
+      {skills.length > 0 && (
+        <div className="px-2 pt-2">
+          <PanelSearch value={search} onChange={setSearch} placeholder="Search skills…" />
+        </div>
+      )}
+
       {/* Content */}
-      {open && (
+      {(open || search) && (
         <div className="flex flex-col gap-2 p-2">
           {showAdd && (
             <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-2">
@@ -356,19 +427,28 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
                   placeholder="skill_name"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="flex-1 bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400"
+                  className="flex-1 min-w-0 bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400"
                 />
                 <select
                   value={form.type}
-                  onChange={e => setForm(f => ({ ...f, type: e.target.value as 'internal' | 'external' }))}
-                  className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5"
+                  onChange={e => { setAddError(''); setForm(f => ({ ...f, type: e.target.value as SkillDef['type'] })) }}
+                  title="Internal: Python function · External: REST URL · Plan: a sequence of skills"
+                  className="flex-shrink-0 w-24 bg-white border border-gray-200 text-gray-800 rounded px-1 py-1.5"
                 >
                   <option value="internal">Internal</option>
-                  <option value="external">External REST</option>
+                  <option value="external">External</option>
+                  <option value="plan">Plan</option>
                 </select>
               </div>
 
-              {form.type === 'internal' ? (
+              {form.type === 'plan' ? (
+                <PlanSkillEditor
+                  name={form.name}
+                  plan={form.plan}
+                  known={known}
+                  onChange={plan => setForm(f => ({ ...f, plan }))}
+                />
+              ) : form.type === 'internal' ? (
                 <>
                   <input
                     placeholder="module_path  e.g. kcare_robot.skills.pick"
@@ -399,29 +479,37 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
                 className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 placeholder-gray-400"
               />
 
+              {addError && <span className="text-[10px] text-red-500">⚠ {addError}</span>}
               <div className="flex gap-2">
                 <button onClick={submit}
                   className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded">Add</button>
-                <button onClick={() => setShowAdd(false)}
+                <button onClick={() => { setShowAdd(false); setAddError('') }}
                   className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded">Cancel</button>
               </div>
             </div>
           )}
 
-          {skills.length > 0 && (
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search skills…"
-              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1 placeholder-gray-400"
-            />
-          )}
+          {listError && <span className="text-[10px] text-red-500">⚠ {listError}</span>}
+          <SkillAliasesEditor
+            skills={skills}
+            filter={search}
+            onSave={async (name, aliases) => {
+              try {
+                await api.updateSkill(name, { aliases })   // throws with the backend's reason (400)
+              } catch (e) {
+                return e instanceof Error ? e.message : String(e)
+              }
+              await refresh()
+              return null
+            }}
+          />
           <div className="max-h-[60vh] overflow-y-auto flex flex-col gap-1">
             {(() => {
               const q = search.trim().toLowerCase()
               const matches = (s: SkillDef) =>
                 !q ||
                 s.name.toLowerCase().includes(q) ||
+                (s.aliases ?? []).some(a => a.toLowerCase().includes(q)) ||
                 (s.description ?? '').toLowerCase().includes(q)
               return groupSkills(skills)
                 .map(g => ({ ...g, entries: g.entries.filter(matches) }))

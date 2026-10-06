@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { ExpandEditor } from './ExpandEditor'
 import type { AgentEvent, WorldState, LlmInfo } from '../lib/types'
+import { copyText } from '../lib/clipboard'
 
 export interface StepLog {
   data: Record<string, unknown>
@@ -24,12 +25,10 @@ export interface Step {
 const SHORT_THRESHOLD = 80
 
 function CopyBtn({ value }: { value: Record<string, unknown> }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => {
-    const text = JSON.stringify(value, null, 2)
-    navigator.clipboard?.writeText(text)
-      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
-      .catch(() => {})
+  const [copied, setCopied] = useState<boolean | null>(null)   // null = idle
+  const copy = async () => {
+    setCopied(await copyText(JSON.stringify(value, null, 2)))
+    setTimeout(() => setCopied(null), 1500)
   }
   return (
     <button
@@ -37,7 +36,7 @@ function CopyBtn({ value }: { value: Record<string, unknown> }) {
       title="Copy result to clipboard"
       className="text-[10px] text-blue-400 hover:text-blue-600 ml-1"
     >
-      {copied ? 'copied ✓' : '⎘ copy'}
+      {copied === true ? 'copied ✓' : copied === false ? 'copy failed' : '⎘ copy'}
     </button>
   )
 }
@@ -77,10 +76,15 @@ function StepResult({ result }: { result: Record<string, unknown> }) {
   return <div className="mt-0.5"><JsonLine value={result} copyable /></div>
 }
 
+// Newest first: a conversation (qa) or a plan skill's steps keep logging, and
+// the line that matters is the latest one — at the top, without scrolling.
 function StepLogs({ logs }: { logs: StepLog[] }) {
   return (
     <div className="mt-1 flex flex-col gap-0.5 border-l border-gray-300 pl-2">
-      {logs.map((l, i) => (
+      {logs.length > 1 && (
+        <span className="text-[9px] text-gray-400 uppercase tracking-wide">newest first</span>
+      )}
+      {logs.map((l, i) => ({ l, i })).reverse().map(({ l, i }) => (
         <div key={i} className="flex items-start gap-1.5">
           <span className="text-[10px] text-blue-400 leading-4 flex-shrink-0">▸</span>
           <div className="flex-1 min-w-0">

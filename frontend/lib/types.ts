@@ -1,4 +1,4 @@
-export type ClientType = 'ros_service' | 'ros_topic' | 'ros_action' | 'webrtc' | 'llm' | 'tcp' | 'zmq' | 'websocket' | 'http' | 'visionserve'
+export type ClientType = 'ros_service' | 'ros_topic' | 'ros_action' | 'webrtc' | 'llm' | 'tcp' | 'zmq' | 'websocket' | 'http' | 'visionserve' | 'switchbot' | 'stt'
 
 export interface ClientEntry {
   id: string
@@ -21,11 +21,13 @@ export interface GuideVersion {
 
 export interface SkillDef {
   name: string
-  type: 'internal' | 'external'
+  type: 'internal' | 'external' | 'plan'
   description: string
   module_path: string
   func_name: string
   url: string
+  plan?: string        // type 'plan': steps, one "skill::args" per line
+  aliases?: string[]   // other names the skill answers to (SkillRegistry.resolve)
 }
 
 export interface RosScanResult {
@@ -63,6 +65,7 @@ export interface AgentEvent {
   trace?: string
   data?: Record<string, unknown>
   log_image?: string | null
+  log_image_reset?: boolean   // step_log: clear the shown log image first
   log_dir?: string                   // backend vision-capture dir when log_data=backend
   // Streamed vision dataset (log_data=frontend): base64 PNG rgb/annotated,
   // zlib-compressed uint16 depth + shape, and the raw detection results.
@@ -85,7 +88,10 @@ export interface AgentEvent {
   // /agent/listen/{id}.
   speak?: string
   speak_lang?: string | null
-  listen?: { id: string; lang?: string; max_sec?: number; prompt?: string }
+  listen?: { id: string; lang?: string; max_sec?: number; prompt?: string; mode?: 'voice' | 'text'
+             // 'whisper': record and post the audio (the robot transcribes);
+             // 'browser': the browser's own recogniser
+             capture?: 'whisper' | 'browser'; silence_sec?: number }
   index?: number                     // step index (closed-loop)
   action?: string                    // GRACE action
   object?: string                    // GRACE object

@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { copyText } from '../lib/clipboard'
 
 type Step = {
   number: number
@@ -89,17 +90,8 @@ export default function GuidePanel() {
   const [tab, setTab] = useState<'steps' | 'examples' | 'configs'>('steps')
   const [copied, setCopied] = useState<string | null>(null)
 
-  const copy = (text: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text)
-    } else {
-      const el = document.createElement('textarea')
-      el.value = text
-      document.body.appendChild(el)
-      el.select()
-      document.execCommand('copy')
-      document.body.removeChild(el)
-    }
+  const copy = async (text: string) => {
+    if (!(await copyText(text))) return
     setCopied(text)
     setTimeout(() => setCopied(null), 1500)
   }

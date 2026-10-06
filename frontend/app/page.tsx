@@ -9,9 +9,10 @@ import GuideEditorPanel from '../components/GuideEditorPanel'
 import GuidePanel   from '../components/GuidePanel'
 import PlanPanel    from '../components/PlanPanel'
 import ButtonPanel  from '../components/ButtonPanel'
+import QaChat, { type QaLine } from '../components/QaChat'
 import { api }      from '../lib/api'
 import { useVoiceOutput, stillWorkingPhrase } from '../lib/useVoiceOutput'
-import { speakAndWait, recognizeOnce } from '../lib/hriVoice'
+import { speakAndWait, recognizeOnce, recordPhrase, primeMic } from '../lib/hriVoice'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
 import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
 import type { Outcome } from '../lib/datasetLog'
@@ -85,6 +86,17 @@ export default function Home() {
   // "Still working" nudge: while a step runs without new milestones, repeat a
   // short phrase so a long-running task doesn't sound stalled.
   const nudgeRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // HRI conversation shown in the Q&A card, and the pending typed answer: an
+  // input='text' listen waits on this resolver until the user sends a line
+  // (or the run stops — then it resolves null and nothing is posted).
+  const [qaLog, setQaLog] = useState<QaLine[]>([])
+  const [textWaiting, setTextWaiting] = useState(false)
+  // A skill asked for typed input in this run — from the Q&A button, from
+  // `qa::input='text'` typed in the Agent panel, or after the browser refused
+  // the mic (hri falls back to text). The Q&A card then shows its input box.
+  const [textListen, setTextListen] = useState(false)
+  const textAskRef = useRef<((text: string | null) => void) | null>(null)
+  const addQaLine = (who: QaLine['who'], text: string) => setQaLog(l => [...l, { who, text }])
   const stopNudge = useCallback(() => {
     if (nudgeRef.current) { clearInterval(nudgeRef.current); nudgeRef.current = null }
   }, [])
@@ -210,7 +222,10 @@ export default function Home() {
           nudgeRef.current = setInterval(() => speak(stillWorkingPhrase(a.lang)), 15_000)
         }
       }
-      if (ev.event === 'done' || ev.event === 'error') stopNudge()
+      if (ev.event === 'done' || ev.event === 'error') {
+        stopNudge()
+        textAskRef.current?.(null)          // a typed question can no longer be asked
+      }
 
       // A skill is talking to the user through this browser. The "still
       // working" nudge must not speak over it — or into the open mic.
@@ -218,6 +233,7 @@ export default function Home() {
       if (ev.speak) {
         const line = ev.speak
         const lang = ev.speak_lang ?? a.lang
+        addQaLine('robot', line)
         enqueueHri(async () => {
           silenceNarration()
           await speakAndWait(line, lang)
@@ -226,11 +242,38 @@ export default function Home() {
       if (ev.listen) {
         const req = ev.listen
         const lang = req.lang ?? a.lang
+        if (req.prompt) addQaLine('robot', req.prompt)
         enqueueHri(async () => {
           silenceNarration()
           if (req.prompt) await speakAndWait(req.prompt, lang)
+          if (req.mode === 'text') {
+            setTextListen(true)
+            setChatOpen(true)
+            // Typed answer: wait for the Q&A card's Send (no mic).
+            const typed = await new Promise<string | null>(resolve => {
+              textAskRef.current = resolve
+              setTextWaiting(true)
+            })
+            textAskRef.current = null
+            setTextWaiting(false)
+            if (typed !== null) await api.answerListen(req.id, typed).catch(() => {})
+            return
+          }
+          if (req.capture === 'whisper') {
+            // Record only; the robot transcribes it with Whisper (stt connection).
+            const rec = await recordPhrase(req.max_sec ?? 8, req.silence_sec ?? 1.5)
+            if (rec.error) {                  // e.g. not-allowed: the skill falls back to typing
+              await api.answerListen(req.id, '', rec.error, rec.note).catch(() => {})
+              return
+            }
+            const text = await api.answerListenAudio(req.id, rec.blob, rec.mime, rec.note).catch(() => '')
+            if (text) addQaLine('user', text)
+            return
+          }
           const heard = await recognizeOnce(lang, req.max_sec ?? 8)
-          await api.answerListen(req.id, heard.text, heard.error).catch(() => {})
+          if (heard.text) addQaLine('user', heard.text)
+          else if (heard.note) console.info('[hri] nothing recognised:', heard.note)
+          await api.answerListen(req.id, heard.text, heard.error, heard.note).catch(() => {})
         })
       }
 
@@ -279,6 +322,7 @@ export default function Home() {
         newSteps = newSteps.map(s =>
           s.index === ev.step ? { ...s, logs: [...(s.logs ?? []), entry] } : s
         )
+        if (ev.log_image_reset && !ev.log_image) setLogImage(null)
         if (ev.log_image) {
           setLogImage(ev.log_image)
           // Frontend logging: save the per-step debug image alongside the
@@ -328,6 +372,19 @@ export default function Home() {
 
   const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true) => {
     if (!finalPrompt.trim() || running) return
+    // A run that will listen through this browser (qa / ask / reply, unless on
+    // the robot mic or typed): get the mic permission now, inside the click.
+    if (/\b(qa|ask|reply)\b/.test(finalPrompt) && !/source\s*=\s*['"]robot/.test(finalPrompt)
+        && !/input\s*=\s*['"]text/.test(finalPrompt)) {
+      primeMic().then(err => {
+        if (!err) return
+        const why = err === 'insecure-context'
+          ? 'this page is on http — open it over https (or localhost) to use the mic'
+          : `microphone not available (${err}) — allow it in the browser's site settings`
+        addQaLine('robot', `🎤 ${why}; the robot will ask for typed input instead`)
+        setChatOpen(true)
+      })
+    }
     argsRef.current = { finalPrompt, direct, lang, planner, planOnly, logData, logTarget, logAll, voice }
     repeatRef.current = { remaining: repeatTimes, continueOnError, active: true }
     setTrial(0)                     // fire() bumps it to 1
@@ -338,6 +395,7 @@ export default function Home() {
   const stop = useCallback(() => {
     repeatRef.current.active = false   // cancel any pending repeat
     stopNudge()
+    textAskRef.current?.(null)         // drop a typed question still being waited for
     // Closing the socket only stops the UI listening: the backend runs the plan
     // in its own thread, so the robot must be told to cancel explicitly. Sent
     // before the close so it also covers a skill still moving the arm.
@@ -346,6 +404,57 @@ export default function Home() {
     setRunning(false)
     endRecording()
   }, [endRecording, stopNudge])
+
+  // Visual Q&A: one press starts a `qa` conversation (browser mic, answers from
+  // the head camera), the next press ends it through the same cancel as Stop,
+  // which also releases the listen the skill is blocked on.
+  const [qaActive, setQaActive] = useState(false)
+  const [qaLang, setQaLang]     = useState('ko')
+  // Questions by voice (browser mic) or typed in the Q&A card.
+  const [qaInput, setQaInput]   = useState<'voice' | 'text'>('voice')
+  const [qaCam, setQaCam]       = useState<'head' | 'arm'>('head')
+  const [qaOnce, setQaOnce]     = useState(false)     // one question, then end
+  const [chatOpen, setChatOpen] = useState(false)
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('robotapp_qa_lang'); if (v) setQaLang(v)
+      const m = localStorage.getItem('robotapp_qa_input'); if (m === 'voice' || m === 'text') setQaInput(m)
+      const c = localStorage.getItem('robotapp_qa_cam'); if (c === 'head' || c === 'arm') setQaCam(c)
+      setQaOnce(localStorage.getItem('robotapp_qa_once') === '1')
+    } catch { /* no storage */ }
+  }, [])
+  const pickQaOnce = (v: boolean) => {
+    setQaOnce(v)
+    try { localStorage.setItem('robotapp_qa_once', v ? '1' : '0') } catch { /* no storage */ }
+  }
+  const pickQaCam = (v: 'head' | 'arm') => {
+    setQaCam(v)
+    try { localStorage.setItem('robotapp_qa_cam', v) } catch { /* no storage */ }
+  }
+  const pickQaInput = (v: 'voice' | 'text') => {
+    setQaInput(v)
+    try { localStorage.setItem('robotapp_qa_input', v) } catch { /* no storage */ }
+  }
+  const pickQaLang = (v: string) => {
+    setQaLang(v)
+    try { localStorage.setItem('robotapp_qa_lang', v) } catch { /* no storage */ }
+  }
+  useEffect(() => { if (!running) { setQaActive(false); setTextListen(false) } }, [running])
+  const toggleQa = useCallback(() => {
+    if (qaActive) { stop(); return }
+    if (running) return
+    setQaActive(true)
+    setQaLog([])
+    setChatOpen(true)
+    // voice=false: milestone narration would only talk over the conversation.
+    // The mic (robot / dashboard) comes from HRI_CONFIGS['source']; typing is
+    // done on this page, so text mode names the dashboard.
+    const cam = (qaCam === 'arm' ? ", cam='arm'" : '')      // head is the skill's default
+              + (qaOnce ? ', once=True' : '')
+    run(qaInput === 'text' ? `qa::source='dashboard', lang='${qaLang}', input='text'${cam}`
+                           : `qa::lang='${qaLang}'${cam}`, true, qaLang, 'direct',
+        false, false, 'frontend', 1, false, true, false)
+  }, [qaActive, running, qaLang, qaInput, qaCam, qaOnce, run, stop])
 
   // Latest backend vision-capture dir (emitted when log_data=backend) — shown in the panel.
   const backendLogDir = agentEvents.reduce((acc, e) => e.log_dir || acc, '')
@@ -372,6 +481,37 @@ export default function Home() {
               ⚠ no {voiceLang} voice
             </span>
           )}
+          <div className="flex items-center gap-1">
+            <select value={qaLang} onChange={e => pickQaLang(e.target.value)} disabled={qaActive}
+              title="Q&A language" className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
+              <option value="ko">한국어</option>
+              <option value="vi">Tiếng Việt</option>
+              <option value="en">English</option>
+            </select>
+            <select value={qaInput} onChange={e => pickQaInput(e.target.value as 'voice' | 'text')} disabled={qaActive}
+              title="Ask by voice (browser mic) or by typing in the Q&A card"
+              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
+              <option value="voice">🎤 Voice</option>
+              <option value="text">⌨ Text</option>
+            </select>
+            <select value={qaCam} onChange={e => pickQaCam(e.target.value as 'head' | 'arm')} disabled={qaActive}
+              title="Camera the robot answers from: head (looks up / straight / down) or arm (one photo, the head stays)"
+              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
+              <option value="head">📷 Head</option>
+              <option value="arm">🦾 Arm</option>
+            </select>
+            <select value={qaOnce ? 'once' : 'chat'} onChange={e => pickQaOnce(e.target.value === 'once')} disabled={qaActive}
+              title="Interactive: keep answering until a stop word or Stop · Once: answer one question and end"
+              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
+              <option value="chat">🔁 Interactive</option>
+              <option value="once">1️⃣ Once</option>
+            </select>
+            <button onClick={toggleQa} disabled={running && !qaActive}
+              title={qaActive ? 'End the Q&A conversation' : 'Ask the robot about what it sees (browser mic + head camera)'}
+              className={`px-3 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed ${qaActive ? 'bg-emerald-600 hover:bg-emerald-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+              {qaActive ? '■ Stop Q&A' : '💬 Q&A'}
+            </button>
+          </div>
           <GuidePanel />
           {/* Always live, unlike the Agent panel's Stop: a skill run from the
               CLI or another client can be moving the robot while this tab shows
@@ -445,6 +585,16 @@ export default function Home() {
 
         </main>
       </div>
+      {chatOpen && (qaActive || textListen || qaLog.length > 0) && (
+        <QaChat
+          log={qaLog}
+          mode={textListen ? 'text' : qaInput}
+          waiting={textWaiting}
+          active={qaActive || textListen}
+          onSend={text => { addQaLine('user', text); textAskRef.current?.(text) }}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </div>
   )
 }

@@ -64,6 +64,132 @@ hot-switch between them. Wrappers live in [frontend/lib/api.ts](frontend/lib/api
 refreshes the connections list right after. Sites are a **per-robot backend**
 concept (distinct from the multi-robot URL registry kept in `localStorage`).
 
+### Location names and aliases (ENV)
+
+Each `ENV` entry (Global Configs) is keyed by its canonical name and may list
+other names for the same spot:
+
+```json
+"dressroom@main room": { "aliases": ["옷장", "tủ áo"], "loc": {...}, ... }
+```
+
+A place named by an alias is spoken back as typed (`tủ áo에 내려 놓을게요`).
+The older `label` field stays for the key itself — etri uses it for Korean names
+of English keys, and `move` sends it as the POI name when an entry has no `loc` —
+but the dashboard no longer edits it outside the JSON / generic field view.
+
+`move::옷장`, `move::tu ao`, `move::옷장@main room` and `move::dressroom` all
+reach it. The resolver is [robot_agent/env_names.py](../robot_agent/robot_agent/env_names.py)
+(`resolve_env_name`); kcare's `get_env_specs` / `env_key` go through it, so every
+skill that takes a location accepts aliases. Order: exact key → exact alias →
+`@` segment of a key or alias (the old matching) → key or alias ignoring
+diacritics, only if unique. Names are compared after NFC, lower-casing and
+whitespace collapsing. `cup@옷장` still matches nothing; callers strip the
+object part and retry, as before.
+
+- **Ambiguous names** (`table` with `table@kitchen` + `table@living room`)
+  take the first in ENV order and log a warning, as before;
+  `MOBILE_CONFIGS['strict_loc'] = true` makes the skill fail instead.
+- **Saving** ENV (`PUT /skill-configs/ENV`, `ConfigManager.update`) is refused
+  with a 400 when an alias is another location's key or alias, is empty, or is
+  `home` / `base` (move's own shortcuts). `api.updateSkillConfig` now throws on
+  a non-2xx with the backend's `detail`; it used to report success regardless.
+  Non-object legacy entries (etri's `"default_loc@main room": "table"`) are left alone.
+- Skills work with the **canonical key** once resolved: `move` resolves before
+  its `home` / `base` substring shortcuts, and `open_drawer` / `close_drawer`
+  record the key in `world.opened`. `arrived` was already sensor-derived (key).
+- In the `EnvPanel` Fields view, ENV gets a **Location aliases** block
+  ([frontend/components/EnvNamesEditor.tsx](frontend/components/EnvNamesEditor.tsx)),
+  collapsed by default (header shows the alias count, or `⚠ N clashes`). Open,
+  it lists each key with its alias chips below it (Enter or `,` to add, × or
+  Backspace to remove) — stacked, since the sidebar is narrow. It runs the same
+  clash check as the backend and marks the offending chip red. `aliases` is
+  hidden from the generic field list below it.
+- A guide may contain `LOCATIONS_HERE`; `resolve_guide` replaces it with one
+  line per location (`- dressroom@main room (also: 옷장, tủ áo)`) from the live
+  ENV. Guides without the marker are unchanged.
+
+### Plan skills (a skill defined as a plan)
+
+Skill panel → **+ Add** → type **Plan** defines a skill as a sequence of other
+skills, stored in `skills.json` as `type: 'plan'` and run by
+`SkillRegistry.execute` ([core/plan_skill.py](../robot_agent/robot_agent/core/plan_skill.py)),
+so the Agent panel, `POST /skill/<name>`, the CLI, the planners and other plan
+skills can all call it:
+
+```
+move::$loc=counter2@kitchen$      # $name=default$ — a parameter with a default
+lift::1
+fine_move::$inputs$               # $inputs$ — what follows pick_top::
+movej::give
+```
+
+`pick_top::cup`, `pick_top::inputs='cup', loc='table@kitchen'`. Lines use the
+direct-mode syntax (`&&` parallel, `!skill` ignore failure, `~skill` force
+failure, `#` comment) and the same argument rules (`parse_inputs`, now shared
+with `UnifiedAgent._parse_inputs`). Parameter values are inserted **after**
+parsing (as literals in `k=v` form), so commas / quotes in a value cannot break
+the line. Each step's result is passed on to the next steps, as in the direct
+mode (`find`'s `ins` reaches `pick`).
+
+- **`{name}` — an earlier step's result.** In a plan skill and in the direct
+  mode, `{answer}` is replaced by the `answer` an earlier step returned
+  (`plan_skill.parse_step_args` / `refs_to_params`, inserted after parsing like
+  `$param$`, so commas / quotes in it are safe):
+  ```
+  ask::inputs="뭐가 드실래요?", options="신라면, 짜파게티, 너구리, 안성탕면"
+  fine_move::{answer}                        # or inputs={answer}, fixed_angle=0
+  ```
+  A name no earlier step returned fails the step (`{choice}: no earlier step
+  returned "choice" (have: answer, text)`). Use it for a whole value: inside a
+  quoted string it is inserted with quotes. Every earlier result is still also
+  merged into the later steps' params as before (the `rz=90` leak).
+- **On a failure the plan stops and the robot stays as it is** — no clean-up
+  steps (no fold / lift-home: from an unknown pose they can hit furniture, the
+  user's call). The result carries `failed_step`, `failed_line` and a
+  per-step `plan_steps` report; the Execution panel gets one log line per step.
+- Cancel is checked between steps; nesting is capped at 5; each successful
+  sub-step goes through `apply_skill_effect`, so Robot State follows the
+  `pick` inside `pick_top`.
+- Saving is refused (400) for an unknown skill, a name taken by a code skill,
+  a plan that calls itself (directly or via another plan skill), or one
+  parameter with two defaults; deleting a skill a plan still calls is refused.
+  `POST /skills/reload` keeps plan skills. The editor
+  ([components/PlanSkillEditor.tsx](frontend/components/PlanSkillEditor.tsx))
+  runs the same checks as you type, and has no "run" button — try a saved plan
+  skill from the Agent panel.
+- **Renaming** (plan skills only): the edit form has a name field;
+  `PUT /skills/<name>` with `{name: <new>}` re-keys the skill in place
+  (`SkillRegistry.rename`) and rewrites the calls in every other plan skill
+  (`plan_skill.rename_calls` — keeps `!` / `~`, `&&`, arguments, comments).
+  Shortcut buttons and guides are free text and keep the old name. Refused for
+  a code skill, a taken name, an invalid name, or a rename+plan that would loop.
+- A guide may contain `PLAN_SKILLS_HERE`; `resolve_guide` fills it with
+  `- pick_top::<inputs>  (loc=counter2@kitchen, inputs) — <description>`.
+
+### Skill aliases
+
+A skill may have other names (`라면가져와`, `lấy mì` …): `SkillDef.aliases`,
+saved in `skills.json`. `SkillRegistry.resolve` (exact name → exact alias →
+either compared with `env_names.normalize`: NFC, case, whitespace) is used by
+`execute`, so the Agent panel, `POST /skill/<alias>`, the CLI, plan skills and
+the planners all accept an alias. Saving (`POST /skills`, `PUT /skills/<name>`
+with `aliases`) is refused (400) for an empty alias, one with a parser
+character (`: & ! ~ # $ { } , = ' " ( )`), one listed twice, or one that is
+another skill's name or alias (`check_aliases`); a new or renamed skill may not
+take another skill's alias as its name. Plans may call a skill by alias
+(`validate_plan`, the self-call check and the delete check resolve aliases).
+`POST /skills/reload` keeps the aliases of code skills (skills_config has
+none). `PLAN_SKILLS_HERE` lines end with `(also: …)`.
+
+In the Skill panel, a collapsed **Skill aliases** block
+([components/SkillAliasesEditor.tsx](frontend/components/SkillAliasesEditor.tsx))
+lists each skill with its alias chips — the same `AliasInput` as the Location
+aliases (exported from `EnvNamesEditor.tsx`); each change is saved at once, a
+clash shows red on the chip (same check as the backend) and a refusal under
+the skill. Rows show `· alias, …` after the name; the panel search matches
+aliases too.
+
 ### Robot State (persistent world state)
 
 A robot backend keeps a persistent symbolic **world state** — what the robot
@@ -153,6 +279,144 @@ only runs at `hriPending === 0`, and each HRI job calls `silenceNarration()`
 earlier. This also fixes the reverse damage — `useVoiceOutput.speak` cancels
 in-flight speech by design ("newest milestone wins"), which used to truncate the
 skill's own question mid-sentence.
+
+### Visual Q&A (`qa` skill + top-bar button)
+
+The top bar's **💬 Q&A** button (with a ko / vi / en picker, remembered in
+`localStorage`) starts a run of `qa::source='dashboard', lang='<picked>'` in
+direct mode with milestone voice off; pressing it again calls the same `stop()`
+as Cancel, whose `POST /agent/cancel` also releases the listen the skill is
+blocked on. The skill (`qa` in [kcare_robot/skills/hri.py](../kcare_robot/kcare_robot/skills/hri.py),
+next to `ask`; the vision side is in [skills/qa.py](../kcare_robot/kcare_robot/skills/qa.py))
+loops, listening as `ask` does — the opening question and each answer are the
+`prompt` of the next listen, so the mic opens right after they are spoken:
+listen (browser mic) → if the photos are older than `refresh_sec`, say
+"잠깐 둘러볼게요" and photograph the head at each tilt in `views`
+(`moveh up / straight / down`, ~1.3 s each), then put the head back → ask the
+vision model → speak one short sentence. It ends only on a stop word (그만,
+종료, dừng, stop …, only on a short utterance) or on cancel — silence just means
+listening again (`idle_turns` is no longer used) (no goodbye then — and the head is left where it is, since a
+cancelled node refuses to move). The photos are logged as one labelled mosaic
+image in the Execution panel.
+
+The model runs in **Ollama on the dev PC** (RTX 3090, `QA_CONFIGS` in
+`kcare_robot/configs/tasks.py`: `url`, `model`, `views`, `refresh_sec`, …,
+read through the `QA_CONFIGS` proxy in `robot_agent.skill_configs`). Use the
+**instruct** tag `qwen3-vl:8b-instruct`: the plain `qwen3-vl:8b` tag is
+thinking-only (`think:false` is ignored), took 1–10 s on real photos and twice
+spent the whole token budget reasoning, answering nothing. Instruct answers in
+~2.3 s, ~0.2 s for follow-ups on the same photos (Ollama reuses the cached
+image prefix). On real closet photos it gets colours and "is there a …?"
+right, gives vague "where" answers ("on the white shelf"), and **cannot count
+shelf levels** across the three overlapping tilts (answered 2 for levels 4
+and 5) — the 8B model's spatial reasoning, not the prompt.
+
+**Camera.** `qa::cam='head'` (default — a photo at each head tilt in `views`)
+or `cam='arm'` (one photo from `QA_CONFIGS['arm_camera']`, default `arm_rgb`;
+the head does not move, the prompt calls it "arm camera (on the gripper)").
+The top bar has a 📷 Head / 🦾 Arm picker next to Voice / Text (remembered in
+`localStorage`); the Q&A button adds `cam='arm'` only for the arm. A place's
+`qa` block (left / right shelf, …) still applies with the arm camera, but its
+left / right are written for the head's view.
+
+**Products (라면 …) and one-shot mode (2026-10-06).** The VLMs cannot name
+packs: on the arm-camera shelf photo both 8B and 32B answered "무슨 라면 있어?"
+with colours, and with example names in the prompt repeated an example that was
+not there (진라면). A question naming a catalogue product or containing 라면 /
+noodle / mì now runs the product recogniser on the photos once
+(`_products.inventory`: detector + SigLIP vs `configs/products` refs; a pack is
+named only when sure, else unnamed):
+- names a catalogue product (신라면 있어? / 짜파게티 어디?) → answered from the
+  inventory, no model ("신라면은 왼쪽에 있어요." / "…보이지 않아요." + unnamed count);
+- names a noodle not in the catalogue (진라면) → "진라면은 확인할 수 없어요." +
+  the inventory list — never yes / no;
+- general (무슨 라면 / 몇 개) → the VLM, given the verified names as facts; an
+  answer naming any other noodle is replaced by the inventory list.
+`qa::products=False` turns it off. Sides are left / middle / right of the photo.
+Test photo: 신라면, 짜파게티 (left), 너구리 (right) named; 안성탕면 left unnamed
+(margin 0.018 < 0.03 — add a ref from this view).
+
+`qa::once=True` answers one question and ends (no goodbye; silence re-asked
+`retries` times like `ask`, then `ended: 'no answer'`, isdone False); the result
+carries `answer`. Top bar: 🔁 Interactive / 1️⃣ Once picker (localStorage).
+
+**Mic permission.** Chrome only shows the permission prompt during a user
+gesture, and the skill opens the mic seconds after the click, so a first use
+failed with `not-allowed`. `run()` now calls `primeMic()`
+([lib/hriVoice.ts](frontend/lib/hriVoice.ts), a throw-away `getUserMedia`)
+inside the click for any plan naming `qa` / `ask` / `reply` (not on the robot
+mic or typed), and says in the Q&A card when the mic is unavailable — on plain
+http the mic is never allowed (https or localhost only). If recognition still
+reports `not-allowed`, `qa` (only — `ask` / `reply` still fail) switches the
+run to typed input. When the recogniser hears nothing, the browser posts a
+`note` with the listen answer (`mic opened, no sound, no speech, 8.0 s
+(no-speech)`) and `listen_dashboard` logs it as `dashboard mic: nothing
+recognised — …` in the Execution panel; `no-speech` / `aborted` used to be
+dropped silently.
+
+**Whisper for the dashboard mic (2026-10-06).** Google's recogniser (Chrome's
+Web Speech API, also its own demo page) missed Korean questions like 와인잔이 /
+머그컵 선반 어디에 있어? (`speech detected, 0 result events`). Now the browser
+only **records** (`recordPhrase` in [lib/hriVoice.ts](frontend/lib/hriVoice.ts):
+MediaRecorder + a WebAudio level VAD, nothing sent when nobody spoke — Whisper
+invents "감사합니다." for silence) and posts the audio to
+`POST /agent/listen/<id>/audio` (`api.answerListenAudio`); the backend
+transcribes it with the **`stt` connection** (Connections panel type
+"Speech-to-text (Whisper)": `url`, `model`; `robot_agent/connect/stt`,
+OpenAI-compatible `/v1/audio/transcriptions`) and returns the text. The listen
+event says which: `capture: 'whisper' | 'browser'`. The robot mic
+(`source='robot'`) uses the same connection (`speech_to_text` falls back to the
+old `vlms` TCP server only without one). Server: `speaches` container on the dev
+PC 3090 (`docker run … --restart unless-stopped -p 8000:8000
+ghcr.io/speaches-ai/speaches:latest-cuda`, model
+`deepdml/faster-whisper-large-v3-turbo-ct2`, ~2.4 GB VRAM, 0.2–0.3 s per phrase;
+all three Korean test phrases right).
+
+Global Config **`HRI_CONFIGS`** (kcare `configs/tasks.py`): `source`
+(`dashboard` | `robot` — default mic for reply / ask / qa; a call's `source=`
+wins), `dashboard_stt` (`whisper` | `browser`), `stt` (connection id, '' =
+first), `stt_hint` (`{lang: words}` — Whisper's prompt). The Q&A button no
+longer sends `source` in voice mode, so `HRI_CONFIGS.source` picks the mic.
+
+**Voice or text input.** Next to the language picker, a 🎤 Voice / ⌨ Text
+picker (remembered in `localStorage`) adds `input='voice'|'text'` to the run.
+Text mode reuses the HRI listen channel: `listen_dashboard(mode='text')` puts
+`mode` in the `listen` event, and `page.tsx` then waits for a line typed in the
+**Q&A card** ([components/QaChat.tsx](frontend/components/QaChat.tsx)) instead of
+opening the mic, posting it to the same `POST /agent/listen/<id>`. The card shows
+the conversation in both modes (robot lines from `speak` / prompts, user lines
+from the recognizer or the typed text). `qa` waits for a typed question until
+it comes or the run is cancelled (`hri.QA_TEXT_WAIT_SEC`); `ask` / `reply` keep
+the 300 s `hri.TEXT_WAIT_SEC`. `input` is parsed in
+`hri._common`, so `reply` / `ask` accept it too; it needs `source='dashboard'`.
+Stop, `done` or `error` resolve a pending typed answer with nothing posted.
+
+**Where-questions per place.** An ENV entry may carry a `qa` block (`views`,
+`scene`, `frame: robot|person`, `places: {id: {desc, ko, en, vi}}`). `qa` uses
+the block of the ENV location nearest the base (`loc_radius`, 1 m) or of
+`qa::loc='옷방'`: it photographs only that block's `views`, the model returns
+JSON (`items: [{what, place}]`, `place` restricted to the ids by a JSON-schema
+`enum`), and the spoken answer is built from the phrases — "행거 왼쪽과 행거
+가운데에 있어요", "앞에 있어요" — so wording is fixed and cannot name a place
+that is not configured. Only questions containing a where-word
+(어디 / đâu / where) get the place answer; the rest stay free-form. No extra
+motion. Configured on kcare_bucheon: `counter2@kitchen` (left / right shelf,
+dish rack), `dressroom` (rail left / middle / right, corner shelf top / middle
+/ bottom, drawers), `table@kitchen` (user's front / left / right). On the
+captured photos: 18/22 — dressroom 8/8; wrong: the blue cup next to the
+cabinet divider (always "left"), and person-relative left/front at the table.
+Per-shelf counting (2nd / 3rd shelf) failed, hence the coarse top / middle /
+bottom tied to the up / straight / down photos.
+
+**Model server (2026-09-30).** `QA_CONFIGS` now points at the 4×A6000 Ollama
+server (`https://ollama.aistations.org`, `qwen3-vl:32b-instruct`), leaving the
+dev PC's 3090 to visionserve. `num_ctx` (8192) is sent with every request:
+without it the server loaded the 32B with its 262k default context, 94 GB over
+several GPUs at 16 tok/s. `qa` reuses one HTTP session (a TLS handshake to the
+Cloudflare hostname costs 0.3–1.3 s). Same 22 questions, server models:
+32b-instruct 19/22, 2.4 s median; 8b-instruct 18/22, 2.0 s; 30b-a3b-instruct
+16/22 (swaps left/right at the cabinet), 1.9 s. Local 8b on the 3090: 18/22,
+0.5 s. About 1 s of each answer is the network — a LAN address would cut it.
 
 ### Cancel / Stop
 
