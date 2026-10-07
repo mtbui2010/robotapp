@@ -64,6 +64,18 @@ hot-switch between them. Wrappers live in [frontend/lib/api.ts](frontend/lib/api
 refreshes the connections list right after. Sites are a **per-robot backend**
 concept (distinct from the multi-robot URL registry kept in `localStorage`).
 
+**The active site is per machine (2026-10-07).** The configs folder is shared
+(`/remote_dir`) by several machines running the same robot package. One
+`configs/common/active_location` made them fight: switching site on one
+rewrote it, and the other — `make run` uses uvicorn `--reload` over the same
+tree — restarted into that site (kcare_bucheon ↔ clobot_bucheon). Now each
+machine writes `configs/common/active_location.<hostname>`
+(`state.active_location_file`; `ROBOT_AGENT_HOST` overrides the hostname), and
+boot reads `$ROBOT_LOCATION` → its own marker → the old shared file
+(`state.read_active_location`, also used by `runtime._resolve_layout` and
+`diagnose`). Two machines with the **same hostname** still share a marker —
+set `ROBOT_AGENT_HOST` or `ROBOT_LOCATION` on one of them.
+
 ### Location names and aliases (ENV)
 
 Each `ENV` entry (Global Configs) is keyed by its canonical name and may list

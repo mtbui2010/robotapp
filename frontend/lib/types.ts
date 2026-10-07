@@ -88,6 +88,7 @@ export interface AgentEvent {
   // /agent/listen/{id}.
   speak?: string
   speak_lang?: string | null
+  speak_id?: string                  // the skill waits until this line is reported spoken
   listen?: { id: string; lang?: string; max_sec?: number; prompt?: string; mode?: 'voice' | 'text'
              // 'whisper': record and post the audio (the robot transcribes);
              // 'browser': the browser's own recogniser

@@ -109,6 +109,7 @@ interface FormFields {
   // SwitchBot Bot (a light switch pusher): BLE address, the place it serves, default light
   mac: string
   loc: string
+  locAliases: string     // SwitchBot: other names for the place, comma-separated (세탁실, …)
   isDefault: boolean
 }
 
@@ -121,7 +122,7 @@ const DEFAULT_FORM: FormFields = {
   path: '/', secure: false,
   method: 'POST', token: '', timeout: '',
   provider: 'llama', url: 'http://localhost:11434', model: '', apiKey: '', numCtx: '',
-  mac: '', loc: '', isDefault: false,
+  mac: '', loc: '', locAliases: '', isDefault: false,
 }
 
 interface Props {
@@ -582,7 +583,8 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     if (f.type === 'switchbot') {
       // turn_light::loc='<loc>' picks this light; `default` is the one used without loc.
       return { agent_name: f.agentName.trim() || switchbotId(f.loc), mac: f.mac.trim().toUpperCase(),
-               loc: f.loc.trim(), default: f.isDefault }
+               loc: f.loc.trim(), default: f.isDefault,
+               aliases: f.locAliases.split(',').map(s => s.trim()).filter(Boolean) }
     }
     // llm — the backend reads `name` as the backend id (must stay 'llama' etc.).
     // agent_name is the stable connection identity, decoupled from the model so
@@ -699,6 +701,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       f.mac       = String(cfg.mac ?? '')
       f.loc       = String(cfg.loc ?? c.name)
       f.isDefault = cfg.default === true
+      f.locAliases = Array.isArray(cfg.aliases) ? (cfg.aliases as string[]).join(', ') : ''
     } else if (c.type === 'visionserve') {
       f.agentName = String(cfg.agent_name ?? c.name)
       f.url       = String(cfg.url ?? 'http://localhost:11435')
@@ -1279,6 +1282,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           {form.type === 'switchbot' && (<>
             <input placeholder="loc  e.g. laundry room  (turn_light::loc='laundry room')" value={form.loc}
               onChange={e => setForm(f => ({ ...f, loc: e.target.value }))}
+              className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 placeholder-gray-400" />
+            <input placeholder="aliases  e.g. 세탁실, phòng giặt  (comma-separated)" value={form.locAliases}
+              onChange={e => setForm(f => ({ ...f, locAliases: e.target.value }))}
               className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 placeholder-gray-400" />
             <input placeholder="mac  e.g. EB:6B:01:06:62:34" value={form.mac}
               onChange={e => setForm(f => ({ ...f, mac: e.target.value }))}

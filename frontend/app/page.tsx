@@ -234,9 +234,12 @@ export default function Home() {
         const line = ev.speak
         const lang = ev.speak_lang ?? a.lang
         addQaLine('robot', line)
+        const speakId = ev.speak_id
         enqueueHri(async () => {
           silenceNarration()
           await speakAndWait(line, lang)
+          // announce(wait=True): tell the skill the line has been spoken.
+          if (speakId) await api.answerListen(speakId, '').catch(() => {})
         })
       }
       if (ev.listen) {
