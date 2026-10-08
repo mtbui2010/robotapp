@@ -123,3 +123,50 @@ export interface LlmInfo {
   url?: string
   model?: string
 }
+
+// ── Map tab (components/MapPanel.tsx) ─────────────────────────────────────────
+// Read from the active site's `MAP` skill-config group (GET /skill-configs/MAP). A site without one has
+// no Map tab content. Frames follow ROS map.yaml: `origin` = world (x, y) [m] of the image's
+// bottom-left corner, `resolution` m/px, image row 0 = the top (largest y), x to the right.
+export interface MapFrame {
+  resolution: number
+  origin: [number, number]
+  width: number
+  height: number
+  unit?: string                       // value unit of a data layer, e.g. 'cm'
+}
+
+export interface MapLayer {
+  file: string                         // site file, served by GET /config/locations/_active/files/<file>
+  frame: MapFrame
+  values?: Record<string, number>      // occupancy: {free, inflated, occupied}
+  unit?: string
+}
+
+export interface MapSurface {
+  name: string                         // e.g. an ENV key: 'dining table@kitchen'
+  centre: [number, number]
+  size: [number, number]               // [depth along yaw_deg, width across it] [m]
+  yaw_deg: number                      // direction the front faces
+  height: number                       // surface height [m]
+}
+
+// A skill call with templated params: "{x}" etc. are filled in by the panel (a lone placeholder
+// becomes a number).
+export interface MapSkillCall {
+  skill: string
+  params: Record<string, string>
+}
+
+export interface MapConfig {
+  image?: { connection?: string; url?: string; frame: MapFrame }
+  layers?: { occupancy?: MapLayer; height?: MapLayer }
+  surfaces?: MapSurface[]
+  places?: 'ENV' | null                // draw ENV entries; clicking one runs move::<name>
+  // robot pose: a device agent read with GET /agent/<agent>/get (never clears a pending cancel)
+  pose: { agent: string; x: string; y: string; orientation?: string; yaw?: string; angle?: 'deg' | 'rad'; period_s?: number }
+  goal: MapSkillCall                   // placeholders {x} {y} {rz} (rz in degrees, current heading)
+  rotate?: MapSkillCall & { step_deg?: number }        // placeholder {deg}
+  lift?: MapSkillCall & { clearance?: number; reach_m?: number }   // placeholder {h} [m]
+  confirm_goal?: boolean               // ask before every motion (real robots)
+}

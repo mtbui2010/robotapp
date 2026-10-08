@@ -549,6 +549,28 @@ export const api = {
   },
 
   // ── WebSockets ───────────────────────────────────────────
+  // Run one skill with keyword params (POST /skill/<name>); resolves with the skill's result dict.
+  async runSkill(name: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    const r = await fetch(`${getAgentUrl()}/skill/${encodeURIComponent(name)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params),
+    })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  },
+
+  // Latest value of a device agent, read-only (GET /agent/<name>/get) — unlike runSkill it never
+  // clears a pending cancel, so it is safe to poll.
+  async agentGet(name: string): Promise<unknown> {
+    const r = await fetch(`${getAgentUrl()}/agent/${encodeURIComponent(name)}/get`)
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return (await r.json()).value
+  },
+
+  // URL of a static file of the active site (map layers), GET /config/locations/_active/files/<path>.
+  siteFileUrl(path: string): string {
+    return `${getAgentUrl()}/config/locations/_active/files/${path.split('/').map(encodeURIComponent).join('/')}`
+  },
+
   agentWs(): WebSocket {
     return new WebSocket(`${getWsBase()}/ws/agent`)
   },

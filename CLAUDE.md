@@ -50,6 +50,8 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `PUT  /agent/world`     | partial-update the world state (only sent fields) |
 | `POST /agent/listen/<id>` | transcript for an HRI skill's `listen` event (see below) |
 | `POST /agent/cancel`    | stop the robot — cancel everything in flight (see below) |
+| `GET  /agent/<name>/get` | read a device agent's latest value, read-only (Map tab robot pose) |
+| `GET  /config/locations/<site>/files/<path>` | static site files: Map layers (`_active` = active site) |
 | `GET  /guides` · `GET /guides/<name>` | list / read versioned planner guides |
 | `POST /guides` · `PUT /guides/<name>` · `DELETE /guides/<name>` · `POST /guides/<name>/activate` | create / edit / delete / select the active guide |
 
@@ -533,6 +535,43 @@ arriving mid-probe is served the previous result instead of queueing behind it.
 One cost from the same investigation is still **not** addressed: `kcare_robot`'s
 `make run` passes `--reload` to uvicorn, which watches the whole (sshfs-mounted)
 tree.
+
+### Map tab (click to move)
+
+The main area has two tabs, **Cameras** and **Map**
+([frontend/components/MapPanel.tsx](frontend/components/MapPanel.tsx)). The Map tab is generic: it reads
+the active site's `MAP` skill-config group (`GET /skill-configs/MAP`, type `MapConfig` in
+[frontend/lib/types.ts](frontend/lib/types.ts)); a site without one just says so.
+
+| `MAP` key | what |
+|---|---|
+| `image` | `{connection, frame}` — a camera connection whose picture is the map (sim: `sim_topdown`, rendered orthographic) |
+| `layers.occupancy` / `layers.height` | site files (`map/occupancy.png` 0/128/255 = free / too close for the base / obstacle; `map/heightmap.png` uint8 cm) with their frames |
+| `surfaces` | rectangles `{name, centre, size:[depth, width], yaw_deg, height}` — what to lift to |
+| `places: "ENV"` | draw ENV entries; clicking one runs `move::<name>` |
+| `pose` | `{agent, x, y, orientation}` paths into `GET /agent/<agent>/get` |
+| `goal` / `rotate` / `lift` | skill + templated params (`{x}` `{y}` `{rz}` · `{deg}` · `{h}`) |
+| `confirm_goal` | ask before every motion (set it for real robots) |
+
+Frames follow ROS `map.yaml`: `origin` = world (x, y) of the image's bottom-left corner, `resolution`
+m/px, row 0 = top. Behaviour:
+
+- **click a free spot** → `goal` (kcare: `moveb` with x, y only = keep the heading). Clicks on blocked
+  cells (occupancy ≥ inflated) are refused; after the call the panel compares the pose with the goal,
+  because kcare reports `moveb` done even when navigation gave up.
+- **← / →** → `rotate` ±`step_deg` (kcare: **`turn`** — relative; kcare's `rotate` goes to an ABSOLUTE
+  heading). Presses during a turn are summed into the next call.
+- **auto lift** after a goal: the nearest surface within `reach_m` → `lift::height + clearance`
+  (kcare's own rule, `get_lift_height`); a typed height overrides it.
+- **hover** → `x y z` (surface height, else height-map "top of obstacle", else floor), distance to the
+  robot, reachable / blocked.
+- **Save as place** → current pose + height as a new ENV entry (`default_mode: front`,
+  `source: "map"`; kcare-sim's `make_kcare_sim_location.py` keeps such entries when it regenerates ENV).
+
+The pose is polled with `GET /agent/<name>/get`, never `POST /skill/mobile_pose`: every `POST /skill`
+calls `begin_run()`, which would clear a Stop / Cancel in progress. The sim's `MAP` group is written by
+kcare-sim (`make_kcare_sim_location.py`, frames from `house_scene.map_frame`). The real kcare robot
+(Slamtec map) is not configured yet.
 
 ### Planner guide versions
 

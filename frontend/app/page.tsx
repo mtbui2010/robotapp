@@ -5,6 +5,7 @@ import AgentPanel   from '../components/AgentPanel'
 import CameraFeed   from '../components/CameraFeed'
 import SkillPanel   from '../components/SkillPanel'
 import EnvPanel     from '../components/EnvPanel'
+import MapPanel     from '../components/MapPanel'
 import GuideEditorPanel from '../components/GuideEditorPanel'
 import GuidePanel   from '../components/GuidePanel'
 import PlanPanel    from '../components/PlanPanel'
@@ -53,6 +54,7 @@ export default function Home() {
   const [skillRefreshKey, setSkillRefreshKey] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [planOpen, setPlanOpen]       = useState(true)
+  const [mainTab, setMainTab]         = useState<'cameras' | 'map'>('cameras')
   const [running, setRunning]         = useState(false)
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
   const [agentSteps, setAgentSteps]   = useState<Step[]>([])
@@ -583,7 +585,17 @@ export default function Home() {
           </section>
 
           <section className="px-5 pt-1 pb-3">
-            <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} />
+            <div className="flex gap-1 mb-2 border-b border-gray-200">
+              {(['cameras', 'map'] as const).map(t => (
+                <button key={t} onClick={() => setMainTab(t)}
+                        className={`px-3 py-1.5 text-sm -mb-px border-b-2 ${mainTab === t ? 'border-blue-600 text-blue-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+                  {t === 'cameras' ? 'Cameras' : 'Map'}
+                </button>
+              ))}
+            </div>
+            {mainTab === 'cameras'
+              ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} />
+              : <MapPanel clients={clients} running={running} />}
           </section>
 
         </main>
