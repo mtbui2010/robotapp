@@ -1,7 +1,8 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import type { ClientEntry, MapConfig, MapFrame, MapLayer, MapSkillCall, MapSurface } from '../lib/types'
+import { useSimEditor } from './mapSim'
+import type { ClientEntry, MapConfig, MapFrame, MapLayer, MapOrigin, MapSkillCall, MapSurface } from '../lib/types'
 
 // Map tab: the site's map with the robot on it. Everything comes from the active site's `MAP`
 // skill-config group (see MapConfig in lib/types.ts), so the panel works for any robot that has one.
@@ -11,12 +12,26 @@ import type { ClientEntry, MapConfig, MapFrame, MapLayer, MapSkillCall, MapSurfa
 //   • after a goal       → lift to the nearest surface within reach (+ clearance), or the typed height
 //   • hover              → x, y, z under the cursor; red = blocked for the base
 //   • "Save as place"    → current pose + height as a new ENV entry
+//   • origin             → the user's frame (MAP.origin): axes, 1 m grid, scale bar, robot heading arc;
+//                          "Edit origin" drags / rotates it, then asks whether ENV places follow it
 
 type Pose = { x: number; y: number; yaw: number }          // yaw [rad], map frame
 type Raster = { frame: MapFrame; data: Uint8ClampedArray; url: string; tintUrl?: string }
 type EnvEntry = { loc?: { x: number; y: number; rz: number }; height?: number; default_mode?: string } & Record<string, unknown>
 
 const DEG = Math.PI / 180
+const ZERO: MapOrigin = { x: 0, y: 0, yaw_deg: 0 }
+
+// map frame <-> the user's origin frame
+function toUser(o: MapOrigin, x: number, y: number): [number, number] {
+  const a = o.yaw_deg * DEG, dx = x - o.x, dy = y - o.y
+  return [dx * Math.cos(a) + dy * Math.sin(a), -dx * Math.sin(a) + dy * Math.cos(a)]
+}
+function toMap(o: MapOrigin, u: number, v: number): [number, number] {
+  const a = o.yaw_deg * DEG
+  return [o.x + u * Math.cos(a) - v * Math.sin(a), o.y + u * Math.sin(a) + v * Math.cos(a)]
+}
+const wrapDeg = (d: number) => ((d + 180) % 360 + 360) % 360 - 180
 
 function getPath(obj: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj)
@@ -140,6 +155,14 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
   const [showBlocked, setShowBlocked]   = useState(false)
   const [autoLift, setAutoLift]         = useState(true)
   const [manualH, setManualH]           = useState('')        // typed target height [m]; empty = auto
+  const [showAxes, setShowAxes]         = useState(true)
+  const [showGrid, setShowGrid]         = useState(true)
+  const [editOrigin, setEditOrigin]     = useState(false)
+  const [draft, setDraft]               = useState<MapOrigin | null>(null)   // origin being edited
+  const [drag, setDrag]                 = useState<'move' | 'rotate' | null>(null)
+  const [askApply, setAskApply]         = useState(false)                     // "places follow?" popup
+  const [previewShift, setPreviewShift] = useState(false)                     // hovering "move places": ghost dots
+  const [undo, setUndo] = useState<{ origin: MapOrigin; env: Record<string, EnvEntry> | null } | null>(null)
   const svgRef  = useRef<SVGSVGElement | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const turnRef = useRef({ pending: 0, sending: false })
@@ -156,6 +179,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
     if (c.places === 'ENV') setEnv(((await api.getSkillConfig('ENV')) ?? {}) as Record<string, EnvEntry>)
   }, [])
   useEffect(() => { reload() }, [reload])
+  const sim = useSimEditor({ cfg, setStatus, reloadMap: reload, running, otherEdit: editOrigin })
 
   // the display frame: the camera picture's, else the occupancy layer's
   const view: MapFrame | null = cfg?.image?.frame ?? occ?.frame ?? null
@@ -287,6 +311,12 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
   }, [cfg])
 
   const onKey = (e: React.KeyboardEvent) => {
+    if (sim.key(e)) return
+    if (editOrigin && draft && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {   // rotate the origin
+      e.preventDefault()
+      const d = (e.shiftKey ? 1 : 5) * (e.key === 'ArrowLeft' ? 1 : -1)
+      setDraft({ ...draft, yaw_deg: wrapDeg(draft.yaw_deg + d) }); return
+    }
     if (!cfg?.rotate || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
     e.preventDefault()
     if (running) { setStatus('A plan is running — stop it first.'); return }
@@ -310,6 +340,54 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
                   loc: { x: Number(pose.x.toFixed(3)), y: Number(pose.y.toFixed(3)), rz: Number((pose.yaw / DEG).toFixed(1)) } }
     await api.updateSkillConfig('ENV', cur)
     setEnv(cur); setStatus(`saved "${name}" — move::${name} brings the robot back here`)
+  }
+
+  // ── origin editing ──────────────────────────────────────────────────────────
+  const startEdit = () => {
+    if (sim.editing) { setStatus('finish the scene edit first'); return } setDraft({ ...(cfg?.origin ?? ZERO) }); setEditOrigin(true); setStatus('drag the origin dot to move it, the red arrow tip to rotate it (← → 5°, Shift 1°)'); wrapRef.current?.focus() }
+  const cancelEdit = () => { setEditOrigin(false); setDraft(null); setDrag(null); setAskApply(false); setStatus('') }
+  const placesWithLoc = Object.values(env).filter(e => e.loc).length
+  // where every place would go if it moved with the axes (old origin -> draft)
+  const shiftedPlaces = (from: MapOrigin, to: MapOrigin) => Object.entries(env).filter(([, e]) => e.loc).map(([name, e]) => {
+    const [u, v] = toUser(from, e.loc!.x, e.loc!.y), [x, y] = toMap(to, u, v)
+    return { name, from: [e.loc!.x, e.loc!.y] as [number, number], to: [x, y] as [number, number], d: Math.hypot(x - e.loc!.x, y - e.loc!.y) }
+  })
+
+  const applyOrigin = async (placesFollow: boolean) => {
+    if (!cfg || !draft) return
+    const old = cfg.origin ?? ZERO
+    const neu = { x: Number(draft.x.toFixed(3)), y: Number(draft.y.toFixed(3)), yaw_deg: Number(wrapDeg(draft.yaw_deg).toFixed(2)) }
+    try {
+      const before = placesFollow ? ((await api.getSkillConfig('ENV')) ?? {}) as Record<string, EnvEntry> : null
+      if (placesFollow) {                    // keep every place's coordinates relative to the origin -> they move with it
+        const cur = ((await api.getSkillConfig('ENV')) ?? {}) as Record<string, EnvEntry>
+        for (const e of Object.values(cur)) {
+          if (!e.loc) continue
+          const [u, v] = toUser(old, e.loc.x, e.loc.y)
+          const [x, y] = toMap(neu, u, v)
+          e.loc = { ...e.loc, x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), rz: Number(wrapDeg(e.loc.rz - old.yaw_deg + neu.yaw_deg).toFixed(1)) }
+        }
+        await api.updateSkillConfig('ENV', cur)
+        setEnv(cur)
+      }
+      const next = { ...cfg, origin: neu }
+      await api.updateSkillConfig('MAP', next as unknown as Record<string, unknown>)
+      setCfg(next)
+      setUndo({ origin: old, env: before ? JSON.parse(JSON.stringify(before)) : null })
+      setStatus(`axes moved to (${neu.x}, ${neu.y}) ${neu.yaw_deg}°` + (placesFollow ? ` · ${placesWithLoc} places moved with them` : ' · places unchanged'))
+    } catch (e) { setStatus(`error: ${(e as Error).message}`) }
+    setEditOrigin(false); setDraft(null); setAskApply(false); setPreviewShift(false)
+  }
+
+  const undoOrigin = async () => {
+    if (!cfg || !undo) return
+    try {
+      if (undo.env) { await api.updateSkillConfig('ENV', undo.env); setEnv(undo.env) }
+      const next = { ...cfg, origin: undo.origin }
+      await api.updateSkillConfig('MAP', next as unknown as Record<string, unknown>)
+      setCfg(next); setStatus('undone: axes' + (undo.env ? ' and places' : '') + ' are back as before')
+    } catch (e) { setStatus(`error: ${(e as Error).message}`) }
+    setUndo(null)
   }
 
   // ── pointer → world ─────────────────────────────────────────────────────────
@@ -341,6 +419,24 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
   }
   const hv = hover ? probe(hover.x, hover.y) : null
   const robotR = 0.28
+  const O = draft ?? cfg.origin ?? ZERO                  // the origin shown (the draft while editing)
+  const oa = O.yaw_deg * DEG
+  const hu = hover ? toUser(O, hover.x, hover.y) : null
+  const pu = pose ? toUser(O, pose.x, pose.y) : null
+  const prz = pose ? wrapDeg(pose.yaw / DEG - O.yaw_deg) : 0
+  // 1 m grid of the origin frame over the whole view
+  const gridLines = (() => {
+    if (!showGrid) return []
+    const corners = [[0, 0], [Wm, 0], [0, Hm], [Wm, Hm]].map(([sx, sy]) => toUser(O, view.origin[0] + sx, view.origin[1] + Hm - sy))
+    const us = corners.map(c => c[0]), vs = corners.map(c => c[1])
+    const [u0, u1, v0, v1] = [Math.floor(Math.min(...us)), Math.ceil(Math.max(...us)), Math.floor(Math.min(...vs)), Math.ceil(Math.max(...vs))]
+    const L: { a: [number, number]; b: [number, number]; k: number; axis: 'u' | 'v' }[] = []
+    for (let k = u0; k <= u1; k++) L.push({ a: toMap(O, k, v0), b: toMap(O, k, v1), k, axis: 'u' })
+    for (let k = v0; k <= v1; k++) L.push({ a: toMap(O, u0, k), b: toMap(O, u1, k), k, axis: 'v' })
+    return L
+  })()
+  const near = (p: [number, number], q: [number, number], r: number) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= r
+  const xTip = toMap(O, 0.6, 0)
 
   return (
     <div className="flex flex-col gap-2">
@@ -349,6 +445,8 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
         <span className="font-semibold text-gray-800">Map</span>
         <label className="flex items-center gap-1"><input type="checkbox" checked={showSurfaces} onChange={e => setShowSurfaces(e.target.checked)} />surfaces</label>
         <label className="flex items-center gap-1"><input type="checkbox" checked={showBlocked} onChange={e => setShowBlocked(e.target.checked)} />blocked areas</label>
+        <label className="flex items-center gap-1"><input type="checkbox" checked={showAxes} onChange={e => setShowAxes(e.target.checked)} />axes</label>
+        <label className="flex items-center gap-1"><input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} />grid</label>
         <label className="flex items-center gap-1"><input type="checkbox" checked={autoLift} onChange={e => setAutoLift(e.target.checked)} />auto lift</label>
         <label className="flex items-center gap-1">height
           <input className="w-16 border border-gray-300 rounded px-1 py-0.5" placeholder="auto" value={manualH} onChange={e => setManualH(e.target.value)} />m
@@ -357,23 +455,55 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
         <button className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" onClick={() => { api.cancelRun(); setStatus('stop sent') }}>Stop</button>
         <button className="text-blue-600 hover:underline" onClick={() => { setTrail([]); reload() }}>reload</button>
         <MapUpdater clients={clients} current={cfg.source?.connection} onSaved={reload} />
+        {!editOrigin
+          ? <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" onClick={startEdit} title="Move / rotate the origin of the coordinates shown on this map">✥ Edit origin</button>
+          : draft && (
+            <span className="inline-flex items-center gap-1 bg-yellow-50 border border-yellow-300 rounded px-2 py-0.5">
+              origin x<input className="w-14 border border-gray-300 rounded px-1" value={draft.x.toFixed(2)} onChange={e => Number.isFinite(Number(e.target.value)) && setDraft({ ...draft, x: Number(e.target.value) })} />
+              y<input className="w-14 border border-gray-300 rounded px-1" value={draft.y.toFixed(2)} onChange={e => Number.isFinite(Number(e.target.value)) && setDraft({ ...draft, y: Number(e.target.value) })} />
+              yaw<input className="w-12 border border-gray-300 rounded px-1" value={draft.yaw_deg.toFixed(1)} onChange={e => Number.isFinite(Number(e.target.value)) && setDraft({ ...draft, yaw_deg: Number(e.target.value) })} />°
+              <button className="px-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50" onClick={() => setDraft({ ...ZERO })} title="the robot map's own origin">map origin</button>
+              <button className="px-1.5 rounded bg-blue-600 text-white hover:bg-blue-700" onClick={() => setAskApply(true)}>Apply…</button>
+              <button className="px-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50" onClick={cancelEdit}>Cancel</button>
+            </span>)}
         <span className="ml-auto text-gray-500">click: go (keeps heading) · ← →: rotate {cfg.rotate?.step_deg ?? 15}° · dots: saved places</span>
       </div>
+
+      {sim.bar}
 
       {/* map */}
       <div ref={wrapRef} tabIndex={0} onKeyDown={onKey}
            className="relative w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
            style={{ aspectRatio: `${view.width} / ${view.height}` }}>
         <svg ref={svgRef} viewBox={`0 0 ${Wm} ${Hm}`} className="absolute inset-0 w-full h-full"
-             style={{ cursor: hv?.blocked ? 'not-allowed' : busy ? 'progress' : 'crosshair' }}
+             style={{ cursor: sim.editing ? (sim.dragging ? 'grabbing' : sim.adding ? 'copy' : 'default') : editOrigin ? (drag ? 'grabbing' : 'grab') : hv?.blocked ? 'not-allowed' : busy ? 'progress' : 'crosshair' }}
+             onMouseDown={e => {
+               const w = toWorld(e); if (!w) return
+               if (sim.down(w)) { e.preventDefault(); return }    // no native image drag stealing the mouse
+               if (!editOrigin || !draft) return
+               if (near(w, xTip, 0.2)) { e.preventDefault(); setDrag('rotate') }
+               else if (near(w, [draft.x, draft.y], 0.3)) { e.preventDefault(); setDrag('move') }
+             }}
+             onMouseUp={() => { sim.up(); setDrag(null) }}
              onMouseMove={e => { const w = toWorld(e); const r = wrapRef.current?.getBoundingClientRect()
-                                 if (w && r) setHover({ x: w[0], y: w[1], sx: e.clientX - r.left, sy: e.clientY - r.top }) }}
-             onMouseLeave={() => setHover(null)}
-             onClick={e => { wrapRef.current?.focus(); const w = toWorld(e); if (w) goTo(w[0], w[1]) }}>
+                                 if (w && r) setHover({ x: w[0], y: w[1], sx: e.clientX - r.left, sy: e.clientY - r.top })
+                                 if (w) sim.move(w)
+                                 if (w && draft && drag === 'move') setDraft({ ...draft, x: w[0], y: w[1] })
+                                 if (w && draft && drag === 'rotate') setDraft({ ...draft, yaw_deg: Math.atan2(w[1] - draft.y, w[0] - draft.x) / DEG }) }}
+             onMouseLeave={() => { setHover(null); setDrag(null) }}
+             onClick={e => { wrapRef.current?.focus(); const w = toWorld(e); if (w && sim.click(w)) return; if (editOrigin) return; if (w) goTo(w[0], w[1]) }}>
           {frameSrc
             ? <image href={frameSrc} x={0} y={0} width={Wm} height={Hm} preserveAspectRatio="none" />
             : bg ? placeImg(bg, 1) : placeImg(occ, 0.6)}
           {showBlocked && occ?.tintUrl && placeImg(occ, 1, occ.tintUrl)}
+          {gridLines.map(({ a, b, k, axis }) => {
+            const [x1, y1] = S(...a), [x2, y2] = S(...b)
+            return <line key={`${axis}${k}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={k === 0 ? 'rgba(60,60,60,0.45)' : 'rgba(60,60,60,0.16)'} strokeWidth={k === 0 ? 0.015 : 0.01} pointerEvents="none" />
+          })}
+          {showGrid && gridLines.filter(l => l.k !== 0).map(({ k, axis }) => {     // tick numbers along the axes
+            const [tx, ty] = S(...(axis === 'u' ? toMap(O, k, -0.12) : toMap(O, 0.08, k)))
+            return <text key={`t${axis}${k}`} x={tx} y={ty} fontSize={0.12} fill="rgba(60,60,60,0.75)" textAnchor={axis === 'u' ? 'middle' : 'start'} pointerEvents="none">{k}</text>
+          })}
           {showSurfaces && (cfg.surfaces ?? []).map(s => {
             const pts = surfaceCorners(s).map(([x, y]) => S(x, y).join(',')).join(' ')
             const [lx, ly] = S(s.centre[0], s.centre[1])
@@ -402,6 +532,51 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
                 <line x1={rx} y1={ry} x2={rx + 0.45 * Math.cos(pose.yaw)} y2={ry - 0.45 * Math.sin(pose.yaw)} stroke="rgb(28,92,171)" strokeWidth={0.05} strokeLinecap="round" />
               </g>)
           })()}
+          {pose && showAxes && Math.abs(prz) > 1 && (() => {      // heading arc: origin x axis -> robot heading
+            const [rx, ry] = S(pose.x, pose.y), R = 0.42, a0 = oa, a1 = oa + prz * DEG
+            const p0 = [rx + R * Math.cos(a0), ry - R * Math.sin(a0)], p1 = [rx + R * Math.cos(a1), ry - R * Math.sin(a1)]
+            const am = (a0 + a1) / 2
+            return (
+              <g pointerEvents="none">
+                <line x1={rx} y1={ry} x2={p0[0]} y2={p0[1]} stroke="rgba(220,38,38,0.6)" strokeWidth={0.015} strokeDasharray="0.04 0.03" />
+                <path d={`M ${p0[0]} ${p0[1]} A ${R} ${R} 0 ${Math.abs(prz) > 180 ? 1 : 0} ${prz > 0 ? 0 : 1} ${p1[0]} ${p1[1]}`} fill="none" stroke="rgb(28,92,171)" strokeWidth={0.02} />
+                <text x={rx + (R + 0.14) * Math.cos(am)} y={ry - (R + 0.14) * Math.sin(am)} fontSize={0.13} textAnchor="middle" fill="rgb(28,92,171)">{prz.toFixed(0)}°</text>
+              </g>)
+          })()}
+          {sim.overlay(S)}
+          {askApply && previewShift && draft && shiftedPlaces(cfg.origin ?? ZERO, draft).map(p => {   // where places would go
+            const [ax, ay] = S(...p.from), [bx, by] = S(...p.to)
+            return (
+              <g key={`ghost-${p.name}`} pointerEvents="none">
+                <line x1={ax} y1={ay} x2={bx} y2={by} stroke="rgb(234,88,12)" strokeWidth={0.02} strokeDasharray="0.06 0.04" />
+                <circle cx={bx} cy={by} r={0.1} fill="rgba(234,88,12,0.55)" stroke="white" strokeWidth={0.02} />
+              </g>)
+          })}
+          {showAxes && (() => {                                     // the origin and its axes
+            const [ox, oy] = S(O.x, O.y), [xx, xy] = S(...toMap(O, 0.6, 0)), [yx, yy] = S(...toMap(O, 0, 0.6))
+            const head = (tx: number, ty: number, ang: number, c: string) => {
+              const l = 0.12, w = 0.06
+              const bx = tx - l * Math.cos(ang), by = ty + l * Math.sin(ang)
+              return <polygon points={`${tx},${ty} ${bx - w * Math.sin(ang)},${by - w * Math.cos(ang)} ${bx + w * Math.sin(ang)},${by + w * Math.cos(ang)}`} fill={c} />
+            }
+            return (
+              <g pointerEvents="none">
+                <line x1={ox} y1={oy} x2={xx} y2={xy} stroke="rgb(220,38,38)" strokeWidth={0.04} />{head(xx, xy, oa, 'rgb(220,38,38)')}
+                <line x1={ox} y1={oy} x2={yx} y2={yy} stroke="rgb(22,163,74)" strokeWidth={0.04} />{head(yx, yy, oa + Math.PI / 2, 'rgb(22,163,74)')}
+                <circle cx={ox} cy={oy} r={editOrigin ? 0.1 : 0.06} fill={editOrigin ? 'rgb(250,204,21)' : 'white'} stroke="rgb(30,30,30)" strokeWidth={0.02} />
+                {editOrigin && <circle cx={xx} cy={xy} r={0.09} fill="none" stroke="rgb(220,38,38)" strokeWidth={0.025} strokeDasharray="0.04 0.03" />}
+                <text x={xx + 0.08 * Math.cos(oa)} y={xy - 0.08 * Math.sin(oa) + 0.05} fontSize={0.15} fontWeight="bold" fill="rgb(220,38,38)">x</text>
+                <text x={yx - 0.08 * Math.sin(oa) - 0.04} y={yy - 0.08 * Math.cos(oa)} fontSize={0.15} fontWeight="bold" fill="rgb(22,163,74)">y</text>
+                <text x={ox + 0.1} y={oy + 0.2} fontSize={0.12} fill="rgb(30,30,30)">origin{editOrigin ? ` (${O.x.toFixed(2)}, ${O.y.toFixed(2)}) ${O.yaw_deg.toFixed(1)}°` : ''}</text>
+              </g>)
+          })()}
+          <g pointerEvents="none">                                   {/* scale bar */}
+            <rect x={0.25} y={Hm - 0.42} width={1.2} height={0.3} fill="rgba(255,255,255,0.75)" rx={0.04} />
+            <line x1={0.35} y1={Hm - 0.2} x2={1.35} y2={Hm - 0.2} stroke="rgb(30,30,30)" strokeWidth={0.03} />
+            <line x1={0.35} y1={Hm - 0.25} x2={0.35} y2={Hm - 0.15} stroke="rgb(30,30,30)" strokeWidth={0.02} />
+            <line x1={1.35} y1={Hm - 0.25} x2={1.35} y2={Hm - 0.15} stroke="rgb(30,30,30)" strokeWidth={0.02} />
+            <text x={0.85} y={Hm - 0.25} fontSize={0.12} textAnchor="middle" fill="rgb(30,30,30)">1 m</text>
+          </g>
           {hover && (() => { const [hx, hy] = S(hover.x, hover.y); return <circle cx={hx} cy={hy} r={robotR} fill="none" stroke={hv?.blocked ? 'rgb(220,38,38)' : 'rgb(22,163,74)'} strokeWidth={0.025} pointerEvents="none" /> })()}
         </svg>
 
@@ -409,7 +584,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
         {hover && hv && (
           <div className="absolute pointer-events-none text-[11px] font-mono bg-white/90 border border-gray-300 rounded px-1.5 py-0.5 shadow-sm"
                style={{ left: Math.min(hover.sx + 14, (wrapRef.current?.clientWidth ?? 600) - 230), top: hover.sy + 14 }}>
-            <div>x {hover.x.toFixed(2)}  y {hover.y.toFixed(2)}  z {hv.z == null ? '?' : hv.z.toFixed(hv.surface ? 3 : 2)}{hv.zIsTop ? ' (top of obstacle)' : ''}</div>
+            <div>x {hu![0].toFixed(2)}  y {hu![1].toFixed(2)}  z {hv.z == null ? '?' : hv.z.toFixed(hv.surface ? 3 : 2)}{hv.zIsTop ? ' (top of obstacle)' : ''}</div>
             {hv.surface && <div className="text-blue-700">{hv.surface.name}</div>}
             {pose && <div className="text-gray-500">{Math.hypot(hover.x - pose.x, hover.y - pose.y).toFixed(2)} m from the robot</div>}
             <div className={hv.blocked ? 'text-red-600' : 'text-green-700'}>{hv.blocked ? 'blocked for the base' : 'reachable'}</div>
@@ -417,9 +592,42 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
         )}
       </div>
 
+      {askApply && draft && (() => {
+        const moves = shiftedPlaces(cfg.origin ?? ZERO, draft).sort((a, b) => b.d - a.d)
+        const far = moves[0]
+        return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setAskApply(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-5 max-w-md text-sm text-gray-700" onClick={e => e.stopPropagation()}>
+            <div className="font-semibold text-gray-900 mb-1">Move the axes here?</div>
+            <p className="mb-3 text-gray-600">
+              The axes go to ({draft.x.toFixed(2)}, {draft.y.toFixed(2)}), turned {wrapDeg(draft.yaw_deg).toFixed(0)}°.
+              What should happen to your {placesWithLoc} saved places?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button className="text-left px-3 py-2 rounded border-2 border-blue-500 bg-blue-50 hover:bg-blue-100" onClick={() => applyOrigin(false)}>
+                <b>Leave places where they are</b> <span className="text-xs font-medium text-blue-700">· recommended</span><br />
+                <span className="text-xs text-gray-600">Every place stays at the same spot in the house, so the robot still goes to the same
+                  places. Only the coordinates shown on this map change.</span>
+              </button>
+              <button className="text-left px-3 py-2 rounded border border-orange-300 hover:bg-orange-50"
+                      onMouseEnter={() => setPreviewShift(true)} onMouseLeave={() => setPreviewShift(false)} onClick={() => applyOrigin(true)}>
+                <b className="text-orange-700">Move places together with the axes</b><br />
+                <span className="text-xs text-gray-600">Every place is shifted and turned like the axes
+                  {far && far.d > 0.01 ? <> — <b>{far.name}</b> would move {far.d.toFixed(1)} m</> : null}.
+                  Only use this if the map itself has moved (for example the robot re-mapped the house and
+                  everything is offset). Hover to see where they would go.</span>
+              </button>
+              <button className="px-3 py-1.5 rounded text-gray-500 hover:bg-gray-100" onClick={() => { setAskApply(false); setPreviewShift(false) }}>Cancel</button>
+            </div>
+            <p className="mt-3 text-xs text-gray-400">The robot always navigates in its own map; the furniture outlines stay attached to the map. You can undo right after.</p>
+          </div>
+        </div>)
+      })()}
+
       {/* status */}
       <div className="flex items-center gap-4 text-xs font-mono text-gray-600">
-        <span>robot {pose ? `x ${pose.x.toFixed(2)}  y ${pose.y.toFixed(2)}  rz ${(pose.yaw / DEG).toFixed(1)}°` : '—'}</span>
+        <span>robot {pose && pu ? `x ${pu[0].toFixed(2)}  y ${pu[1].toFixed(2)}  rz ${prz.toFixed(1)}°` : '—'}{cfg.origin && (cfg.origin.x || cfg.origin.y || cfg.origin.yaw_deg) ? ' (origin frame)' : ''}</span>
+        {undo && <button className="px-2 py-0.5 rounded border border-gray-300 font-sans hover:bg-gray-50" onClick={undoOrigin}>↶ Undo origin change</button>}
         <span className={status.startsWith('error') || status.includes('failed') || status.includes('blocked') || status.includes('short') ? 'text-red-600' : 'text-gray-800'}>{status}</span>
       </div>
     </div>

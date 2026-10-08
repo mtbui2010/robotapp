@@ -567,6 +567,15 @@ export const api = {
     return r.json()
   },
 
+  // Send data straight to a device agent (POST /agent/<name>/send) — e.g. the simulation's sim_command.
+  async agentSend(name: string, data: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const r = await fetch(`${getAgentUrl()}/agent/${encodeURIComponent(name)}/send`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+    })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  },
+
   // Latest value of a device agent, read-only (GET /agent/<name>/get) — unlike runSkill it never
   // clears a pending cancel, so it is safe to poll.
   async agentGet(name: string): Promise<unknown> {

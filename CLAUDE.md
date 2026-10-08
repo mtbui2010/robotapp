@@ -653,6 +653,16 @@ m/px, row 0 = top. Behaviour:
   robot, reachable / blocked.
 - **Save as place** → current pose + height as a new ENV entry (`default_mode: front`,
   `source: "map"`; kcare-sim's `make_kcare_sim_location.py` keeps such entries when it regenerates ENV).
+- **origin** (`MAP.origin {x, y, yaw_deg}`, map frame): drawn as red x / green y axes with a 1 m grid,
+  tick numbers, a 1 m scale bar and an arc from the origin's x axis to the robot's heading. Hover, the
+  robot readout and angles are shown in this frame; goals, ENV and the robot stay in the robot's map frame.
+  **✥ Edit origin**: drag the dot to move, the red arrow tip to rotate (← → 5°, Shift 1°), or type x / y /
+  yaw; **Apply…** asks what happens to the ENV places: *Leave places where they are* (recommended,
+  first: same spots in the house, only the shown coordinates change) or *Move places together with the
+  axes* (only when the map itself moved, e.g. after re-mapping; hovering it previews where every place
+  would go, and the popup names the place that moves farthest). **↶ Undo origin change** restores the
+  previous origin (and ENV, if it was moved). Map-snapshot
+  and kcare-sim's `make_kcare_sim_location.py` keep `origin` when they rewrite `MAP`.
 
 The pose is polled with `GET /agent/<name>/get`, never `POST /skill/mobile_pose`: every `POST /skill`
 calls `begin_run()`, which would clear a Stop / Cancel in progress. The sim's `MAP` group is written by
@@ -670,6 +680,28 @@ pair to `map/history/`, and sets `MAP.image = {file, frame}`, `MAP.layers.occupa
 `MAP.source` — other MAP keys are kept. `MAP.image.file` is drawn under everything (else the
 occupancy layer, as before). Without `pose` / `goal` the map is **view-only** (clicks explain why).
 kcare_bucheon: 267×422 cells at 5 cm, origin (−3.8, −14.85); pose / goal / places not set yet.
+
+**Sim bar: reset / scenes / object + furniture catalog (sim only, 2026-10-08).** Shown when
+`MAP.sim = {agent}` is set (kcare-sim: `sim_command`, a ROS-service connection to the bridge's
+`/sim/command`, `sim_msgs/SimCommand` = JSON string in / out), in
+[frontend/components/mapSim.tsx](frontend/components/mapSim.tsx) (`useSimEditor`, wired into
+`MapPanel`'s mouse / key handlers and SVG). Every command is `POST /agent/<agent>/send {cmd, …}`:
+
+| UI | cmd | what |
+|---|---|---|
+| ↺ objects / ↺ + drawers / ↺ everything | `reset {what: objects\|scene\|all}` | back to the loaded scene's poses; *everything* also puts the robot at its start and clears the world-state beliefs |
+| scene ▾ + Load | `load {name}` (base house = `apply {scene:{}}`) | rebuild + hot reload, ~7 s; the robot stays where it is |
+| Save as… | `save {name}` | `config/scenes/<name>.yaml`: the scene's furniture changes + every object (untouched ones keep `surface`/`offset`, hand-moved ones their live `at` + `quat`) |
+| Delete | `delete {name}` | the YAML only; the house as it is stays |
+| ✎ objects: drag | `move_object {body, x, y, yaw_deg?}` | **instant**, no rebuild: dropped upright on whatever is under it (refused on the robot) |
+| ✎ objects / ✎ furniture: + add, Del, drag / ← → (furniture) | collected in a draft → **Apply changes** = `apply {scene}` | one rebuild of `house.xml`, the occupancy / height maps and kcare's ENV + MAP (returned and PUT by the panel) |
+
+The furniture catalog (desk, dining / coffee / side table, stool, chest, pedestal, shell / wood / office
+chair, wire / storage shelf) and the object list (every downloaded YCB model) come from `state`. Things
+on a piece of furniture follow it when it moves; a removed piece takes its ENV surface with it. Gotchas
+fixed while testing: the SVG `<image>` started a native image drag on mousedown, which swallowed every
+following mousemove / mouseup (now `preventDefault`); the edit row has a fixed height so selecting
+something cannot shift the map under the mouse; ← → / Del never turn the robot while a mode is on.
 
 ### Planner guide versions
 

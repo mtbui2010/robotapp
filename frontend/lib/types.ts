@@ -174,7 +174,27 @@ export interface MapConfig {
   rotate?: MapSkillCall & { step_deg?: number }        // placeholder {deg}
   lift?: MapSkillCall & { clearance?: number; reach_m?: number }   // placeholder {h} [m]
   confirm_goal?: boolean               // ask before every motion (real robots)
+  // the user's origin: a frame on the map [map-frame x, y in m, yaw in deg]. Coordinates shown in the Map tab
+  // (hover, robot, angles) are relative to it; the robot and ENV keep using the robot's own map frame.
+  origin?: MapOrigin
+  // simulation only: the agent of the sim's control service (kcare-sim /sim/command) — reset, move / add /
+  // remove objects and furniture, save / load scenes
+  sim?: { agent: string }
 }
+
+// kcare-sim /sim/command "state" reply (see MapPanel's Sim bar)
+export interface SimObject { body: string; name: string; ycb: string | null; surface: string | null; pos: number[]; yaw_deg: number; quat: number[]
+                            moved?: boolean; spec?: { surface?: string; offset?: number[]; yaw_deg?: number } | null }
+export interface SimFurniture { pos: [number, number]; yaw_deg: number; type: string | null; editable: boolean
+                                footprint?: { centre: [number, number]; size: [number, number]; yaw_deg: number } }
+export interface SimState {
+  ok: boolean; msg?: string
+  scene: string; dirty: boolean; scene_def: Record<string, unknown>; scenes: string[]
+  objects: SimObject[]; furniture: Record<string, SimFurniture>
+  catalog: { furniture: Record<string, string>; objects: string[] }; spots: string[]
+}
+
+export interface MapOrigin { x: number; y: number; yaw_deg: number }
 
 /** GET /config/locations. Several machines may share the robot's configs
  *  folder; `others` are the live ones (presence heartbeat) and their site —
