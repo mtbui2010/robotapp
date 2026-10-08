@@ -1,4 +1,4 @@
-import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, LlmInfo } from './types'
+import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, LlmInfo, LocationsInfo } from './types'
 
 // ------------------------------------------------------------------
 // Robot registry — multiple named robots, one active at a time.
@@ -251,6 +251,15 @@ export const api = {
     } catch { return null }
   },
 
+  /** Names of every skill-config group the agent serves (GET /skill-configs). */
+  async listSkillConfigNames(): Promise<string[]> {
+    try {
+      const r = await fetch(`${getAgentUrl()}/skill-configs`)
+      if (!r.ok) return []
+      return Object.keys(await r.json())
+    } catch { return [] }
+  },
+
   async updateSkillConfig(name: string, value: Record<string, unknown>) {
     const r = await fetch(`${getAgentUrl()}/skill-configs/${encodeURIComponent(name)}`, {
       method: 'PUT',
@@ -492,7 +501,7 @@ export const api = {
   // Each robot backend stores one config folder per deployment site (its own
   // connections + global configs). One site is active at a time; switching is
   // a live hot-reload on the backend.
-  async listLocations(): Promise<{ locations: string[]; active: string }> {
+  async listLocations(): Promise<LocationsInfo> {
     try {
       const r = await fetch(`${getAgentUrl()}/config/locations`)
       if (!r.ok) return { locations: [], active: '' }
@@ -500,7 +509,7 @@ export const api = {
     } catch { return { locations: [], active: '' } }
   },
 
-  async activateLocation(name: string): Promise<{ locations: string[]; active: string }> {
+  async activateLocation(name: string): Promise<LocationsInfo> {
     const r = await fetch(`${getAgentUrl()}/config/locations/${encodeURIComponent(name)}/activate`, {
       method: 'POST',
     })
@@ -511,7 +520,7 @@ export const api = {
     return r.json()
   },
 
-  async createLocation(name: string, copyFrom?: string): Promise<{ locations: string[]; active: string }> {
+  async createLocation(name: string, copyFrom?: string): Promise<LocationsInfo> {
     const r = await fetch(`${getAgentUrl()}/config/locations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -524,7 +533,7 @@ export const api = {
     return r.json()
   },
 
-  async renameLocation(name: string, newName: string): Promise<{ locations: string[]; active: string }> {
+  async renameLocation(name: string, newName: string): Promise<LocationsInfo> {
     const r = await fetch(`${getAgentUrl()}/config/locations/${encodeURIComponent(name)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -537,7 +546,7 @@ export const api = {
     return r.json()
   },
 
-  async deleteLocation(name: string): Promise<{ locations: string[]; active: string }> {
+  async deleteLocation(name: string): Promise<LocationsInfo> {
     const r = await fetch(`${getAgentUrl()}/config/locations/${encodeURIComponent(name)}`, {
       method: 'DELETE',
     })
@@ -567,6 +576,20 @@ export const api = {
   },
 
   // URL of a static file of the active site (map layers), GET /config/locations/_active/files/<path>.
+  /** Save a SLAM map connection (nav_msgs/OccupancyGrid) as the active site's map files and
+   *  update its MAP config (POST /map/snapshot). Throws with the backend's reason. */
+  async mapSnapshot(connection: string, inflate_m = 0.3): Promise<{
+    ok: boolean; frame: { origin: [number, number]; resolution: number; width: number; height: number }
+    size_m: [number, number]; cells: { known: number; occupied: number; unknown: number }; missing: string[] }> {
+    const r = await fetch(`${getAgentUrl()}/map/snapshot`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connection, inflate_m }),
+    })
+    const body = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${r.status}`)
+    return body
+  },
+
   siteFileUrl(path: string): string {
     return `${getAgentUrl()}/config/locations/_active/files/${path.split('/').map(encodeURIComponent).join('/')}`
   },

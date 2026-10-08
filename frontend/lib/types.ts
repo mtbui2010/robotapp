@@ -159,14 +159,30 @@ export interface MapSkillCall {
 }
 
 export interface MapConfig {
-  image?: { connection?: string; url?: string; frame: MapFrame }
+  // the picture under everything: a camera connection (sim top-down view) or a site file
+  // (map/map.png written by POST /map/snapshot from a SLAM map connection)
+  image?: { connection?: string; url?: string; file?: string; frame: MapFrame }
+  // where the saved map came from (POST /map/snapshot): the OccupancyGrid connection etc.
+  source?: { connection: string; saved_at?: string; inflate_m?: number; occupied?: number }
   layers?: { occupancy?: MapLayer; height?: MapLayer }
   surfaces?: MapSurface[]
   places?: 'ENV' | null                // draw ENV entries; clicking one runs move::<name>
   // robot pose: a device agent read with GET /agent/<agent>/get (never clears a pending cancel)
-  pose: { agent: string; x: string; y: string; orientation?: string; yaw?: string; angle?: 'deg' | 'rad'; period_s?: number }
-  goal: MapSkillCall                   // placeholders {x} {y} {rz} (rz in degrees, current heading)
+  // without pose / goal the map is view-only
+  pose?: { agent: string; x: string; y: string; orientation?: string; yaw?: string; angle?: 'deg' | 'rad'; period_s?: number }
+  goal?: MapSkillCall                  // placeholders {x} {y} {rz} (rz in degrees, current heading)
   rotate?: MapSkillCall & { step_deg?: number }        // placeholder {deg}
   lift?: MapSkillCall & { clearance?: number; reach_m?: number }   // placeholder {h} [m]
   confirm_goal?: boolean               // ask before every motion (real robots)
+}
+
+/** GET /config/locations. Several machines may share the robot's configs
+ *  folder; `others` are the live ones (presence heartbeat) and their site —
+ *  two machines on one site share its connections and Global Configs.
+ *  `clash`: another machine runs with this backend's host id. */
+export interface LocationsInfo {
+  locations: string[]
+  active: string
+  host?: string
+  others?: { host: string; location: string | null; pkg?: string | null; age_sec: number; clash?: boolean }[]
 }

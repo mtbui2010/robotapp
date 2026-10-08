@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
-import type { ClientEntry, ClientType, RosScanResult } from '../lib/types'
+import type { ClientEntry, ClientType, LocationsInfo, RosScanResult } from '../lib/types'
 import type { Robot } from '../lib/api'
 import TEMPLATES_RAW from '../lib/ros_templates.json'
 import PanelSearch from './PanelSearch'
@@ -194,6 +194,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   >(null)
   const [locNameInput, setLocNameInput]   = useState('')
   const [locCopyFrom,  setLocCopyFrom]    = useState('')
+  // Other live machines sharing this robot's configs folder, and their site.
+  const [locOthers, setLocOthers]         = useState<NonNullable<LocationsInfo['others']>>([])
+  const [locHost, setLocHost]             = useState('')
 
   const reloadRobots = useCallback(() => {
     setRobots(api.listRobots())
@@ -202,14 +205,27 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
 
   const reloadLocations = useCallback(async () => {
     try {
-      const { locations: locs, active } = await api.listLocations()
+      const { locations: locs, active, others, host } = await api.listLocations()
       setLocations(locs)
       setActiveLocation(active)
+      setLocOthers(others ?? [])
+      setLocHost(host ?? '')
     } catch {
       setLocations([])
       setActiveLocation('')
+      setLocOthers([])
     }
   }, [])
+
+  // The other machines come and go: refresh who is on which site.
+  useEffect(() => {
+    const t = setInterval(() => {
+      api.listLocations().then(r => setLocOthers(r.others ?? [])).catch(() => {})
+    }, 30000)
+    return () => clearInterval(t)
+  }, [])
+  const locUsers = (loc: string) => locOthers.filter(o => o.location === loc && !o.clash).map(o => o.host)
+  const locClash = locOthers.find(o => o.clash)
 
   useEffect(() => {
     reloadRobots()
@@ -316,6 +332,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       const res = await api.activateLocation(name)
       setLocations(res.locations)
       setActiveLocation(res.active)
+      setLocOthers(res.others ?? [])
       onAgentConnect?.()
       await refresh()
     } catch (e) {
@@ -361,6 +378,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
         const res = await api.renameLocation(locEditor.original, name)
         setLocations(res.locations)
         setActiveLocation(res.active)
+        setLocOthers(res.others ?? [])
         closeLocEditor()
       }
     } catch (e) {
@@ -849,6 +867,11 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           <span className="text-[10px] text-gray-400" title="Each location has its own connections + global configs. Switching hot-reloads the robot.">
             connections + global configs
           </span>
+          {locHost && (
+            <span className="text-[10px] text-gray-400" title="This backend's host id (ROBOT_AGENT_HOST or hostname): per-machine files are named after it">
+              · {locHost}
+            </span>
+          )}
           {locBusy && <span className="ml-auto text-[10px] text-gray-500">switching…</span>}
         </div>
 
@@ -861,7 +884,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           >
             {locations.length === 0 && <option value="">(connect a robot)</option>}
             {locations.map(l => (
-              <option key={l} value={l}>{l}{l === 'default' ? ' (default)' : ''}</option>
+              <option key={l} value={l}>
+                {l}{l === 'default' ? ' (default)' : ''}{locUsers(l).length ? ` — also on ${locUsers(l).join(', ')}` : ''}
+              </option>
             ))}
           </select>
           <button
@@ -887,6 +912,21 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
             Delete
           </button>
         </div>
+
+        {activeLocation && locUsers(activeLocation).length > 0 && (
+          <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            ⚠ {locUsers(activeLocation).join(', ')} {locUsers(activeLocation).length > 1 ? 'are' : 'is'} also
+            on <b>{activeLocation}</b>: both robots share its connections and Global Configs (edits are
+            merged, not lost). Give each robot its own location.
+          </div>
+        )}
+        {locClash && (
+          <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">
+            ⚠ Another machine also runs as host <b>{locHost}</b> (location {locClash.location ?? '?'}): its
+            active location, Robot State, logs and task runs would mix with this one&apos;s.
+            Set <code>ROBOT_AGENT_HOST</code> to a different name on one of them.
+          </div>
+        )}
 
         {locEditor && (
           <div className="border border-gray-200 rounded p-2 bg-gray-50 flex flex-col gap-1.5">

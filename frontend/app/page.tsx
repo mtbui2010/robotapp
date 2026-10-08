@@ -518,14 +518,6 @@ export default function Home() {
             </button>
           </div>
           <GuidePanel />
-          {/* Always live, unlike the Agent panel's Stop: a skill run from the
-              CLI or another client can be moving the robot while this tab shows
-              nothing running. */}
-          <button onClick={stop}
-            title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
-            className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded">
-            Cancel
-          </button>
         </div>
       </header>
 
@@ -592,6 +584,14 @@ export default function Home() {
                   {t === 'cameras' ? 'Cameras' : 'Map'}
                 </button>
               ))}
+              {/* Always live, unlike the Agent panel's Stop: a skill run from the
+                  CLI or another client can be moving the robot while this tab
+                  shows nothing running. */}
+              <button onClick={stop}
+                title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
+                className="ml-auto self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded">
+                Cancel
+              </button>
             </div>
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} />

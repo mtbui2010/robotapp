@@ -4,10 +4,18 @@ import { api } from '../lib/api'
 import { ConfigFieldsEditor, type ConfigView } from './ConfigFields'
 import { EnvNamesEditor } from './EnvNamesEditor'
 import PanelSearch from './PanelSearch'
+import SKILL_CONFIGS_RAW from '../lib/skill_configs.json'
 
-// Proxies that aren't tied to a specific skill, exposed for global edit.
-const PROXY_NAMES = ['ENV', 'HOME_LOC'] as const
-type ProxyName = typeof PROXY_NAMES[number]
+// Config groups that aren't tied to a specific skill, exposed for global edit:
+// ENV and HOME_LOC first, then every other group the agent serves that no skill
+// edits in the Skill panel (lib/skill_configs.json) — MAP, HRI_CONFIGS,
+// QA_CONFIGS, KR2EN … Used to be just ENV / HOME_LOC, which left those groups
+// with no place in the UI at all.
+const FIRST_NAMES = ['ENV', 'HOME_LOC']
+const SKILL_GROUPS = new Set(Object.values(
+  (SKILL_CONFIGS_RAW as { skill_config_map: Record<string, string[] | string> }).skill_config_map,
+).flatMap(v => (Array.isArray(v) ? v : [v])))
+type ProxyName = string
 
 // ENV params the Location aliases block edits (`<location>.aliases`).
 const isNameLeaf = (path: string) => /^[^.]*\.aliases$/.test(path)
@@ -23,7 +31,8 @@ const parseObject = (text: string): Record<string, unknown> | null => {
 // location (config site) changes, so the live global-config values are refetched.
 export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [texts,       setTexts]       = useState<Record<string, string>>({})
-  const [loading,     setLoading]     = useState<Set<string>>(new Set(PROXY_NAMES))
+  const [names,       setNames]       = useState<string[]>(FIRST_NAMES)
+  const [loading,     setLoading]     = useState<Set<string>>(new Set(FIRST_NAMES))
   const [loadErrors,  setLoadErrors]  = useState<Record<string, string>>({})
   const [saveErrors,  setSaveErrors]  = useState<Record<string, string>>({})
   const [savedAt,     setSavedAt]     = useState<Record<string, number>>({})
@@ -31,7 +40,7 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [configView,  setConfigView]  = useState<Record<string, ConfigView>>({})
   // The whole block, and each config in it, start folded; the search box under
   // the header stays visible and opens the configs holding a match.
-  const [collapsed,   setCollapsed]   = useState<Set<string>>(new Set(PROXY_NAMES))
+  const [open,        setOpen]        = useState<Set<string>>(new Set())
   const [panelOpen,   setPanelOpen]   = useState(false)
   const [search,      setSearch]      = useState('')
   const q = search.trim().toLowerCase()
@@ -56,7 +65,17 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
       })
   }, [])
 
-  useEffect(() => { PROXY_NAMES.forEach(fetchOne) }, [fetchOne, refreshKey])
+  useEffect(() => {
+    let stale = false
+    api.listSkillConfigNames().then(all => {
+      if (stale) return
+      const extra = all.filter(n => !FIRST_NAMES.includes(n) && !SKILL_GROUPS.has(n)).sort()
+      const list = [...FIRST_NAMES, ...extra]
+      setNames(list)
+      list.forEach(fetchOne)
+    })
+    return () => { stale = true }
+  }, [fetchOne, refreshKey])
 
   const save = async (name: ProxyName) => {
     const text = texts[name]
@@ -78,8 +97,9 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
     }
   }
 
+  // every config starts folded
   const toggle = (name: ProxyName) =>
-    setCollapsed(s => {
+    setOpen(s => {
       const n = new Set(s)
       if (n.has(name)) n.delete(name); else n.add(name)
       return n
@@ -94,7 +114,7 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
       </button>
       <PanelSearch value={search} onChange={setSearch} placeholder="Search configs… (name, location, field)" />
 
-      {(panelOpen || q) && PROXY_NAMES.map(name => {
+      {(panelOpen || q) && names.map(name => {
         const isLoading   = loading.has(name)
         const loadErr     = loadErrors[name]
         const saveErr     = saveErrors[name]
@@ -102,7 +122,7 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
         const text        = texts[name]
         // While searching, show only the configs whose name or text matches, unfolded.
         if (q && !name.toLowerCase().includes(q) && !(text ?? '').toLowerCase().includes(q)) return null
-        const isCollapsed = q ? false : collapsed.has(name)
+        const isCollapsed = q ? false : !open.has(name)
         const view        = configView[name] ?? 'fields'
         const setView     = (v: ConfigView) => setConfigView(prev => ({ ...prev, [name]: v }))
 

@@ -50,7 +50,8 @@ function sample(r: Raster | null, x: number, y: number): number | null {
 
 async function loadRaster(layer: MapLayer | undefined): Promise<Raster | null> {
   if (!layer) return null
-  const blob = await (await fetch(api.siteFileUrl(layer.file))).blob()   // fetched blob: canvas stays untainted
+  // fetched blob: canvas stays untainted; no-store: "Update map" rewrites the same file
+  const blob = await (await fetch(api.siteFileUrl(layer.file), { cache: 'no-store' })).blob()
   const bmp = await createImageBitmap(blob)
   const cv = document.createElement('canvas')
   cv.width = bmp.width; cv.height = bmp.height
@@ -86,11 +87,47 @@ function surfaceCorners(s: MapSurface): [number, number][] {
     .map(([u, v]) => [s.centre[0] + u * Math.cos(a) - v * Math.sin(a), s.centre[1] + u * Math.sin(a) + v * Math.cos(a)])
 }
 
+// "Update map": save a SLAM map connection (ROS topic of nav_msgs/OccupancyGrid — kcare: /map
+// from the Slamtec bridge) as this site's map files + MAP config (POST /map/snapshot).
+function MapUpdater({ clients, current, onSaved }: { clients: ClientEntry[]; current?: string; onSaved: () => void }) {
+  const maps = clients.filter(c => String((c.config as Record<string, unknown>)?.data_interface ?? '').includes('OccupancyGrid'))
+  const [conn, setConn] = useState(current ?? '')
+  const [msg, setMsg] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { if (!conn && maps.length) setConn(current && maps.some(m => m.name === current) ? current : maps[0].name) },
+            [maps, conn, current])
+  if (!maps.length) return (
+    <span className="text-gray-400" title="Add a ROS topic connection with data_interface nav_msgs/msg/OccupancyGrid">
+      no SLAM map connection (Connections panel → ROS Topic, nav_msgs/msg/OccupancyGrid)
+    </span>)
+  const save = async () => {
+    if (!window.confirm(`Replace this site's map with the current "${conn}" map? (the old one is kept in map/history/)`)) return
+    setSaving(true); setMsg('saving…')
+    try {
+      const r = await api.mapSnapshot(conn)
+      setMsg(`saved ${r.size_m[0]}×${r.size_m[1]} m` + (r.missing.length ? ` · view only until MAP has ${r.missing.join(' / ')}` : ''))
+      onSaved()
+    } catch (e) { setMsg(`failed: ${(e as Error).message}`) }
+    finally { setSaving(false) }
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <select className="border border-gray-300 rounded px-1 py-0.5 bg-white" value={conn} onChange={e => setConn(e.target.value)}
+              title="SLAM map connection (nav_msgs/OccupancyGrid)">
+        {maps.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+      </select>
+      <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40" disabled={saving || !conn} onClick={save}
+              title="Save the connection's current map as this site's map (map/map.png, map/occupancy.png)">⟳ Update map</button>
+      {msg && <span className="text-gray-500">{msg}</span>}
+    </span>)
+}
+
 export default function MapPanel({ clients, running }: { clients: ClientEntry[]; running: boolean }) {
   const [cfg, setCfg]           = useState<MapConfig | null>(null)
   const [cfgError, setCfgError] = useState<string | null>(null)
   const [frameSrc, setFrameSrc] = useState('')                 // latest camera frame (data URL)
   const [occ, setOcc]           = useState<Raster | null>(null)
+  const [bg, setBg]             = useState<Raster | null>(null)  // image.file: the saved map picture
   const [hgt, setHgt]           = useState<Raster | null>(null)
   const [env, setEnv]           = useState<Record<string, EnvEntry>>({})
   const [pose, setPose]         = useState<Pose | null>(null)
@@ -111,9 +148,10 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
   const reload = useCallback(async () => {
     setCfgError(null)
     const c = (await api.getSkillConfig('MAP')) as MapConfig | null
-    if (!c || !c.pose || !c.goal) { setCfg(null); setCfgError('This site has no MAP config.'); return }
+    if (!c || !(c.image || c.layers?.occupancy)) { setCfg(null); setCfgError('This site has no MAP config.'); return }
     setCfg(c)
     loadRaster(c.layers?.occupancy).then(setOcc).catch(() => setOcc(null))
+    loadRaster(c.image?.file ? { file: c.image.file, frame: c.image.frame } : undefined).then(setBg).catch(() => setBg(null))
     loadRaster(c.layers?.height).then(setHgt).catch(() => setHgt(null))
     if (c.places === 'ENV') setEnv(((await api.getSkillConfig('ENV')) ?? {}) as Record<string, EnvEntry>)
   }, [])
@@ -141,7 +179,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
 
   // ── robot pose (read-only polling) ──────────────────────────────────────────
   useEffect(() => {
-    if (!cfg) return
+    if (!cfg?.pose) return
     const p = cfg.pose
     let stop = false
     const tick = async () => {
@@ -202,6 +240,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
 
   const goTo = useCallback(async (x: number, y: number) => {
     if (!cfg || busy) return
+    if (!cfg.goal || !cfg.pose) { setStatus('View only: add "pose" and "goal" to the MAP config to move the robot from the map.'); return }
     const pr = probe(x, y)
     if (pr.blocked) { setStatus(`(${x.toFixed(2)}, ${y.toFixed(2)}) is blocked for the base — pick a free (green) spot.`); return }
     if (!motionAllowed(`Move the robot to (${x.toFixed(2)}, ${y.toFixed(2)})`)) return
@@ -210,8 +249,9 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
       const rz = (pose?.yaw ?? 0) / DEG
       const r = await api.runSkill(cfg.goal.skill, fill(cfg.goal, { x, y, rz }))
       if (r.isdone === false) { setStatus(`move failed: ${String(r.msg ?? '')}`); return }
-      const v = await api.agentGet(cfg.pose.agent).catch(() => null)
-      const px = v ? Number(getPath(v, cfg.pose.x)) : x, py = v ? Number(getPath(v, cfg.pose.y)) : y
+      const pc = cfg.pose
+      const v = await api.agentGet(pc.agent).catch(() => null)
+      const px = v ? Number(getPath(v, pc.x)) : x, py = v ? Number(getPath(v, pc.y)) : y
       if (Math.hypot(px - x, py - y) > 0.3) {          // kcare reports done even when navigation gave up
         setStatus(`stopped ${Math.hypot(px - x, py - y).toFixed(2)} m short of the goal (no path?)`); return
       }
@@ -284,8 +324,9 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
 
   if (cfgError) return (
     <div className="text-sm text-gray-500 p-6 border border-dashed border-gray-300 rounded-lg">
-      {cfgError} Add a <code>MAP</code> group to the site&apos;s skill configs (see robotapp CLAUDE.md, &ldquo;Map tab&rdquo;).
+      {cfgError} Save one from a SLAM map connection, or add a <code>MAP</code> group to the site&apos;s skill configs (see robotapp CLAUDE.md, &ldquo;Map tab&rdquo;).
       <button className="ml-3 text-blue-600 hover:underline" onClick={reload}>reload</button>
+      <div className="mt-3"><MapUpdater clients={clients} onSaved={reload} /></div>
     </div>
   )
   if (!cfg || !view) return <div className="text-sm text-gray-400 p-6">loading map…</div>
@@ -315,6 +356,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
         <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40" disabled={!pose || busy} onClick={savePlace}>Save as place</button>
         <button className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" onClick={() => { api.cancelRun(); setStatus('stop sent') }}>Stop</button>
         <button className="text-blue-600 hover:underline" onClick={() => { setTrail([]); reload() }}>reload</button>
+        <MapUpdater clients={clients} current={cfg.source?.connection} onSaved={reload} />
         <span className="ml-auto text-gray-500">click: go (keeps heading) · ← →: rotate {cfg.rotate?.step_deg ?? 15}° · dots: saved places</span>
       </div>
 
@@ -330,7 +372,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
              onClick={e => { wrapRef.current?.focus(); const w = toWorld(e); if (w) goTo(w[0], w[1]) }}>
           {frameSrc
             ? <image href={frameSrc} x={0} y={0} width={Wm} height={Hm} preserveAspectRatio="none" />
-            : placeImg(occ, 0.6)}
+            : bg ? placeImg(bg, 1) : placeImg(occ, 0.6)}
           {showBlocked && occ?.tintUrl && placeImg(occ, 1, occ.tintUrl)}
           {showSurfaces && (cfg.surfaces ?? []).map(s => {
             const pts = surfaceCorners(s).map(([x, y]) => S(x, y).join(',')).join(' ')

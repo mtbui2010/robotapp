@@ -52,6 +52,7 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `POST /agent/cancel`    | stop the robot — cancel everything in flight (see below) |
 | `GET  /agent/<name>/get` | read a device agent's latest value, read-only (Map tab robot pose) |
 | `GET  /config/locations/<site>/files/<path>` | static site files: Map layers (`_active` = active site) |
+| `GET  /config/locations` → `host`, `others` | which site the other live machines sharing the configs are on (presence) |
 | `GET  /guides` · `GET /guides/<name>` | list / read versioned planner guides |
 | `POST /guides` · `PUT /guides/<name>` · `DELETE /guides/<name>` · `POST /guides/<name>/activate` | create / edit / delete / select the active guide |
 
@@ -66,17 +67,57 @@ hot-switch between them. Wrappers live in [frontend/lib/api.ts](frontend/lib/api
 refreshes the connections list right after. Sites are a **per-robot backend**
 concept (distinct from the multi-robot URL registry kept in `localStorage`).
 
-**The active site is per machine (2026-10-07).** The configs folder is shared
-(`/remote_dir`) by several machines running the same robot package. One
-`configs/common/active_location` made them fight: switching site on one
-rewrote it, and the other — `make run` uses uvicorn `--reload` over the same
-tree — restarted into that site (kcare_bucheon ↔ clobot_bucheon). Now each
-machine writes `configs/common/active_location.<hostname>`
-(`state.active_location_file`; `ROBOT_AGENT_HOST` overrides the hostname), and
-boot reads `$ROBOT_LOCATION` → its own marker → the old shared file
-(`state.read_active_location`, also used by `runtime._resolve_layout` and
-`diagnose`). Two machines with the **same hostname** still share a marker —
-set `ROBOT_AGENT_HOST` or `ROBOT_LOCATION` on one of them.
+**Several machines on one configs folder (2026-10-08).** The configs folder is
+shared (`/remote_dir`, sshfs on the robots) by every machine running the same
+robot package, so nothing one machine saves may undo another's:
+
+| What | Where | How |
+|---|---|---|
+| active site | `common/active_location.<host>` | per machine (2026-10-07: one shared marker made two machines flip kcare_bucheon ↔ clobot_bucheon); boot reads `$ROBOT_LOCATION` → own marker → old shared `active_location` (`state.read_active_location`) |
+| Robot State (world belief) | `common/world_state.<host>.json` | per machine (was one shared `world_state.json`: robot B inherited A's `holding`) |
+| logs (`<pkg>.log`, ros, llm) | `data/logs/<host>/` | per machine (`runtime._resolve_layout`) |
+| task runs, grace memory | `common/task_runs/<host>/`, `common/grace_memory.<host>.jsonl` | per machine (`planning/loop.py`) |
+| skills (+ aliases, plan skills), buttons, guides | `common/skills.json`, `buttons.json`, `guides.json` | **shared, saved as merges** |
+| connections, Global Configs | `locations/<site>/connections.json`, `skill_configs_override.json` | per site; **saved as merges** when two machines are on one site |
+| SwitchBot last state | `locations/<site>/switchbot_state.json` | per site (was `data/`), re-read + atomic write |
+| presence | `common/hosts/<host>.json` | heartbeat every 20 s (server mode) |
+
+`<host>` is `state.host_id()`: `$ROBOT_AGENT_HOST`, else the hostname.
+
+**Merged saves** ([core/shared_json.py](../robot_agent/robot_agent/core/shared_json.py)).
+Every manager used to rewrite its whole file from memory, so a save on robot B
+dropped the plan skill robot A had added since B loaded. Now a save re-reads the
+file and applies only what this process changed since its last read (per item:
+a skill / button by id / guide version / connection / Global Config group;
+added, edited, removed, reordered), writes it atomically (own tmp file +
+rename, previous version as `.bak` — the file never disappears), and adopts
+the result. Reads (`GET /skills`, `/buttons`, `/guides`, `cm.get`, `sr.resolve`)
+reload the file when another machine changed it (one check per 1–2 s). An item
+both machines changed keeps the later save. A connection another machine added
+is carried along but not connected here until a restart / site switch.
+`flock` only serialises processes of one machine; across machines the window
+is the few ms between re-read and rename.
+
+**sshfs caveat (measured on the robot).** After the dev PC rewrote a file, a
+plain `stat` on the robot kept the old size / mtime for ~19 s, and the first
+`open` + `read` returned the new content cut to the OLD size (`{"a": 1,`). An
+`open` refreshes the cache: `shared_json.read_fresh` re-reads while the size
+read differs from the size after, `stat_fresh` opens before `stat`. Use
+`read_fresh` for any shared file another machine may rewrite.
+
+**Presence** ([robot_agent/presence.py](../robot_agent/robot_agent/presence.py)).
+`GET /config/locations` returns `host` and `others: [{host, location, age_sec,
+clash?}]` (records ≤ 60 s old). The Location picker shows `— also on <host>`
+per site and an amber warning when another machine is on the active site
+(they share its connections and Global Configs: give each robot its own
+location); renaming / deleting a site another live machine is on is refused
+(400). Two machines with the **same host id** (cloned Jetson images are all
+`m-ax-jetpack`) would share every per-machine file: when the presence record
+is rewritten by another kernel `boot_id` after this process started, the
+picker shows a red warning — set `ROBOT_AGENT_HOST` on one of them.
+
+ROS is not shared between robots: the apps container's Fast DDS profile
+(`/workspace/fastdds_profile.xml`) uses SHM + UDP on 127.0.0.1 only.
 
 ### Location names and aliases (ENV)
 
@@ -203,6 +244,51 @@ aliases (exported from `EnvNamesEditor.tsx`); each change is saved at once, a
 clash shows red on the chip (same check as the backend) and a refusal under
 the skill. Rows show `· alias, …` after the name; the panel search matches
 aliases too.
+
+### Spoken names in plans: `said->real` (2026-10-08)
+
+A plan can give a skill name or **any** parameter value two names: what the
+robot says, and what it runs. Skill and location aliases are kept as they are;
+this is an addition (proposal: [PROPOSAL-spoken-names.md](PROPOSAL-spoken-names.md)).
+
+```
+이동->move::식탁 앞->table_top                       # runs move::table_top, narrates "식탁 앞 이동을 진행합니다"
+pick_top::inputs='컵->cup', loc='식탁->table@kitchen'
+ask::inputs='어디로 갈까요?', options="식탁 앞->table_top, 옷방->dressroom"
+이동->move::{answer}                                 # gets '식탁 앞->table_top' from ask
+```
+
+- Helpers in [robot_agent/spoken.py](../robot_agent/robot_agent/spoken.py)
+  (`split_spoken`, `split_value`, `split_params`, `split_skill`, `said_of`,
+  `real_step`). No arrow = one name, as before. More than one `->`, nothing
+  after it, or `->>` fails the step.
+- **`SkillRegistry.execute`** splits the skill name and every parameter of a
+  code skill (internal / external) and installs the said sides for the call;
+  a skill reads them with `robot_agent.skills.spoken(key, value)` (`'skill'` for
+  its own name). Pass the value the skill holds: the said name is returned only
+  while it still belongs to that value, so `move` → `lift(inputs='home')` does
+  not read the outer step's name. **Plan skills get their params unsplit**, so
+  the step inside (`move::$loc$`) still has both names. `skill_entry` (Python
+  API) splits too. `options` is never split there (`ask` needs the pairs:
+  `->`, or the older `=`).
+- Real side type: `inputs` stays text (`lift::0.5` has always been `'0.5'`);
+  other keys go through `ast.literal_eval` (`fixed_angle='정면->0'` → `0`).
+  `>>` values split per segment (`컵->cup>>식탁->table` → `cup>>table`).
+- A `k=v` value with `->` **must be quoted**; unquoted, `parse_inputs` now
+  refuses the line instead of silently running it all as `inputs`.
+- `{name}` used as a whole value goes in as `<name>_text->value` when the result
+  has a different `<name>_text` (ask's `answer_text`), so the next skill says
+  what the user chose.
+- Who uses the said side: the narrator (direct mode `_verb_obj`, closed loop
+  `ClosedLoop._say` from `step['say']`, set by `llm_direct._parse_steps`);
+  kcare `announce_placing`, `pick`'s `announce_picking`, `select_response`.
+  The Robot State update gets the real names (`real_step`). The Plan panel
+  shows `->` as `→`; `PlanSkillEditor` checks the real skill name.
+- Free text containing `->` (`announce::A->B`) is split too — accepted.
+- Korean step phrases pick 을/를 from the verb (`announcer._eul`), which also
+  fixed the old "이동를".
+- CLI: quote the whole thing (`>` is a shell redirect):
+  `kcare_robot '이동->move::식탁 앞->table@kitchen'`.
 
 ### Robot State (persistent world state)
 
@@ -438,7 +524,7 @@ Closing the agent WebSocket never reached the robot: the plan runs in a backend
 thread (`UnifiedAgent.run`), so the skill in flight finished and every remaining
 step still executed. Stopping is now explicit — `POST /agent/cancel`
 (`api.cancelRun`), sent by the Agent panel's **Stop** and by the always-live
-**Cancel** button in the top bar, and also triggered backend-side when the agent
+**Cancel** button (right end of the Cameras / Map tab row), and also triggered backend-side when the agent
 WebSocket disconnects mid-run (reload, closed tab, dropped network).
 
 The backend side is [robot_agent/core/run_control.py](../robot_agent/robot_agent/core/run_control.py)
@@ -570,8 +656,20 @@ m/px, row 0 = top. Behaviour:
 
 The pose is polled with `GET /agent/<name>/get`, never `POST /skill/mobile_pose`: every `POST /skill`
 calls `begin_run()`, which would clear a Stop / Cancel in progress. The sim's `MAP` group is written by
-kcare-sim (`make_kcare_sim_location.py`, frames from `house_scene.map_frame`). The real kcare robot
-(Slamtec map) is not configured yet.
+kcare-sim (`make_kcare_sim_location.py`, frames from `house_scene.map_frame`).
+
+**Real robots: a SLAM map connection + "⟳ Update map" (2026-10-08).** A ROS topic connection of
+`nav_msgs/msg/OccupancyGrid` (kcare_bucheon: `slam_map` → `/map`, the Slamtec map bridged to domain
+12; its decode_func returns `{grid, info}`) is the map source; another robot only changes the topic.
+The Map tab's **⟳ Update map** (connection picker = every connection whose `data_interface` is an
+OccupancyGrid; also shown when the site has no MAP yet) calls `POST /map/snapshot`
+([robot_agent/api/map.py](../robot_agent/robot_agent/api/map.py)), which writes the site files
+`map/map.png` (free white / unknown grey / occupied black, row 0 = top) and `map/occupancy.png`
+(0 free / 128 within `inflate_m` = 0.3 m of an obstacle / 255 occupied or unknown), moves the old
+pair to `map/history/`, and sets `MAP.image = {file, frame}`, `MAP.layers.occupancy` and
+`MAP.source` — other MAP keys are kept. `MAP.image.file` is drawn under everything (else the
+occupancy layer, as before). Without `pose` / `goal` the map is **view-only** (clicks explain why).
+kcare_bucheon: 267×422 cells at 5 cm, origin (−3.8, −14.85); pose / goal / places not set yet.
 
 ### Planner guide versions
 

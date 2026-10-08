@@ -689,7 +689,7 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
               </span>
               <div className="flex-1 min-w-0">
                 <span className="text-xs text-gray-500">Step {step.index}/{step.total}: </span>
-                <span className="text-sm text-gray-900 font-mono">{step.task}</span>
+                <span className="text-sm text-gray-900 font-mono">{(step.task || '').replace(/->/g, ' → ')}</span>
                 {step.startedAt != null && step.endedAt != null && (
                   <span className="text-[10px] text-gray-400 ml-1">({((step.endedAt - step.startedAt) / 1000).toFixed(1)}s)</span>
                 )}
