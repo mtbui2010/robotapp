@@ -59,7 +59,7 @@ export default function Home() {
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
   const [agentSteps, setAgentSteps]   = useState<Step[]>([])
   const [logImage, setLogImage]       = useState<string | null>(null)
-  const [runMethod, setRunMethod]     = useState('')   // 'grace' | 'direct' — planner used by the active run
+  const [runMethod, setRunMethod]     = useState('')   // 'grace' | 'direct' | 'sage' — planner used by the active run
   const [trial, setTrial]             = useState(0)    // current iteration number while looping
   const [voiceOut, setVoiceOut]       = useState(true)   // speak milestones by default
   const [voiceLang, setVoiceLang]     = useState('en')
@@ -84,7 +84,7 @@ export default function Home() {
   const repeatRef = useRef<{ remaining: number; continueOnError: boolean; active: boolean }>(
     { remaining: 1, continueOnError: false, active: false }
   )
-  const argsRef = useRef<{ finalPrompt: string; direct: boolean; lang: string; planner: 'grace' | 'direct'; planOnly: boolean; logData: boolean; logTarget: 'backend' | 'frontend'; logAll: boolean; voice: boolean } | null>(null)
+  const argsRef = useRef<{ finalPrompt: string; direct: boolean; lang: string; planner: 'grace' | 'direct' | 'sage'; planOnly: boolean; logData: boolean; logTarget: 'backend' | 'frontend'; logAll: boolean; voice: boolean } | null>(null)
   // "Still working" nudge: while a step runs without new milestones, repeat a
   // short phrase so a long-running task doesn't sound stalled.
   const nudgeRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -375,11 +375,13 @@ export default function Home() {
   }, [emit, speak, beginRecording, endRecording, setRecordingPrefix, stopNudge])
   useEffect(() => { fireRef.current = fire }, [fire])
 
-  const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true) => {
+  const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true) => {
     if (!finalPrompt.trim() || running) return
     // A run that will listen through this browser (qa / ask / reply, unless on
     // the robot mic or typed): get the mic permission now, inside the click.
-    if (/\b(qa|ask|reply)\b/.test(finalPrompt) && !/source\s*=\s*['"]robot/.test(finalPrompt)
+    // SAGE may ask the user a question (which shelf? where are you?) through the same `ask` skill.
+    if ((/\b(qa|ask|reply)\b/.test(finalPrompt) || (!direct && planner === 'sage'))
+        && !/source\s*=\s*['"]robot/.test(finalPrompt)
         && !/input\s*=\s*['"]text/.test(finalPrompt)) {
       primeMic().then(err => {
         if (!err) return

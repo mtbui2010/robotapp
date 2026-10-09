@@ -156,7 +156,7 @@ function langToBcp47(lang: string): string {
   return lang
 }
 
-type PlannerMethod = 'grace' | 'direct'
+type PlannerMethod = 'grace' | 'direct' | 'sage'
 
 interface Props {
   running: boolean
@@ -207,7 +207,7 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
     const ar = localStorage.getItem(LS_AUTORUN) === '1'
     setAutoRun(ar); autoRunRef.current = ar
     const pm = localStorage.getItem(LS_PLANNER)
-    if (pm === 'grace' || pm === 'direct') setPlanner(pm)
+    if (pm === 'grace' || pm === 'direct' || pm === 'sage') setPlanner(pm)
     const po = localStorage.getItem(LS_PLAN_ONLY)
     setPlanOnly(po === null ? true : po === '1')
     // Defaults when nothing is stored yet: log data ON, frontend target,
@@ -382,7 +382,8 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
             <select value={planner} onChange={e => updatePlanner(e.target.value as PlannerMethod)}
               title="Planner method for natural-language commands"
               className="bg-white border border-gray-300 text-gray-800 text-sm rounded px-2 py-1">
-              <option value="grace">GRACE</option>
+              <option value="sage" title="SAGE plans; the assist layer understands the task first (asks when unclear, reads it back, refuses unsafe) and guards every step">SAGE + assist</option>
+              <option value="grace" title="SAGE planner in the plain closed loop (no understanding / clarification layer)">SAGE (plain loop)</option>
               <option value="direct">Direct</option>
             </select>
           )}
