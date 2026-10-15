@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { ExpandEditor } from './ExpandEditor'
+import type { Lang } from '../lib/types'
 
 const LS_CELLS   = 'robotapp_cells'
 const LS_PROMPT  = 'robotapp_prompt'
@@ -150,7 +151,7 @@ function loadCells(): string[] {
 
 // Map the UI lang selector to a BCP-47 tag for speech recognition.
 function langToBcp47(lang: string): string {
-  const map: Record<string, string> = { en: 'en-US', ko: 'ko-KR', vi: 'vi-VN' }
+  const map: Record<string, string> = { en: 'en-US', ko: 'ko-KR' }
   if (map[lang]) return map[lang]
   if (lang.includes('-')) return lang
   return lang
@@ -160,6 +161,9 @@ type PlannerMethod = 'grace' | 'direct' | 'sage'
 
 interface Props {
   running: boolean
+  lang: Lang                       // the app's one language (Agent runs and Q&A)
+  onLangChange: (lang: Lang) => void
+  langLocked?: boolean             // a Q&A conversation is running in this language
   onRun: (plan: string, direct: boolean, lang?: string, planner?: PlannerMethod, planOnly?: boolean, logData?: boolean, logTarget?: 'backend' | 'frontend', repeatTimes?: number, continueOnError?: boolean, logAll?: boolean) => void
   onStop: () => void
   recordEnabled: boolean
@@ -170,12 +174,11 @@ interface Props {
   trial: number
 }
 
-export default function AgentPanel({ running, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
+export default function AgentPanel({ running, lang, onLangChange, langLocked, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
   const [mode,       setMode]       = useState<'structured' | 'unstructured'>('structured')
   const [cells,      setCells]      = useState<string[]>(['', '', '', ''])
   const [activeCell, setActiveCell] = useState(0)
   const [prompt,     setPrompt]     = useState('')
-  const [lang,       setLang]       = useState('ko')
   const [planner,    setPlanner]    = useState<PlannerMethod>('grace')
   const [planOnly,   setPlanOnly]   = useState(true)
   const [logData,    setLogData]    = useState(true)
@@ -387,11 +390,11 @@ export default function AgentPanel({ running, onRun, onStop, recordEnabled, onTo
               <option value="direct">Direct</option>
             </select>
           )}
-          <select value={lang} onChange={e => setLang(e.target.value)}
-            className="bg-white border border-gray-300 text-gray-800 text-sm rounded px-2 py-1">
-            <option value="en">EN</option>
+          <select value={lang} onChange={e => onLangChange(e.target.value as Lang)} disabled={langLocked}
+            title="Language of the robot's speech and of what it hears — Agent runs and Q&A"
+            className="bg-white border border-gray-300 text-gray-800 text-sm rounded px-2 py-1 disabled:opacity-50">
             <option value="ko">KO</option>
-            <option value="vi">VI</option>
+            <option value="en">EN</option>
           </select>
           {running
             ? <button onClick={onStop}

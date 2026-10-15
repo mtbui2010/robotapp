@@ -10,14 +10,94 @@
 // play, play to the end, and finish before the mic opens.
 
 function bcp47(lang?: string | null): string {
-  const map: Record<string, string> = { en: 'en-US', ko: 'ko-KR', vi: 'vi-VN' }
+  const map: Record<string, string> = { en: 'en-US', ko: 'ko-KR' }
   if (!lang) return 'ko-KR'
   return map[lang] ?? lang
 }
 
+// Earcons around a listen (listen.earcon = volume, 0 = off; the robot's HRI_CONFIGS earcon / earcon_volume):
+// two rising notes when the mic opens ("your turn"), two falling ones when a phrase was taken ("got it"). A blind
+// user cannot see that the mic is open. The same tones as robot_agent.utils.earcon on the robot speaker.
+const EARCON = {
+  listen: { notes: [600, 900], sec: 0.075 },
+  heard: { notes: [900, 600], sec: 0.06 },
+}
+
+// Resolves when the tone has played. Played before the mic opens, so the
+// recording (and recordPhrase's noise-floor calibration) never hears it.
+export function playEarcon(kind: keyof typeof EARCON, volume = 0.3): Promise<void> {
+  if (typeof window === 'undefined' || !(volume > 0)) return Promise.resolve()
+  return new Promise(resolve => {
+    let ctx: AudioContext
+    try { ctx = new AudioContext() } catch { resolve(); return }
+    const { notes, sec } = EARCON[kind]
+    const gain = ctx.createGain()
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    const t0 = ctx.currentTime + 0.03
+    gain.gain.setValueAtTime(0, ctx.currentTime)
+    notes.forEach((f, i) => {               // 10 ms fades: no clicks
+      const t = t0 + i * sec
+      osc.frequency.setValueAtTime(f, t)
+      gain.gain.setValueAtTime(0, t)
+      gain.gain.linearRampToValueAtTime(volume, t + 0.01)
+      gain.gain.setValueAtTime(volume, t + sec - 0.01)
+      gain.gain.linearRampToValueAtTime(0, t + sec)
+    })
+    const end = t0 + notes.length * sec
+    let done = false
+    const finish = () => { if (!done) { done = true; ctx.close().catch(() => {}); resolve() } }
+    osc.onended = finish
+    // A context created outside a click may start suspended; it never plays then — do not hang on it.
+    setTimeout(finish, (end - ctx.currentTime + 0.5) * 1000)
+    ctx.resume().catch(() => {})
+    osc.start(t0)
+    osc.stop(end)
+  })
+}
+
+// The siren of a (simulated) 119 call (kcare call_119 with the dashboard as the speaker): `cycles` x high / low
+// notes, 0.35 s each — the same tones as robot_agent.utils.alarm on the robot speaker. The user, and anyone else
+// near the dashboard's speaker, hears that help was called.
+export function playAlarm(volume = 0.6, cycles = 3): Promise<void> {
+  if (typeof window === 'undefined' || !(volume > 0)) return Promise.resolve()
+  return new Promise(resolve => {
+    let ctx: AudioContext
+    try { ctx = new AudioContext() } catch { resolve(); return }
+    const notes = [880, 660], sec = 0.35
+    const gain = ctx.createGain()
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    const t0 = ctx.currentTime + 0.05
+    gain.gain.setValueAtTime(0, ctx.currentTime)
+    const n = Math.max(1, Math.round(cycles)) * notes.length
+    for (let i = 0; i < n; i++) {           // 15 ms fades: no clicks
+      const t = t0 + i * sec
+      osc.frequency.setValueAtTime(notes[i % notes.length], t)
+      gain.gain.setValueAtTime(0, t)
+      gain.gain.linearRampToValueAtTime(volume, t + 0.015)
+      gain.gain.setValueAtTime(volume, t + sec - 0.015)
+      gain.gain.linearRampToValueAtTime(0, t + sec)
+    }
+    const end = t0 + n * sec
+    let done = false
+    const finish = () => { if (!done) { done = true; ctx.close().catch(() => {}); resolve() } }
+    osc.onended = finish
+    setTimeout(finish, (end - ctx.currentTime + 0.5) * 1000)
+    ctx.resume().catch(() => {})
+    osc.start(t0)
+    osc.stop(end)
+  })
+}
+
 // Resolves once the line has been spoken (or immediately if speech synthesis is
 // unavailable), so a following listen does not transcribe the robot's own voice.
-export function speakAndWait(text: string, lang?: string | null): Promise<void> {
+// `rate`: SpeechSynthesisUtterance.rate (1 = normal; HRI_CONFIGS.speech_rate, sent with the event).
+export function speakAndWait(text: string, lang?: string | null, rate?: number | null): Promise<void> {
   return new Promise(resolve => {
     const t = (text || '').trim()
     if (!t || typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -30,9 +110,12 @@ export function speakAndWait(text: string, lang?: string | null): Promise<void> 
     const voice = voices.find(v => v.lang.replace('_', '-') === u.lang)
       ?? voices.find(v => v.lang.replace('_', '-').split('-')[0] === u.lang.split('-')[0])
     if (voice) u.voice = voice
+    if (rate && rate > 0) u.rate = rate
     // Chrome occasionally never fires `end` for an utterance; cap the wait so a
-    // lost event cannot stall the listen queued behind it.
-    const cap = setTimeout(resolve, Math.min(30_000, 2_000 + t.length * 150))
+    // lost event cannot stall the listen queued behind it. Slower speech takes
+    // longer: a cap made for rate 1 would open the mic while it is still talking.
+    const slow = Math.min(1, rate && rate > 0 ? rate : 1)
+    const cap = setTimeout(resolve, Math.min(30_000, 2_000 + t.length * 150) / slow)
     u.onend = () => { clearTimeout(cap); resolve() }
     u.onerror = () => { clearTimeout(cap); resolve() }
     window.speechSynthesis.speak(u)

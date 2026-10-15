@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 export interface QaLine { who: 'robot' | 'user'; text: string }
 
 export default function QaChat({
-  log, mode, waiting, active, onSend, onClose,
+  log, mode, waiting, active, onSend, onClose, onEnd,
 }: {
   log: QaLine[]
   mode: 'voice' | 'text'
@@ -18,6 +18,7 @@ export default function QaChat({
   active: boolean           // the Q&A run is going
   onSend: (text: string) => void
   onClose: () => void
+  onEnd?: () => void        // set while a qa conversation runs: "End Q&A"
 }) {
   const [draft, setDraft] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
@@ -40,8 +41,15 @@ export default function QaChat({
         {active
           ? <span className="text-[10px] text-emerald-600">● live</span>
           : <span className="text-[10px] text-gray-400">ended</span>}
+        {onEnd && (
+          <button onClick={onEnd}
+            title="End the conversation as if the user said 그만: the robot says goodbye and the plan goes on"
+            className="ml-auto px-2 py-0.5 text-[11px] rounded bg-gray-600 hover:bg-gray-500 text-white">
+            ⏹ End Q&A
+          </button>
+        )}
         <button onClick={onClose} title={active ? 'Hide (the conversation keeps going)' : 'Close'}
-          className="ml-auto text-gray-400 hover:text-gray-700 leading-none">×</button>
+          className={`${onEnd ? '' : 'ml-auto '}text-gray-400 hover:text-gray-700 leading-none`}>×</button>
       </div>
       <div className="flex flex-col gap-1.5 px-3 py-2 max-h-72 overflow-y-auto">
         {log.length === 0 && <span className="text-[11px] text-gray-400">…</span>}

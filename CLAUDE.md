@@ -269,8 +269,9 @@ ask::inputs='어디로 갈까요?', options="식탁 앞->table_top, 옷방->dres
   while it still belongs to that value, so `move` → `lift(inputs='home')` does
   not read the outer step's name. **Plan skills get their params unsplit**, so
   the step inside (`move::$loc$`) still has both names. `skill_entry` (Python
-  API) splits too. `options` is never split there (`ask` needs the pairs:
-  `->`, or the older `=`).
+  API) splits too. `options` and `others` are never split there (`ask` needs the pairs:
+  `->`, or the older `=`; kcare `find` / `pick` take each `others` item's real side, so ask's options can be
+  copied as they are).
 - Real side type: `inputs` stays text (`lift::0.5` has always been `'0.5'`);
   other keys go through `ast.literal_eval` (`fixed_angle='정면->0'` → `0`).
   `>>` values split per segment (`컵->cup>>식탁->table` → `cup>>table`).
@@ -382,25 +383,106 @@ skill's own question mid-sentence.
 
 ### Visual Q&A (`qa` skill + top-bar button)
 
-The top bar's **💬 Q&A** button (with a ko / vi / en picker, remembered in
-`localStorage`) starts a run of `qa::source='dashboard', lang='<picked>'` in
+**Languages (2026-10-13): Korean and English only.** Vietnamese was dropped from
+the skills (hri `LANGS = ('ko', 'en')`; `lang='vi'` is refused) and the UI. The
+dashboard has ONE language picker, KO / EN in the Agent panel
+(`page.tsx` `lang`, `localStorage` `robotapp_lang`), used by Agent runs and by
+the Q&A button; it is locked while a Q&A conversation runs. robot_agent's own
+narrator (`announcer.py`) and TTS helpers still know `vi` — framework, not skills.
+
+**Where on the shelves — from depth, nothing per place (2026-10-13).** At shelf2
+the answers rambled or named the wrong side: `sink` and `shelf2@kitchen` share a
+spot, `get_closest_loc` returned sink (no `qa` block) and the question was
+answered free-form; `_place_config` now prefers the nearest entry with a block.
+Then the 8B model, asked to name the place itself, was not stable (the red
+tumbler filed under 머그컵; shelf levels one too high; a prompt change moved the
+wine glass to the wrong column). Place boxes drawn on a photo fixed that but
+broke at 20 cm off the spot and needed drawing per place, so they were dropped.
+Now (`_ask_shelves` in `kcare_robot/skills/hri.py`):
+
+- every head photo keeps its depth frame and the camera pose in the base frame
+  (`_capture_geo`: 16 pixels through the `get3d` service while the head is at
+  that tilt, Kabsch fit — 0.08 s, same xyz as `get3d` for every pixel);
+- the VLM boxes the asked objects (each with its own kind, so a tumbler is not
+  a mug), the shelf unit, and once per set of photos every object
+  (`_inventory_boxes` — mug rims looked like a board and a cup's side like a
+  divider when only the asked thing was boxed);
+- inside the unit: horizontal surfaces spanning ≥ 35 % of its width = boards,
+  sideways-facing surfaces ≥ 60 % of the shelves' height away from its sides =
+  dividers; an object's level = the interval its lower half is in, its column =
+  dividers to its left → "오른쪽 선반 가운데 칸에 있어요".
+- If the unit runs past the photo's edge (head tilted 10°: the top level's
+  ceiling out of view), levels are counted from the visible end ("아래에서 두
+  번째 칸") instead of 아래 / 가운데 / 위.
+
+Used for where-questions at a place with no `qa` block or with
+`'shelves': True` (shelf2: `{'views': ['up'], 'shelves': True}`); no shelf found
+→ the place layout / free answer as before. Tests on 5 real captures at shelf2
+(head tilt 10–25°): 45 / 45 right (와인잔 → 오른쪽 가운데, 머그컵 → 왼쪽 아래, 텀블러
+→ 오른쪽 아래). Boards found at 1.61 / 1.85 / 2.12 / 2.35 m, camera at 1.47 m.
+Live check (the real `qa` with typed questions, real head motion / depth /
+get3d — `kaair_real_capture/qa_shelf2_20261013/test_qa_live.py`) found two
+things the offline bench had hidden: the conversation **history** made the
+model answer "머그컵 어디?" with the wine glasses of the previous question (no
+history is sent for shelf answers now), and the unit box drifting 1–2 % cut
+off the bottom board (the box is grown 5 % each side). After: 15 / 15 over 3
+conversations. Not tested yet: the robot really off its spot, other shelf units.
+
+**Which objects, and when to ask again (2026-10-13, from live logs).** The
+model's `asked` flag was not reliable (asked for 머그컵 it flagged the red cup it
+had itself called "tumbler"), so it now names `asked_kind` and the code picks
+the items whose kind has every word of it (`_asked_items`: "mug" → mug, travel
+mug; not tumbler). When Whisper lost the object word ("선반 어디에 있어?") the
+model asked for "shelf", nothing matched, and all four occupied cells were
+read out; a question naming no object (`_no_object`: empty / shelf / cabinet /
+thing …) is now answered "무엇을 찾으시는지 잘 못 들었어요. 다시 말씀해 주세요."
+A cut edge needs the unit's back wall beyond the last board (shelf2: x 1.33 m
+above a cut-off top level vs the frame at 1.03 m) — the model's box reached
+the photo's top for a unit that did not go on.
+
+**qa leaves a trail (2026-10-13).** hri's `log_data` also writes each message
+to `data/logs/<host>/kcare_robot.log` (`kcare_robot.hri`: user / robot lines,
+`qa: shelves — …`, `qa: answer by …`, why depth was missing), and every
+look-around is saved in `data/logs/<host>/qa/<time>/` (`<view>.jpg`,
+`<view>_geo.npz`: depth, K, R, t; last 60 kept) for offline replays. The
+Execution panel itself stores nothing. (The logger is `robot_agent.skill.hri`:
+only the `robot_agent` tree has the file handler.)
+
+**The VLM switched to 32b @ aistations "after a UI refresh" (2026-10-13).** It
+was a backend restart: `DeviceManager.load_saved` connects the saved devices
+one by one, unreachable hosts (`vlms`, `task_planner` on 192.168.1.11) hold the
+rest up for ~20 s, and a `qa` started in that window found no `vlm` connection
+and fell back to `QA_CONFIGS` (kcare `tasks.py`: 32b @ ollama.aistations.org).
+`DeviceManager.saved_connect(cid)` now returns a connection as saved, and qa
+uses it while it is not connected yet; the log line says which
+(`qa: VLM … from connection 'vlm' (saved, not connected yet)`).
+
+The top bar's **💬 Q&A** button starts a run of `qa::lang='<lang>'` in
 direct mode with milestone voice off; pressing it again calls the same `stop()`
 as Cancel, whose `POST /agent/cancel` also releases the listen the skill is
 blocked on. The skill (`qa` in [kcare_robot/skills/hri.py](../kcare_robot/kcare_robot/skills/hri.py),
-next to `ask`; the vision side is in [skills/qa.py](../kcare_robot/kcare_robot/skills/qa.py))
+next to `ask`, with its vision helpers in the same file — `skills/qa.py` was folded in on 2026-10-13)
 loops, listening as `ask` does — the opening question and each answer are the
 `prompt` of the next listen, so the mic opens right after they are spoken:
-listen (browser mic) → if the photos are older than `refresh_sec`, say
+listen (browser mic) → for every question (`reuse_photos`, default off, answers from the last photos while younger than `refresh_sec`; `memory`, default off, sends the earlier turns to the model — both since 2026-10-13), say
 "잠깐 둘러볼게요" and photograph the head at each tilt in `views`
 (`moveh up / straight / down`, ~1.3 s each), then put the head back → ask the
-vision model → speak one short sentence. It ends only on a stop word (그만,
-종료, dừng, stop …, only on a short utterance) or on cancel — silence just means
-listening again (`idle_turns` is no longer used) (no goodbye then — and the head is left where it is, since a
-cancelled node refuses to move). The photos are logged as one labelled mosaic
+vision model → speak one short sentence. It ends on a stop word (그만,
+종료, stop …, only on a short utterance), on cancel (no goodbye then — and the head is left where it is, since a
+cancelled node refuses to move), or on a long silence (2026-10-15): after `QA_CONFIGS.idle_ask_sec` (60 s) with
+nobody speaking the robot asks "더 궁금하신 게 있으세요? 대답이 없으시면 잠시 후 대화를 마칠게요."; 아니요 / 없어요
+ends it, 네 → "네, 말씀하세요.", a question is answered, and `idle_end_sec` (30 s) more of silence ends it ("대답이
+없으셔서 대화를 마칠게요."). 0 = listen forever; not for typed input or `once`.
+**⏹ End Q&A** (2026-10-15): while a `qa` runs (it emits `qa_state: {active}`; also inside a plan), a grey button
+next to Cancel and in the Q&A card calls `POST /agent/qa/end` (`api.endQa`). `run_control.request_end_dialog`
+sets a flag and answers the pending dashboard listen with nothing (`utils.end_pending_listens`; the robot mic's
+`record_phrase` stops too); qa ends as on a stop word — an answer already worked out is still said, then
+"대화를 마칠게요." — returns `isdone: True, ended: 'operator'`, and the plan goes on (Cancel aborts the run). Only qa
+registers (`dialog_begin` / `dialog_end`): not `ask` / `reply`, not the emergency exchange; 409 when none runs. The photos are logged as one labelled mosaic
 image in the Execution panel.
 
 The model runs in **Ollama on the dev PC** (RTX 3090, `QA_CONFIGS` in
-`kcare_robot/configs/tasks.py`: `url`, `model`, `views`, `refresh_sec`, …,
+`kcare_robot/configs/tasks.py`: `url`, `model`, `views`, …,
 read through the `QA_CONFIGS` proxy in `robot_agent.skill_configs`). Use the
 **instruct** tag `qwen3-vl:8b-instruct`: the plain `qwen3-vl:8b` tag is
 thinking-only (`think:false` is ignored), took 1–10 s on real photos and twice
@@ -433,8 +515,39 @@ named only when sure, else unnamed):
 - general (무슨 라면 / 몇 개) → the VLM, given the verified names as facts; an
   answer naming any other noodle is replaced by the inventory list.
 `qa::products=False` turns it off. Sides are left / middle / right of the photo.
+**At shelf1 (2026-10-13, arm camera).** "라면 있어" was answered in Chinese
+("架子上放着짜파게티、신라면和안성탕면。") and without the pack the recogniser could not name: the
+model rephrasing the verified names was the weak step, not the recognition. A list question
+(무슨 / 어떤 / 뭐 / 있어 … — `_LIST_QUESTION`) is now answered straight from the inventory
+(`_product_list`: "왼쪽에 신라면과 짜파게티, 오른쪽에 너구리와 안성탕면이 있어요."); other product
+questions still go to the model, and any ko / en answer with Chinese characters or kana is asked
+again once at temperature 0, then dropped (`_wrong_script`). Also: `qa` said "at shelf2" at
+shelf1 — the nearest entry WITH a qa block won within loc_radius (shelf2 0.55 m away); a block
+now only wins among entries on the same spot (`QA_SAME_SPOT` 0.1 m: sink / shelf2, shelf1 /
+counter). Test (`kaair_real_capture/qa_ramen_shelf1_20261013/test_ramen.py`, real arm camera,
+detector, SigLIP, VLM; nothing moves): 12 / 12 right over 3 phrasings.
 Test photo: 신라면, 짜파게티 (left), 너구리 (right) named; 안성탕면 left unnamed
 (margin 0.018 < 0.03 — add a ref from this view).
+
+**Lights in qa (2026-10-13).** "세탁실 불 켜져 있어?" (a light noun + 켜져 / 꺼졌 / 상태 …, no
+줘 / 놔 / turn) is answered from the `light_state` skill (`_light_state_answer` in hri.py), not
+taken as a command as before: "세탁실 불은 켜져 있어요. 꺼 드릴까요?". The next turn's "응" /
+"꺼줘" (no 불 needed) runs `turn_light` on that light; "아니" leaves it. A light not heard now
+is told with its age ("11분 전에는 … 켜져 있었어요"), never as the present state. Lights are
+named by the switchbot connection's `aliases` (kcare_bucheon: laundry room = 세탁실 / 세탁방 /
+빨래방); the first Korean alias is the spoken name. No place named ("불 켜져 있어?", "불 꺼줘")
+→ only the connection marked `default` (the laundry room) — never every light; the warehouse
+light is left out of qa unless named by its id.
+First live try: Whisper heard "시대에 불 켜져 있어" (fine: default light) and then "택시, 고죠" for
+the yes, which went to the camera answer. Now (1) qa's Whisper hint has the light phrases
+(`_light_hint`) and, right after "꺼 드릴까요?", only "네, 꺼 주세요. 아니요, 그대로 두세요."
+(`_offer_hint`); (2) the answer is read by `_offer_reply` (yes / no / on / off, mixed signals or
+the hint echoed back = unclear) and an unclear one is asked again ("잘 못 들었어요. 세탁실 불을
+끌까요? 네 또는 아니요로 말씀해 주세요.", `OFFER_RETRIES` 2, then "그대로 둘게요") — never acted
+on, never sent to the camera; a new question (어디 / 뭐 / 몇 …) is answered as usual; (3) every
+qa recording is kept in `data/logs/<host>/qa_audio/` (`<time>.webm` from the dashboard, `.wav`
+from the robot mic, last 300) with `index.jsonl` {file, text, hint} for offline replays —
+`listen_dashboard(audio_out=[])` hands the recording back.
 
 `qa::once=True` answers one question and ends (no goodbye; silence re-asked
 `retries` times like `ask`, then `ended: 'no answer'`, isdone False); the result
@@ -477,6 +590,26 @@ Global Config **`HRI_CONFIGS`** (kcare `configs/tasks.py`): `source`
 wins), `dashboard_stt` (`whisper` | `browser`), `stt` (connection id, '' =
 first), `stt_hint` (`{lang: words}` — Whisper's prompt). The Q&A button no
 longer sends `source` in voice mode, so `HRI_CONFIGS.source` picks the mic.
+
+**Earcons (2026-10-14).** A blind user cannot see that the mic is open, so every voice listen (`ask`, `reply`,
+`qa`, both mics) is framed by two short tones: two rising notes (600 → 900 Hz) right before the mic opens ("your
+turn") and two falling ones once a phrase was taken ("got it"; none when nobody spoke). The "your turn" tone is
+played to the end + 0.1 s before recording starts, so neither the robot's VAD nor `recordPhrase`'s noise-floor
+calibration hears it. Robot side: `robot_agent.utils.earcon` / `play_earcon` (44.1 kHz — kcare-3's speaker refuses
+16 kHz, which also breaks `play_audio` at its 16 kHz default), called in hri `_hear`. Dashboard: the `listen`
+event carries `earcon` (volume, 0 = off) and `page.tsx` plays `playEarcon` ([lib/hriVoice.ts](frontend/lib/hriVoice.ts),
+WebAudio, same notes); typed input gets none. `HRI_CONFIGS.earcon` (on) / `earcon_volume` (0.3); `ask::…, earcon=False`
+per call. `ask` with `options` reads them with the question every time it asks ("… 중에서 골라 주세요").
+
+**Speech rate (2026-10-15).** `HRI_CONFIGS.speech_rate` (default **1.3**, clamped 0.5–2.0; Global Configs → HRI_CONFIGS
+shows it as a slider 0.5–2.0 with a ▶ button that says a sample line at that rate, before saving) sets how fast the browser speaks. kcare's
+hri skills (`reply` / `ask` / `qa` / `announce`, emergency) call `robot_agent.utils.set_speech_rate` (per thread)
+in `_common` / `_set_rate`; a call's `rate=` wins (`announce::inputs='…', rate=0.8`). `say_to_user` puts it in
+the `speak` event as `speak_rate`, `listen_dashboard` in the `listen` event as `rate`; `page.tsx` passes it to
+`speakAndWait(text, lang, rate)`. The milestone narrator (`useVoiceOutput`, `rate` option) has no such field: the
+page reads `GET /skill-configs/HRI_CONFIGS` on mount and at every run. `speakAndWait`'s safety cap (Chrome can
+lose `end`) and `say_to_user`'s wait are divided by the rate when it is below 1, or a slow line would open the mic
+while still being said. The robot speaker (gTTS) ignores the rate.
 
 **Voice or text input.** Next to the language picker, a 🎤 Voice / ⌨ Text
 picker (remembered in `localStorage`) adds `input='voice'|'text'` to the run.

@@ -1323,7 +1323,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
             <input placeholder="loc  e.g. laundry room  (turn_light::loc='laundry room')" value={form.loc}
               onChange={e => setForm(f => ({ ...f, loc: e.target.value }))}
               className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 placeholder-gray-400" />
-            <input placeholder="aliases  e.g. 세탁실, phòng giặt  (comma-separated)" value={form.locAliases}
+            <input placeholder="aliases  e.g. 세탁실, 빨래방  (comma-separated)" value={form.locAliases}
               onChange={e => setForm(f => ({ ...f, locAliases: e.target.value }))}
               className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 placeholder-gray-400" />
             <input placeholder="mac  e.g. EB:6B:01:06:62:34" value={form.mac}

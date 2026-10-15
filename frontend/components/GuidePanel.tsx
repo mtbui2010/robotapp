@@ -228,7 +228,7 @@ export default function GuidePanel() {
                       <li>Name objects clearly: "the red cup", "pringles can"</li>
                       <li>Describe destination: "to me", "on the table", "to the shelf"</li>
                       <li>You can chain actions: "go to shelf, pick the bottle, return"</li>
-                      <li>Use KO/VI mode for Korean or Vietnamese input</li>
+                      <li>Pick KO or EN (Agent panel) for the language you speak / type</li>
                       <li>Switch to Structured mode to bypass the LLM and call skills directly (one <span className="font-mono">skill::params</span> per line)</li>
                     </ul>
                   </div>

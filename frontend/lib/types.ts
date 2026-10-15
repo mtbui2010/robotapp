@@ -1,5 +1,8 @@
 export type ClientType = 'ros_service' | 'ros_topic' | 'ros_action' | 'webrtc' | 'llm' | 'tcp' | 'zmq' | 'websocket' | 'http' | 'visionserve' | 'switchbot' | 'stt'
 
+// Languages the robot speaks and understands (skills: hri LANGS).
+export type Lang = 'ko' | 'en'
+
 export interface ClientEntry {
   id: string
   name: string
@@ -88,11 +91,16 @@ export interface AgentEvent {
   // /agent/listen/{id}.
   speak?: string
   speak_lang?: string | null
+  speak_rate?: number                // how fast to say it (HRI_CONFIGS.speech_rate or the call's rate=)
   speak_id?: string                  // the skill waits until this line is reported spoken
+  alarm?: { volume?: number; cycles?: number }   // kcare call_119 (simulated): play the siren, in order
+  qa_state?: { active: boolean }     // kcare qa conversation running / over (the "End Q&A" button)
   listen?: { id: string; lang?: string; max_sec?: number; prompt?: string; mode?: 'voice' | 'text'
              // 'whisper': record and post the audio (the robot transcribes);
              // 'browser': the browser's own recogniser
-             capture?: 'whisper' | 'browser'; silence_sec?: number }
+             capture?: 'whisper' | 'browser'; silence_sec?: number
+             earcon?: number                 // "your turn" / "got it" tone volume, 0 = off
+             rate?: number }                 // how fast to say the prompt
   index?: number                     // step index (closed-loop)
   action?: string                    // GRACE action
   object?: string                    // GRACE object

@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { speakAndWait } from '../lib/hriVoice'
 
 // Shared "Fields ⇄ JSON" config editing used by both the per-skill configs
 // (SkillPanel) and the Global Configs (EnvPanel). The Fields view flattens a
@@ -47,6 +48,34 @@ function FieldRow({ path, value, onChange }: { path: string; value: unknown; onC
     )
   }
   if (typeof value === 'number') {
+    // HRI_CONFIGS.speech_rate: a slider, and a button to hear a sample line at that rate (not saved yet).
+    const isRate = /(^|\.)speech_rate$/.test(path)
+    if (isRate) {
+      // A slider (0.5–2.0, the backend's clamp) + the value + ▶ to hear a sample at it.
+      return (
+        <label className="flex items-center gap-2 text-[11px] py-0.5">
+          {label}
+          <input
+            type="range" min={0.5} max={2} step={0.05} value={value}
+            onChange={e => onChange(Math.round(e.target.valueAsNumber * 100) / 100)}
+            className="w-28 accent-blue-600"
+          />
+          <span className="font-mono w-9 text-right text-gray-700">{value.toFixed(2)}</span>
+          <button
+            type="button"
+            title="Hear a sample line at this rate (1 = normal) — Save to keep it"
+            onClick={e => {
+              e.preventDefault()
+              window.speechSynthesis?.cancel()
+              void speakAndWait('안녕하세요. 이 속도로 말씀드릴게요. 무엇을 도와드릴까요?', 'ko', value)
+            }}
+            className="px-1.5 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-100"
+          >
+            ▶
+          </button>
+        </label>
+      )
+    }
     return (
       <label className="flex items-center gap-2 text-[11px] py-0.5">
         {label}

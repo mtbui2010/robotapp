@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 // Map the UI lang selector to a BCP-47 tag for speech synthesis.
 // Local mirror of AgentPanel's langToBcp47 (kept self-contained).
 function langToBcp47(lang: string): string {
-  const map: Record<string, string> = { en: 'en-US', ko: 'ko-KR', vi: 'vi-VN' }
+  const map: Record<string, string> = { en: 'en-US', ko: 'ko-KR' }
   if (map[lang]) return map[lang]
   if (lang.includes('-')) return lang
   return lang
@@ -13,6 +13,8 @@ function langToBcp47(lang: string): string {
 interface UseVoiceOutputOptions {
   enabled: boolean
   lang: string
+  /** SpeechSynthesisUtterance.rate (1 = normal) — HRI_CONFIGS.speech_rate. */
+  rate?: number
 }
 
 // Localized "still working" nudge, repeated while a long step runs so the
@@ -21,7 +23,6 @@ interface UseVoiceOutputOptions {
 const STILL_WORKING: Record<string, string> = {
   en: 'Still working',
   ko: '진행 중입니다',
-  vi: 'Vẫn đang thực hiện',
 }
 
 export function stillWorkingPhrase(lang: string): string {
@@ -42,7 +43,7 @@ interface UseVoiceOutputResult {
  * in-flight speech on unmount.
  */
 export function useVoiceOutput(opts: UseVoiceOutputOptions): UseVoiceOutputResult {
-  const { enabled, lang } = opts
+  const { enabled, lang, rate } = opts
 
   // Detected after mount, not during render: this app is statically exported, so
   // the prerendered HTML is built with `window` absent. Deriving `supported`
@@ -58,8 +59,10 @@ export function useVoiceOutput(opts: UseVoiceOutputOptions): UseVoiceOutputResul
   // Keep the latest enabled/lang readable inside the stable speak callback.
   const enabledRef = useRef(enabled)
   const langRef = useRef(lang)
+  const rateRef = useRef(rate)
   enabledRef.current = enabled
   langRef.current = lang
+  rateRef.current = rate
 
   // Cancel any queued/in-flight utterances when speech is turned off or on unmount.
   useEffect(() => {
@@ -105,6 +108,7 @@ export function useVoiceOutput(opts: UseVoiceOutputOptions): UseVoiceOutputResul
     const utterance = new SpeechSynthesisUtterance(trimmed)
     utterance.lang = langToBcp47(langRef.current)
     if (voiceRef.current) utterance.voice = voiceRef.current
+    if (rateRef.current && rateRef.current > 0) utterance.rate = rateRef.current
     window.speechSynthesis.speak(utterance)
   }
 

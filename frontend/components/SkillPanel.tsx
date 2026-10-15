@@ -119,7 +119,12 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
     await refresh()
   }
 
+  // The ✕ sits next to the skill name, one misclick from deleting it (clear_pot, 2026-10-15): ask first.
   const remove = async (name: string) => {
+    const s = skills.find(x => x.name === name)
+    const what = s?.type === 'plan' ? 'plan skill' : 'skill'
+    const lost = s?.type === 'plan' ? ' Its plan steps are deleted with it.' : ''
+    if (!window.confirm(`Delete ${what} "${name}"?${lost}\n\nThe dashboard cannot undo this.`)) return
     try {
       await api.deleteSkill(name)
       setListError('')

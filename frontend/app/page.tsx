@@ -13,11 +13,11 @@ import ButtonPanel  from '../components/ButtonPanel'
 import QaChat, { type QaLine } from '../components/QaChat'
 import { api }      from '../lib/api'
 import { useVoiceOutput, stillWorkingPhrase } from '../lib/useVoiceOutput'
-import { speakAndWait, recognizeOnce, recordPhrase, primeMic } from '../lib/hriVoice'
+import { speakAndWait, recognizeOnce, recordPhrase, primeMic, playEarcon, playAlarm } from '../lib/hriVoice'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
 import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
 import type { Outcome } from '../lib/datasetLog'
-import type { ClientEntry, AgentEvent } from '../lib/types'
+import type { ClientEntry, AgentEvent, Lang } from '../lib/types'
 import type { Step } from '../components/PlanPanel'
 
 // Filename-safe prefix from a task string, e.g. 'find::apple' → 'find_apple'.
@@ -68,8 +68,23 @@ export default function Home() {
   const stepsRef  = useRef<Step[]>([])
   const runStartRef = useRef<number>(0)
 
+  // How fast the browser speaks: the robot's HRI_CONFIGS.speech_rate (Global Configs), read on mount and at
+  // every run; a speak / listen event's own rate (HRI_CONFIGS at that moment, or a call's rate=) wins for that line.
+  const [speechRate, setSpeechRate] = useState<number | undefined>(undefined)
+  const speechRateRef = useRef<number | undefined>(undefined)
+  const takeRate = useCallback((r: unknown) => {
+    const n = Number(r)
+    if (!(n > 0) || n === speechRateRef.current) return
+    speechRateRef.current = n
+    setSpeechRate(n)
+  }, [])
+  const loadSpeechRate = useCallback(() => {
+    api.getSkillConfig('HRI_CONFIGS').then(c => { if (c) takeRate(c.speech_rate) }).catch(() => {})
+  }, [takeRate])
+  useEffect(() => { loadSpeechRate() }, [loadSpeechRate])
+
   // Dashboard voice output — speaks each event's `say` (robot also speaks via backend).
-  const { speak, supported: voiceSupported, missingVoice: voiceMissing } = useVoiceOutput({ enabled: voiceOut, lang: voiceLang })
+  const { speak, supported: voiceSupported, missingVoice: voiceMissing } = useVoiceOutput({ enabled: voiceOut, lang: voiceLang, rate: speechRate })
   const { recordEnabled, toggleRecord, beginRecording, endRecording, manualRecording, toggleManualRecord, setRecordingPrefix } = useScreenRecorder()
 
   const emit = useCallback((events: AgentEvent[], steps: Step[]) => {
@@ -223,34 +238,54 @@ export default function Home() {
         if (ev.event !== 'done' && ev.event !== 'error') {
           nudgeRef.current = setInterval(() => speak(stillWorkingPhrase(a.lang)), 15_000)
         }
+      } else if (a.voice && ev.say) {
+        // The HRI queue is still talking (ask's read-back "…, 알겠습니다" is not
+        // waited for, so the next step starts right away): this milestone used to
+        // be dropped ("가운데 선반 이동…" after ask was never said). Say it after
+        // the queue, in order — still never while the mic is open.
+        const line = ev.say
+        stopNudge()
+        enqueueHri(() => speakAndWait(line, a.lang, speechRateRef.current))
       }
+      if (ev.qa_state) setQaSkill(!!ev.qa_state.active)
       if (ev.event === 'done' || ev.event === 'error') {
+        setQaSkill(false)
         stopNudge()
         textAskRef.current?.(null)          // a typed question can no longer be asked
       }
 
       // A skill is talking to the user through this browser. The "still
       // working" nudge must not speak over it — or into the open mic.
-      if (ev.speak || ev.listen) stopNudge()
+      if (ev.speak || ev.listen || ev.alarm) stopNudge()
       if (ev.speak) {
         const line = ev.speak
         const lang = ev.speak_lang ?? a.lang
+        const rate = ev.speak_rate ?? speechRateRef.current
         addQaLine('robot', line)
         const speakId = ev.speak_id
         enqueueHri(async () => {
           silenceNarration()
-          await speakAndWait(line, lang)
+          await speakAndWait(line, lang, rate)
           // announce(wait=True): tell the skill the line has been spoken.
           if (speakId) await api.answerListen(speakId, '').catch(() => {})
+        })
+      }
+      if (ev.alarm) {
+        // A (simulated) 119 call: the siren, after the line before it and before the one after it.
+        const al = ev.alarm
+        enqueueHri(async () => {
+          silenceNarration()
+          await playAlarm(al.volume ?? 0.6, al.cycles ?? 3)
         })
       }
       if (ev.listen) {
         const req = ev.listen
         const lang = req.lang ?? a.lang
+        const rate = req.rate ?? speechRateRef.current
         if (req.prompt) addQaLine('robot', req.prompt)
         enqueueHri(async () => {
           silenceNarration()
-          if (req.prompt) await speakAndWait(req.prompt, lang)
+          if (req.prompt) await speakAndWait(req.prompt, lang, rate)
           if (req.mode === 'text') {
             setTextListen(true)
             setChatOpen(true)
@@ -264,6 +299,12 @@ export default function Home() {
             if (typed !== null) await api.answerListen(req.id, typed).catch(() => {})
             return
           }
+          // "your turn": played to the end before the mic opens; "got it" once a phrase was taken
+          const ear = req.earcon ?? 0
+          if (ear > 0) {
+            await playEarcon('listen', ear)
+            await new Promise(r => setTimeout(r, 100))
+          }
           if (req.capture === 'whisper') {
             // Record only; the robot transcribes it with Whisper (stt connection).
             const rec = await recordPhrase(req.max_sec ?? 8, req.silence_sec ?? 1.5)
@@ -271,11 +312,13 @@ export default function Home() {
               await api.answerListen(req.id, '', rec.error, rec.note).catch(() => {})
               return
             }
+            if (rec.blob && ear > 0) playEarcon('heard', ear)
             const text = await api.answerListenAudio(req.id, rec.blob, rec.mime, rec.note).catch(() => '')
             if (text) addQaLine('user', text)
             return
           }
           const heard = await recognizeOnce(lang, req.max_sec ?? 8)
+          if (heard.text && ear > 0) playEarcon('heard', ear)
           if (heard.text) addQaLine('user', heard.text)
           else if (heard.note) console.info('[hri] nothing recognised:', heard.note)
           await api.answerListen(req.id, heard.text, heard.error, heard.note).catch(() => {})
@@ -392,12 +435,13 @@ export default function Home() {
         setChatOpen(true)
       })
     }
+    loadSpeechRate()                  // Global Configs may have changed since the page loaded
     argsRef.current = { finalPrompt, direct, lang, planner, planOnly, logData, logTarget, logAll, voice }
     repeatRef.current = { remaining: repeatTimes, continueOnError, active: true }
     setTrial(0)                     // fire() bumps it to 1
     setRunning(true)
     fire()
-  }, [running, fire])
+  }, [running, fire, loadSpeechRate])
 
   const stop = useCallback(() => {
     repeatRef.current.active = false   // cancel any pending repeat
@@ -416,7 +460,15 @@ export default function Home() {
   // the head camera), the next press ends it through the same cancel as Stop,
   // which also releases the listen the skill is blocked on.
   const [qaActive, setQaActive] = useState(false)
-  const [qaLang, setQaLang]     = useState('ko')
+  // A `qa` skill is running (its qa_state events) — in any run, also inside a
+  // plan: the "End Q&A" button ends just that conversation, the plan goes on.
+  const [qaSkill, setQaSkill] = useState(false)
+  const endQa = useCallback(() => {
+    api.endQa().catch(e => alert(`End Q&A: ${e instanceof Error ? e.message : e}`))
+  }, [])
+  // One language for everything (Agent panel runs and Q&A): picked in the
+  // Agent panel, the only language selector.
+  const [lang, setLang]         = useState<Lang>('ko')
   // Questions by voice (browser mic) or typed in the Q&A card.
   const [qaInput, setQaInput]   = useState<'voice' | 'text'>('voice')
   const [qaCam, setQaCam]       = useState<'head' | 'arm'>('head')
@@ -424,7 +476,8 @@ export default function Home() {
   const [chatOpen, setChatOpen] = useState(false)
   useEffect(() => {
     try {
-      const v = localStorage.getItem('robotapp_qa_lang'); if (v) setQaLang(v)
+      const l = localStorage.getItem('robotapp_lang') ?? localStorage.getItem('robotapp_qa_lang')
+      if (l === 'ko' || l === 'en') setLang(l)
       const m = localStorage.getItem('robotapp_qa_input'); if (m === 'voice' || m === 'text') setQaInput(m)
       const c = localStorage.getItem('robotapp_qa_cam'); if (c === 'head' || c === 'arm') setQaCam(c)
       setQaOnce(localStorage.getItem('robotapp_qa_once') === '1')
@@ -442,11 +495,11 @@ export default function Home() {
     setQaInput(v)
     try { localStorage.setItem('robotapp_qa_input', v) } catch { /* no storage */ }
   }
-  const pickQaLang = (v: string) => {
-    setQaLang(v)
-    try { localStorage.setItem('robotapp_qa_lang', v) } catch { /* no storage */ }
+  const pickLang = (v: Lang) => {
+    setLang(v)
+    try { localStorage.setItem('robotapp_lang', v) } catch { /* no storage */ }
   }
-  useEffect(() => { if (!running) { setQaActive(false); setTextListen(false) } }, [running])
+  useEffect(() => { if (!running) { setQaActive(false); setTextListen(false); setQaSkill(false) } }, [running])
   const toggleQa = useCallback(() => {
     if (qaActive) { stop(); return }
     if (running) return
@@ -458,10 +511,10 @@ export default function Home() {
     // done on this page, so text mode names the dashboard.
     const cam = (qaCam === 'arm' ? ", cam='arm'" : '')      // head is the skill's default
               + (qaOnce ? ', once=True' : '')
-    run(qaInput === 'text' ? `qa::source='dashboard', lang='${qaLang}', input='text'${cam}`
-                           : `qa::lang='${qaLang}'${cam}`, true, qaLang, 'direct',
+    run(qaInput === 'text' ? `qa::source='dashboard', lang='${lang}', input='text'${cam}`
+                           : `qa::lang='${lang}'${cam}`, true, lang, 'direct',
         false, false, 'frontend', 1, false, true, false)
-  }, [qaActive, running, qaLang, qaInput, qaCam, qaOnce, run, stop])
+  }, [qaActive, running, lang, qaInput, qaCam, qaOnce, run, stop])
 
   // Latest backend vision-capture dir (emitted when log_data=backend) — shown in the panel.
   const backendLogDir = agentEvents.reduce((acc, e) => e.log_dir || acc, '')
@@ -489,12 +542,6 @@ export default function Home() {
             </span>
           )}
           <div className="flex items-center gap-1">
-            <select value={qaLang} onChange={e => pickQaLang(e.target.value)} disabled={qaActive}
-              title="Q&A language" className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
-              <option value="ko">한국어</option>
-              <option value="vi">Tiếng Việt</option>
-              <option value="en">English</option>
-            </select>
             <select value={qaInput} onChange={e => pickQaInput(e.target.value as 'voice' | 'text')} disabled={qaActive}
               title="Ask by voice (browser mic) or by typing in the Q&A card"
               className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
@@ -575,7 +622,7 @@ export default function Home() {
         <main className="flex-1 flex flex-col overflow-y-auto">
 
           <section className="px-5 pt-2 pb-1 border-b border-gray-200">
-            <AgentPanel running={running} onRun={run} onStop={stop} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
+            <AgentPanel running={running} lang={lang} onLangChange={pickLang} langLocked={qaActive} onRun={run} onStop={stop} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
           </section>
 
           <section className="px-5 pt-1 pb-3">
@@ -589,9 +636,16 @@ export default function Home() {
               {/* Always live, unlike the Agent panel's Stop: a skill run from the
                   CLI or another client can be moving the robot while this tab
                   shows nothing running. */}
+              {qaSkill && (
+                <button onClick={endQa}
+                  title="End the Q&A conversation as if the user said 그만: the robot says goodbye, qa succeeds and the plan goes on"
+                  className="ml-auto self-center px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded">
+                  ⏹ End Q&A
+                </button>
+              )}
               <button onClick={stop}
                 title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
-                className="ml-auto self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded">
+                className={`${qaSkill ? 'ml-2' : 'ml-auto'} self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded`}>
                 Cancel
               </button>
             </div>
@@ -610,6 +664,7 @@ export default function Home() {
           active={qaActive || textListen}
           onSend={text => { addQaLine('user', text); textAskRef.current?.(text) }}
           onClose={() => setChatOpen(false)}
+          onEnd={qaSkill ? endQa : undefined}
         />
       )}
     </div>

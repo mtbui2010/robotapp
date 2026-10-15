@@ -367,6 +367,18 @@ export const api = {
     await fetch(`${getAgentUrl()}/agent/cancel`, { method: 'POST' })
   },
 
+  /** End the running `qa` conversation as a stop word would ("End Q&A"): the
+   *  skill says goodbye and succeeds, the plan goes on. Throws the backend's
+   *  detail when no qa is running (409). */
+  async endQa(): Promise<void> {
+    const r = await fetch(`${getAgentUrl()}/agent/qa/end`, { method: 'POST' })
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`
+      try { detail = (await r.json()).detail ?? detail } catch { /* not json */ }
+      throw new Error(detail)
+    }
+  },
+
   async setWorld(patch: Partial<WorldState>): Promise<WorldState> {
     const r = await fetch(`${getAgentUrl()}/agent/world`, {
       method: 'PUT',
