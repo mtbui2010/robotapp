@@ -1,4 +1,24 @@
 export type ClientType = 'ros_service' | 'ros_topic' | 'ros_action' | 'webrtc' | 'llm' | 'tcp' | 'zmq' | 'websocket' | 'http' | 'visionserve' | 'switchbot' | 'stt'
+  | 'vlms' | 'visions' | 'voices'
+
+// AI-server connections (robot_agent/connect/pool.py): one role, several servers in fallback order.
+export type PoolKind = 'vlms' | 'visions' | 'voices'
+export type PoolLevel = 'ok' | 'warn' | 'error' | 'unknown'
+export interface PoolServerStatus {
+  idx: number
+  label: string
+  enabled: boolean
+  provider: string | null
+  status: 'unknown' | 'ok' | 'slow' | 'down' | 'off'
+  error: string
+  last_sec: number | null
+  cooldown: number        // s left before it is tried first again
+}
+export interface PoolStatus {
+  level: PoolLevel        // ok: main server works · warn: a fallback does · error: none
+  using: number | null    // index of the server that served the last call
+  servers: PoolServerStatus[]
+}
 
 // Languages the robot speaks and understands (skills: hri LANGS).
 export type Lang = 'ko' | 'en'
@@ -10,9 +30,10 @@ export interface ClientEntry {
   config: Record<string, unknown>
   connected: boolean
   is_camera: boolean
-  is_active: boolean   // only meaningful for type='llm' — marks the entry that resolves dm.get_client('llm')
+  is_active: boolean   // type 'llm' / 'vlms' — marks the entry that resolves dm.get_client('llm') (the planner)
   error: string
   last_checked: number
+  servers?: PoolStatus // AI-server connections (vlms / visions / voices and the older llm / visionserve / stt)
 }
 
 export interface GuideVersion {
@@ -95,6 +116,10 @@ export interface AgentEvent {
   speak_id?: string                  // the skill waits until this line is reported spoken
   alarm?: { volume?: number; cycles?: number }   // kcare call_119 (simulated): play the siren, in order
   qa_state?: { active: boolean }     // kcare qa conversation running / over (the "End Q&A" button)
+  // kcare ask did not understand: its options as buttons until a click (POST /agent/listen/<id> {text: option}),
+  // the spoken answer or the end of the ask (choose_close = that id)
+  choose?: { id: string; options: string[]; prompt?: string }
+  choose_close?: string
   listen?: { id: string; lang?: string; max_sec?: number; prompt?: string; mode?: 'voice' | 'text'
              // 'whisper': record and post the audio (the robot transcribes);
              // 'browser': the browser's own recogniser

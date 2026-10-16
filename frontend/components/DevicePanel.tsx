@@ -1,10 +1,13 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
-import type { ClientEntry, ClientType, LocationsInfo, RosScanResult } from '../lib/types'
+import type { ClientEntry, ClientType, LocationsInfo, PoolKind, PoolLevel, RosScanResult } from '../lib/types'
 import type { Robot } from '../lib/api'
 import TEMPLATES_RAW from '../lib/ros_templates.json'
 import PanelSearch from './PanelSearch'
+import ServerListEditor, {
+  KIND_DEFAULT_NAME, STATUS_DOT, defaultRows, rowsError, rowsFromConfig, rowsToConfig, type ServerRow,
+} from './ServerListEditor'
 
 interface RosTemplate {
   id: string
@@ -58,9 +61,29 @@ const TYPE_LABELS: Record<ClientType, string> = {
   zmq:         'ZeroMQ',
   websocket:   'WebSocket',
   http:        'HTTP / REST',
-  visionserve: 'VisionServe',
+  visionserve: 'VisionServe (old: one server)',
   switchbot:   'SwitchBot (BLE)',
-  stt:         'Speech-to-text (Whisper)',
+  stt:         'Speech-to-text (old: one server)',
+  vlms:        'VLMs — Ollama / ChatGPT / Gemini / Claude',
+  visions:     'Visions — visionserve',
+  voices:      'Voices — Whisper',
+}
+
+// AI-server connections: one role, servers in fallback order (robot_agent/connect/pool.py). The older
+// one-server types are listed under the same heading and can still be edited, but not added.
+const POOL_KINDS: PoolKind[] = ['vlms', 'visions', 'voices']
+const isPool = (t: ClientType): t is PoolKind => (POOL_KINDS as string[]).includes(t)
+const LEGACY_TYPES: ClientType[] = ['llm', 'visionserve', 'stt']
+const KIND_OF: Partial<Record<ClientType, PoolKind>> = {
+  vlms: 'vlms', visions: 'visions', voices: 'voices', llm: 'vlms', visionserve: 'visions', stt: 'voices',
+}
+const KIND_HEAD: Record<PoolKind, string> = { vlms: 'VLMs', visions: 'Visions', voices: 'Voices' }
+const LEVEL_DOT: Record<PoolLevel, string> = {
+  ok: 'bg-green-500', warn: 'bg-amber-400', error: 'bg-red-500', unknown: 'bg-gray-300',
+}
+const LEVEL_TITLE: Record<PoolLevel, string> = {
+  ok: 'Main server works', warn: 'Main server not working — a fallback server serves the calls',
+  error: 'No server works', unknown: 'Not tried yet',
 }
 
 type LLMProvider = 'llama' | 'chatgpt' | 'gemini'
@@ -111,6 +134,9 @@ interface FormFields {
   loc: string
   locAliases: string     // SwitchBot: other names for the place, comma-separated (세탁실, …)
   isDefault: boolean
+  // AI-server connections (vlms / visions / voices): servers in fallback order
+  servers: ServerRow[]
+  cooldown: string       // s a failed / slow server is skipped (default 60)
 }
 
 const DEFAULT_FORM: FormFields = {
@@ -123,6 +149,7 @@ const DEFAULT_FORM: FormFields = {
   method: 'POST', token: '', timeout: '',
   provider: 'llama', url: 'http://localhost:11434', model: '', apiKey: '', numCtx: '',
   mac: '', loc: '', locAliases: '', isDefault: false,
+  servers: [], cooldown: '',
 }
 
 interface Props {
@@ -149,6 +176,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   const [rosData, setRosData]   = useState<RosScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
   const [pinging, setPinging]   = useState(false)
+  // 🔥 Warm up: the warmup_servers skill loads the models on Whisper / Ollama / visionserve
+  const [warming, setWarming]   = useState(false)
+  const [warmMsg, setWarmMsg]   = useState<{ level: 'ok' | 'warn' | 'error'; text: string } | null>(null)
   const [showAdd, setShowAdd]   = useState(false)
   const [editId, setEditId]     = useState<string | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -419,29 +449,44 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     onClientsChange(data)
   }, [onClientsChange])
 
+  // Status (probes, cached 5 s by the backend), then the AI servers' state that probe left.
+  const pollStatus = useCallback(async (fresh = false) => {
+    const status = await api.getStatus(fresh)
+    const servers = await api.getServers()
+    setClients(prev => {
+      const next = prev.map(c => ({ ...c, connected: status[c.id] ?? c.connected, servers: servers[c.id] ?? c.servers }))
+      onClientsChange(next)
+      return next
+    })
+  }, [onClientsChange])
+
   // Poll status every 10s
   useEffect(() => {
     refresh()
-    const id = setInterval(async () => {
-      const status = await api.getStatus()
-      setClients(prev => {
-        const next = prev.map(c => ({ ...c, connected: status[c.id] ?? c.connected }))
-        onClientsChange(next)
-        return next
-      })
-    }, 10_000)
+    const id = setInterval(() => { void pollStatus() }, 10_000)
     return () => clearInterval(id)
-  }, [refresh])
+  }, [refresh, pollStatus])
+
+  const warmUp = async () => {
+    setWarming(true)
+    setWarmMsg(null)
+    try {
+      const r = await api.runSkill('warmup_servers')
+      const level = (r.level === 'ok' || r.level === 'warn' || r.level === 'error')
+        ? r.level as 'ok' | 'warn' | 'error' : (r.isdone ? 'ok' : 'error')
+      setWarmMsg({ level, text: String(r.msg ?? (r.isdone ? 'warmed up' : 'warm-up failed')) })
+      void pollStatus()
+    } catch (e) {
+      setWarmMsg({ level: 'error', text: `warm-up failed: ${e instanceof Error ? e.message : String(e)}` })
+    } finally {
+      setWarming(false)
+    }
+  }
 
   const pingAll = async () => {
     setPinging(true)
     try {
-      const status = await api.getStatus()
-      setClients(prev => {
-        const next = prev.map(c => ({ ...c, connected: status[c.id] ?? c.connected }))
-        onClientsChange(next)
-        return next
-      })
+      await pollStatus(true)
     } finally {
       setPinging(false)
     }
@@ -492,7 +537,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   }
 
   const handleTypeChange = (type: ClientType) => {
-    setForm(f => type === 'visionserve'
+    setForm(f => isPool(type)
+      ? { ...f, type, servers: f.type === type && f.servers.length ? f.servers : defaultRows(type) }
+      : type === 'visionserve'
       ? { ...f, type, url: 'http://localhost:11435', model: f.model || 'rf-detr' }
       : type === 'stt'
       ? { ...f, type, url: 'http://192.168.0.6:8000', model: 'deepdml/faster-whisper-large-v3-turbo-ct2' }
@@ -598,6 +645,16 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       if (f.timeout.trim()) cfg.timeout = parseFloat(f.timeout)
       return cfg
     }
+    if (isPool(f.type)) {
+      const cfg: Record<string, unknown> = {
+        agent_name: f.agentName.trim() || KIND_DEFAULT_NAME[f.type],
+        servers: rowsToConfig(f.type, f.servers),
+      }
+      if (parseFloat(f.cooldown) > 0) cfg.cooldown_sec = parseFloat(f.cooldown)
+      // The planner uses the active vlms / llm connection; keep the flag across an edit.
+      if (f.type === 'vlms' && editId && clients.find(c => c.id === editId)?.is_active) cfg.is_active = true
+      return cfg
+    }
     if (f.type === 'switchbot') {
       // turn_light::loc='<loc>' picks this light; `default` is the one used without loc.
       return { agent_name: f.agentName.trim() || switchbotId(f.loc), mac: f.mac.trim().toUpperCase(),
@@ -620,6 +677,17 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   }
 
   const submitForm = async () => {
+    if (isPool(form.type)) {
+      const err = rowsError(form.type, form.servers)
+      if (err) { setFormError(err); return }
+      // Cloud keys go to the site's .env (POST /agent/api-key), never into connections.json.
+      for (const r of form.servers) {
+        if (form.type === 'vlms' && r.provider !== 'ollama' && r.apiKey.trim()) {
+          await api.setApiKey(r.provider, r.apiKey.trim())
+          setApiKeysSaved(prev => ({ ...prev, [r.provider]: true }))
+        }
+      }
+    }
     // Save API key separately if provided
     if ((form.type === 'llm') && form.apiKey.trim() &&
         (form.provider === 'chatgpt' || form.provider === 'gemini')) {
@@ -628,7 +696,9 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     }
 
     const config = buildConfig(form)
-    const agentName = form.type === 'llm'
+    const agentName = isPool(form.type)
+      ? (form.agentName.trim() || KIND_DEFAULT_NAME[form.type])
+      : form.type === 'llm'
       ? (form.agentName.trim() || PROVIDER_AGENT_NAME[form.provider])
       : form.type === 'visionserve'
       ? (form.agentName.trim() || form.model.trim() || form.url)
@@ -709,6 +779,10 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       f.port        = String(cfg.port ?? '8888')
       f.path        = String(cfg.path ?? '/run')
       f.runFuncCode = String(cfg.run_func ?? '')
+    } else if (isPool(c.type)) {
+      f.agentName = String(cfg.agent_name ?? c.id)
+      f.servers   = rowsFromConfig(cfg)
+      f.cooldown  = cfg.cooldown_sec != null ? String(cfg.cooldown_sec) : ''
     } else if (c.type === 'stt') {
       f.agentName = String(cfg.agent_name ?? c.id)
       f.url       = String(cfg.url ?? '')
@@ -977,7 +1051,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       {/* Connections panel */}
       <div className="border border-gray-200 rounded">
         {/* Header */}
-        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-t">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-gray-50 rounded-t">
           <button
             onClick={() => setConnOpen(o => !o)}
             className="flex items-center gap-1.5 font-semibold text-gray-800 hover:text-gray-600 text-sm"
@@ -988,7 +1062,16 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
             {clients.filter(c => c.connected).length}/{clients.length}
           </span>
-          <div className="ml-auto flex gap-1.5">
+          <div className="ml-auto flex gap-1.5 [&>button]:whitespace-nowrap">
+            <button
+              onClick={warmUp}
+              disabled={warming}
+              className="px-2 py-1 text-xs bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-white rounded"
+              title="Warm up: load the models on every AI server (all at once), so the first answer is not slow. Green: the main servers work · amber: a fallback does · red: no server of a kind works"
+              aria-label="Warm up servers"
+            >
+              {warming ? '…' : '🔥'}
+            </button>
             <button
               onClick={pingAll}
               disabled={pinging}
@@ -1013,6 +1096,16 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           </div>
         </div>
 
+      {warmMsg && (
+        <div className={`mx-2 mt-2 px-2 py-1 rounded border text-[11px] flex items-start gap-1 ${
+          warmMsg.level === 'ok' ? 'bg-green-50 border-green-200 text-green-700'
+            : warmMsg.level === 'warn' ? 'bg-amber-50 border-amber-200 text-amber-700'
+            : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <span className="flex-1 break-words">{warmMsg.level === 'ok' ? '🔥 ' : warmMsg.level === 'warn' ? '⚠ ' : '✖ '}{warmMsg.text}</span>
+          <button onClick={() => setWarmMsg(null)} className="text-gray-400 hover:text-gray-600" title="Hide">×</button>
+        </div>
+      )}
+
       {clients.length > 0 && (
         <div className="px-2 pt-2">
           <PanelSearch value={connSearch} onChange={setConnSearch} placeholder="Search connections…" />
@@ -1027,7 +1120,8 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           {/* Type selector */}
           <select value={form.type} onChange={e => handleTypeChange(e.target.value as ClientType)}
             className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5">
-            {(Object.keys(TYPE_LABELS) as ClientType[]).map(t => (
+            {[...POOL_KINDS, ...(Object.keys(TYPE_LABELS) as ClientType[]).filter(t =>
+                !isPool(t) && (!LEGACY_TYPES.includes(t) || t === form.type))].map(t => (
               <option key={t} value={t}>{TYPE_LABELS[t]}</option>
             ))}
           </select>
@@ -1282,6 +1376,25 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
             </>)}
           </>)}
 
+          {/* AI-server connection: servers in fallback order */}
+          {isPool(form.type) && (() => {
+            const kind = form.type as PoolKind
+            const status = clients.find(c => c.id === editId)?.servers?.servers
+            return (<>
+              <input placeholder={`connection name  (default: ${KIND_DEFAULT_NAME[kind]})`} value={form.agentName}
+                onChange={e => setForm(f => ({ ...f, agentName: e.target.value }))}
+                title={kind === 'vlms' ? 'vlm: the qa skill and find verify · the active one also plans'
+                  : kind === 'visions' ? 'visionserve: find / find_grasp / products' : 'whisper: reply / ask / qa'}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+              <ServerListEditor kind={kind} rows={form.servers} keysSaved={apiKeysSaved}
+                status={editId ? status : undefined}
+                onChange={servers => setForm(f => ({ ...f, servers }))} />
+              <input placeholder="skip a failed / slow server for … s  (default 60)" value={form.cooldown}
+                onChange={e => setForm(f => ({ ...f, cooldown: e.target.value.replace(/[^0-9.]/g, '') }))}
+                className="bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 font-mono placeholder-gray-400" />
+            </>)
+          })()}
+
           {/* VisionServe fields */}
           {form.type === 'visionserve' && (<>
             <input placeholder="agent_name" value={form.agentName}
@@ -1404,20 +1517,31 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
           )
           const groupMap = new Map<string, ClientEntry[]>()
           for (const c of filtered) {
-            const head = getHead(c.name || c.id)
+            const kind = KIND_OF[c.type]
+            const head = kind ? KIND_HEAD[kind] : getHead(c.name || c.id)
             if (!groupMap.has(head)) groupMap.set(head, [])
             groupMap.get(head)!.push(c)
           }
+          // VLMs / Visions / Voices first, then the rest in their usual order
           const groups = Array.from(groupMap.entries()).map(([head, entries]) => ({ head, entries }))
+            .sort((a, b) => {
+              const r = (h: string) => { const i = Object.values(KIND_HEAD).indexOf(h); return i < 0 ? 9 : i }
+              return r(a.head) - r(b.head)
+            })
           const searchOpen = connSearch.length > 0
 
           const renderRow = (c: ClientEntry) => (
             <div key={c.id} className="flex flex-col">
               <div className="flex items-center gap-2 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 group">
+                {c.servers ? (
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${LEVEL_DOT[c.servers.level]}`}
+                    title={LEVEL_TITLE[c.servers.level]} />
+                ) : (
                 <span
                   className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.connected ? 'bg-green-500' : 'bg-red-400'}`}
                   title={c.connected ? 'Connected' : (c.error || 'Not connected')}
                 />
+                )}
                 {c.type === 'switchbot' && (
                   <input
                     type="radio"
@@ -1428,7 +1552,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
                     title={c.config?.default === true ? 'Default light (turn_light without loc)' : 'Make this the default light'}
                   />
                 )}
-                {c.type === 'llm' && (
+                {(c.type === 'llm' || c.type === 'vlms') && (
                   <input
                     type="radio"
                     name="llm-active"
@@ -1452,6 +1576,20 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
               </div>
               {c.error && !c.connected && (
                 <p className="text-[10px] text-red-500 px-2 pb-1 truncate" title={c.error}>{c.error}</p>
+              )}
+              {isPool(c.type) && c.servers && (
+                <div className="flex flex-col pl-5 pr-2 py-0.5 gap-0.5">
+                  {c.servers.servers.map(sv => (
+                    <div key={sv.idx} className={`flex items-center gap-1.5 text-[10px] ${sv.enabled ? 'text-gray-600' : 'text-gray-400 line-through'}`}
+                      title={sv.error || sv.status}>
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[sv.status] ?? 'bg-gray-300'}`} />
+                      <span className="font-mono truncate">#{sv.idx + 1} {sv.label}</span>
+                      {c.servers?.using === sv.idx && <span className="text-blue-600 flex-shrink-0">← in use</span>}
+                      {sv.status === 'slow' && <span className="text-amber-600 flex-shrink-0">slow / CPU</span>}
+                      {sv.cooldown > 0 && <span className="text-gray-400 flex-shrink-0">skip {sv.cooldown}s</span>}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )

@@ -43,6 +43,7 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `POST /skills/reload`   | refresh registry after edits |
 | `GET  /devices`         | list configured devices |
 | `POST /devices`         | add a device |
+| `GET  /connects/servers` | AI-server connections: level + each server's state (fallback, see below) |
 | `GET  /diagnostics/boot`| boot-error inspection |
 | `GET  /camera/<id>`     | MJPEG / WebRTC stream |
 | `GET/POST/PUT/DELETE /config/locations[...]` | per-site config profiles (see below) |
@@ -410,10 +411,10 @@ Now (`_ask_shelves` in `kcare_robot/skills/hri.py`):
 - inside the unit: horizontal surfaces spanning ≥ 35 % of its width = boards,
   sideways-facing surfaces ≥ 60 % of the shelves' height away from its sides =
   dividers; an object's level = the interval its lower half is in, its column =
-  dividers to its left → "오른쪽 선반 가운데 칸에 있어요".
-- If the unit runs past the photo's edge (head tilted 10°: the top level's
-  ceiling out of view), levels are counted from the visible end ("아래에서 두
-  번째 칸") instead of 아래 / 가운데 / 위.
+  dividers to its left → "밑에서 두 번째 칸 오른쪽에 있어요" (2026-10-16: levels always counted from the
+  bottom; was "오른쪽 선반 가운데 칸"; same 5 + 1 captures: 24 / 24 right).
+- If the bottom of the unit is out of view, levels are counted from the top
+  ("위에서 두 번째 칸").
 
 Used for where-questions at a place with no `qa` block or with
 `'shelves': True` (shelf2: `{'views': ['up'], 'shelves': True}`); no shelf found
@@ -585,6 +586,17 @@ ghcr.io/speaches-ai/speaches:latest-cuda`, model
 `deepdml/faster-whisper-large-v3-turbo-ct2`, ~2.4 GB VRAM, 0.2–0.3 s per phrase;
 all three Korean test phrases right).
 
+**🔥 Warm up (2026-10-16).** Whisper unloads after 300 s unused, Ollama after `keep_alive`, visionserve loads a
+model on its first call — and on 2026-10-15 Whisper could not load again (GPU full) and `ask` failed. The
+DevicePanel's **🔥 Warm up** (next to Ping All; operator-clicked, nothing runs by itself) calls kcare's
+`warmup_servers` skill (`skills/warmup.py`, also usable as a plan step; not narrated). It warms **every server of
+every AI connection at the same time**: Whisper (0.5 s of silence), Ollama (an empty `/api/generate` with
+`keep_alive`), visionserve (the models kcare calls: FIND_CONFIGS detectors, `siglip-image`); a cloud API only has
+its key and model checked. Per kind: **red** when every server of the kind failed, **green** when the main (first)
+server of every connection of the kind works, **amber** when a main server failed but another works (calls fall
+back). The line reads `Voices ✓ (1/1) · VLMs fallback (2/3): vlm #2 …: unreachable · Visions ✓ (2/2)`;
+`isdone` is False only on red.
+
 Global Config **`HRI_CONFIGS`** (kcare `configs/tasks.py`): `source`
 (`dashboard` | `robot` — default mic for reply / ask / qa; a call's `source=`
 wins), `dashboard_stt` (`whisper` | `browser`), `stt` (connection id, '' =
@@ -599,7 +611,7 @@ calibration hears it. Robot side: `robot_agent.utils.earcon` / `play_earcon` (44
 16 kHz, which also breaks `play_audio` at its 16 kHz default), called in hri `_hear`. Dashboard: the `listen`
 event carries `earcon` (volume, 0 = off) and `page.tsx` plays `playEarcon` ([lib/hriVoice.ts](frontend/lib/hriVoice.ts),
 WebAudio, same notes); typed input gets none. `HRI_CONFIGS.earcon` (on) / `earcon_volume` (0.3); `ask::…, earcon=False`
-per call. `ask` with `options` reads them with the question every time it asks ("… 중에서 골라 주세요").
+per call. `ask` (2026-10-16): `read_options` defaults to False — only the question is asked; the chosen option is said ("짜파게티, 알겠습니다"), the user's own words are not (`confirm=True` repeats them when there are no options, `confirm=False` says nothing); the first time it does not understand (no answer / no match) the options pop up as buttons on the dashboard that started the run and the robot waits for a click — it does not say it did not hear or ask again (`screen_choice`, default on; `choose` / `choose_close` events, forwarded by `_make_log_fn`; a click posts `POST /agent/listen/<id> {text: option}` and the choice is said as if spoken; no click in `screen_wait_sec` (30) → the ask fails); without a dashboard or with `screen_choice=False` it asks again by voice as before; the options ("… 중에서 골라 주세요") are read with `read_options=True`, and always after an answer that matched none.
 
 **Speech rate (2026-10-15).** `HRI_CONFIGS.speech_rate` (default **1.3**, clamped 0.5–2.0; Global Configs → HRI_CONFIGS
 shows it as a slider 0.5–2.0 with a ▶ button that says a sample line at that rate, before saving) sets how fast the browser speaks. kcare's
@@ -650,6 +662,52 @@ Cloudflare hostname costs 0.3–1.3 s). Same 22 questions, server models:
 32b-instruct 19/22, 2.4 s median; 8b-instruct 18/22, 2.0 s; 30b-a3b-instruct
 16/22 (swaps left/right at the cabinet), 1.9 s. Local 8b on the 3090: 18/22,
 0.5 s. About 1 s of each answer is the network — a LAN address would cut it.
+
+### AI servers: vlms / visions / voices, with fallback (2026-10-16)
+
+When the 3090 is full a server fails (Whisper OOM) or slips to the CPU (Ollama puts part of the model in RAM). The
+AI connections are now three types, each one **role** served by an **ordered list of servers**
+([robot_agent/connect/pool.py](../robot_agent/robot_agent/connect/pool.py)):
+
+| type | id (kept, so skills did not change) | servers |
+|---|---|---|
+| `vlms` | `vlm` — qa, find verify, and the planner when active | `provider` ollama / openai / gemini / anthropic, `url` (Ollama), `model`, `num_ctx` |
+| `visions` | `visionserve` — find / find_grasp / products | `url` |
+| `voices` | `whisper` — reply / ask / qa (`dm.stt_client()`) | `url`, `model` (a smaller Whisper on the same server needs less GPU) |
+
+Each server also has `enabled`, `slow_sec`, `timeout`; the connection `cooldown_sec` (60).
+
+- A call goes to the first usable server. Failing (no connection — 3 s connect limit, a TCP check first for
+  visionserve —, timeout, HTTP error, out of memory, no API key) or **on the CPU** (Ollama: `/api/ps` shows
+  `size_vram < size` after an answer slower than `slow_sec`; Whisper / visionserve: two calls in a row slower
+  than `slow_sec` — the first call of a model loads it) puts the server aside for `cooldown_sec`; then it is tried
+  first again, so the main server takes over again once it works. All set aside → still tried in order. Only
+  whole requests are sent again (inference, never motion). Every switch is a log line
+  (`vlm: #1 … unreachable → #2 … (2.9 s)`).
+- `vlms` speaks four APIs with one Ollama-shaped body (`VlmPool.chat`: messages with base64 `images`, `format`,
+  `options.temperature / num_predict`). Cloud: OpenAI chat completions, Gemini `generateContent` (flash models
+  with thinking off), Anthropic messages; a JSON `format` becomes "answer with JSON only, matching …" plus
+  their JSON mode. Keys come from the site's `.env` (`OPENAI_API_KEY`, `GOOGLE_API_KEY` / `GEMINI_API_KEY`,
+  `ANTHROPIC_API_KEY`; typed in the server row, saved with `POST /agent/api-key`), never `connections.json`.
+  A cloud server receives the robot's photos.
+- Callers: hri `_post_chat` (qa, `find::verify`) sends through the pool when the `vlm` connection is a `vlms`;
+  `dm.get_client('vlm' | 'llm')` is an LLMobj on the pool (translate, llm_direct, assist loop);
+  `active_llm_config()` returns `{name: 'pool', connection}` + the first usable Ollama server's url / model
+  (GRACE talks to Ollama itself); `get_client('visionserve')` / `stt_client()` are proxies whose methods go
+  through the pool. The older `llm` / `visionserve` / `stt` types still work (one server, no fallback) and are
+  listed under the same headings; they can be edited but not added.
+- `GET /connects/servers` → `{id: {level: ok | warn | error | unknown, using, servers: [{label, status: ok |
+  slow | down | off | unknown, error, last_sec, cooldown}]}}` (state only; `GET /connects/status` probes:
+  Ollama `/api/version` + `/api/ps`, visionserve `health()`, Whisper `/health`; cloud servers are not probed).
+- DevicePanel: Connections are headed **VLMs / Visions / Voices** first; a pool row's dot is its level (green /
+  amber / red / grey) with one line per server under it (dot, `← in use`, `slow / CPU`, `skip Ns`). The form
+  ([components/ServerListEditor.tsx](frontend/components/ServerListEditor.tsx)) edits the servers: provider,
+  url, model, num_ctx, slow after, on/off, ▲▼ to reorder, ×, + server, the cloud key.
+- `pool.tidy_connections(items)` (pure) merges a site's AI connections into one per kind (vlm / visionserve /
+  whisper, servers deduplicated, the existing id's servers first). Preview script:
+  `kaair_real_capture/server_pool_20261016/tidy_preview.py <site>…`. Test against the real servers (a dead
+  first server, a cloud server without a key → the dev PC answers; nothing moves):
+  `kaair_real_capture/server_pool_20261016/test_pool.py`.
 
 ### Cancel / Stop
 

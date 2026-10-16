@@ -274,7 +274,12 @@ export interface Recorded {
  * `maxSec` the blob is null, so silence is not sent to Whisper (which tends to
  * invent words for it).
  */
+// stopRecording(): end the recording in progress now (an on-screen choice answered the question instead).
+let stopFlag = false
+export function stopRecording() { stopFlag = true }
+
 export async function recordPhrase(maxSec = 8, silenceSec = 1.5): Promise<Recorded> {
+  stopFlag = false
   if (typeof window === 'undefined') return { blob: null, mime: '', error: 'no window' }
   if (!window.isSecureContext) return { blob: null, mime: '', error: 'not-allowed', note: 'insecure-context (http)' }
   const md = navigator.mediaDevices
@@ -324,6 +329,7 @@ export async function recordPhrase(maxSec = 8, silenceSec = 1.5): Promise<Record
         lastVoice = now
       }
       const silentFor = spokeAt ? (now - lastVoice) / 1000 : 0
+      if (stopFlag) { spokeAt = 0; resolve(); return }        // nothing is sent: the click answered
       if (t >= maxSec || (spokeAt && silentFor >= silenceSec)) { resolve(); return }
       setTimeout(tick, 50)
     }

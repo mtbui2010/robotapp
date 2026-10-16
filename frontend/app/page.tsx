@@ -13,7 +13,7 @@ import ButtonPanel  from '../components/ButtonPanel'
 import QaChat, { type QaLine } from '../components/QaChat'
 import { api }      from '../lib/api'
 import { useVoiceOutput, stillWorkingPhrase } from '../lib/useVoiceOutput'
-import { speakAndWait, recognizeOnce, recordPhrase, primeMic, playEarcon, playAlarm } from '../lib/hriVoice'
+import { speakAndWait, recognizeOnce, recordPhrase, primeMic, playEarcon, playAlarm, stopRecording } from '../lib/hriVoice'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
 import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
 import type { Outcome } from '../lib/datasetLog'
@@ -114,6 +114,16 @@ export default function Home() {
   const [textListen, setTextListen] = useState(false)
   const textAskRef = useRef<((text: string | null) => void) | null>(null)
   const addQaLine = (who: QaLine['who'], text: string) => setQaLog(l => [...l, { who, text }])
+  // kcare ask did not understand: its options as buttons (a helper clicks; the user is blind)
+  const [choice, setChoice] = useState<{ id: string; options: string[]; prompt: string } | null>(null)
+  const pickChoice = (opt: string) => {
+    if (!choice) return
+    const id = choice.id
+    setChoice(null)
+    stopRecording()                     // the click answers: end the recording in progress
+    addQaLine('user', `${opt} (화면 선택)`)
+    api.answerListen(id, opt).catch(() => {})
+  }
   const stopNudge = useCallback(() => {
     if (nudgeRef.current) { clearInterval(nudgeRef.current); nudgeRef.current = null }
   }, [])
@@ -248,7 +258,13 @@ export default function Home() {
         enqueueHri(() => speakAndWait(line, a.lang, speechRateRef.current))
       }
       if (ev.qa_state) setQaSkill(!!ev.qa_state.active)
+      if (ev.choose) setChoice({ id: ev.choose.id, options: ev.choose.options, prompt: ev.choose.prompt ?? '' })
+      if (ev.choose_close) {
+        const closed = ev.choose_close
+        setChoice(c => (c && c.id === closed ? null : c))
+      }
       if (ev.event === 'done' || ev.event === 'error') {
+        setChoice(null)
         setQaSkill(false)
         stopNudge()
         textAskRef.current?.(null)          // a typed question can no longer be asked
@@ -656,6 +672,24 @@ export default function Home() {
 
         </main>
       </div>
+      {choice && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl p-5 w-full max-w-md flex flex-col gap-3">
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+              The robot did not understand the answer and is waiting — click the user&apos;s choice.
+            </div>
+            {choice.prompt && <div className="text-base font-medium text-gray-800 break-words">{choice.prompt}</div>}
+            <div className="grid grid-cols-2 gap-2">
+              {choice.options.map(o => (
+                <button key={o} onClick={() => pickChoice(o)}
+                  className="px-3 py-3 text-base bg-blue-600 hover:bg-blue-500 text-white rounded break-words">
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {chatOpen && (qaActive || textListen || qaLog.length > 0) && (
         <QaChat
           log={qaLog}

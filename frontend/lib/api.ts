@@ -1,4 +1,4 @@
-import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, LlmInfo, LocationsInfo } from './types'
+import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, LlmInfo, LocationsInfo, PoolStatus } from './types'
 
 // ------------------------------------------------------------------
 // Robot registry — multiple named robots, one active at a time.
@@ -162,10 +162,19 @@ export const api = {
     return Array.isArray(data) ? data : []
   },
 
-  async getStatus(): Promise<Record<string, boolean>> {
-    const r = await fetch(`${getAgentUrl()}/connects/status`)
+  async getStatus(fresh = false): Promise<Record<string, boolean>> {
+    const r = await fetch(`${getAgentUrl()}/connects/status${fresh ? '?fresh=1' : ''}`)
     if (!r.ok) return {}
     return r.json()
+  },
+
+  // Per AI-server connection: level + each server's state (what the backend knows; nothing is probed).
+  async getServers(): Promise<Record<string, PoolStatus>> {
+    try {
+      const r = await fetch(`${getAgentUrl()}/connects/servers`)
+      if (!r.ok) return {}
+      return r.json()
+    } catch { return {} }
   },
 
   async addClient(type: ClientType, name: string, config: Record<string, unknown>) {
