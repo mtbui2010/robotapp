@@ -161,9 +161,7 @@ type PlannerMethod = 'grace' | 'direct' | 'sage'
 
 interface Props {
   running: boolean
-  lang: Lang                       // the app's one language (Agent runs and Q&A)
-  onLangChange: (lang: Lang) => void
-  langLocked?: boolean             // a Q&A conversation is running in this language
+  lang: Lang                       // the app's one language (Agent runs and Q&A), picked in the page's control bar
   onRun: (plan: string, direct: boolean, lang?: string, planner?: PlannerMethod, planOnly?: boolean, logData?: boolean, logTarget?: 'backend' | 'frontend', repeatTimes?: number, continueOnError?: boolean, logAll?: boolean) => void
   onStop: () => void
   recordEnabled: boolean
@@ -174,7 +172,7 @@ interface Props {
   trial: number
 }
 
-export default function AgentPanel({ running, lang, onLangChange, langLocked, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
+export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
   const [mode,       setMode]       = useState<'structured' | 'unstructured'>('structured')
   const [cells,      setCells]      = useState<string[]>(['', '', '', ''])
   const [activeCell, setActiveCell] = useState(0)
@@ -390,12 +388,6 @@ export default function AgentPanel({ running, lang, onLangChange, langLocked, on
               <option value="direct">Direct</option>
             </select>
           )}
-          <select value={lang} onChange={e => onLangChange(e.target.value as Lang)} disabled={langLocked}
-            title="Language of the robot's speech and of what it hears — Agent runs and Q&A"
-            className="bg-white border border-gray-300 text-gray-800 text-sm rounded px-2 py-1 disabled:opacity-50">
-            <option value="ko">KO</option>
-            <option value="en">EN</option>
-          </select>
           {running
             ? <button onClick={onStop}
                 className="px-4 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded">Stop</button>

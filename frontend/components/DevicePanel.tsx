@@ -171,6 +171,13 @@ function groupItems(items: [string, string][]): { head: string; entries: [string
   return Array.from(map.entries()).map(([head, entries]) => ({ head, entries }))
 }
 
+// warmup_servers' result per kind (kcare skills/warmup.py)
+interface WarmKind {
+  level: 'ok' | 'warn' | 'error'
+  servers: { connection: string; idx: number; label: string; primary: boolean; ok: boolean; sec: number; error: string }[]
+}
+const WARM_KINDS: [string, string][] = [['vlms', 'VLMs'], ['visions', 'Visions'], ['voices', 'Voices']]
+
 export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) {
   const [clients, setClients]   = useState<ClientEntry[]>([])
   const [rosData, setRosData]   = useState<RosScanResult | null>(null)
@@ -178,7 +185,8 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
   const [pinging, setPinging]   = useState(false)
   // 🔥 Warm up: the warmup_servers skill loads the models on Whisper / Ollama / visionserve
   const [warming, setWarming]   = useState(false)
-  const [warmMsg, setWarmMsg]   = useState<{ level: 'ok' | 'warn' | 'error'; text: string } | null>(null)
+  // the result per kind (VLMs / Visions / Voices): its own colour, n of m servers ready, what failed
+  const [warmMsg, setWarmMsg]   = useState<{ level: 'ok' | 'warn' | 'error'; text: string; kinds?: Record<string, WarmKind> } | null>(null)
   const [showAdd, setShowAdd]   = useState(false)
   const [editId, setEditId]     = useState<string | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -474,7 +482,8 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
       const r = await api.runSkill('warmup_servers')
       const level = (r.level === 'ok' || r.level === 'warn' || r.level === 'error')
         ? r.level as 'ok' | 'warn' | 'error' : (r.isdone ? 'ok' : 'error')
-      setWarmMsg({ level, text: String(r.msg ?? (r.isdone ? 'warmed up' : 'warm-up failed')) })
+      setWarmMsg({ level, text: String(r.msg ?? (r.isdone ? 'warmed up' : 'warm-up failed')),
+                   kinds: (r.kinds && typeof r.kinds === 'object') ? r.kinds as Record<string, WarmKind> : undefined })
       void pollStatus()
     } catch (e) {
       setWarmMsg({ level: 'error', text: `warm-up failed: ${e instanceof Error ? e.message : String(e)}` })
@@ -685,6 +694,10 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
         if (form.type === 'vlms' && r.provider !== 'ollama' && r.apiKey.trim()) {
           await api.setApiKey(r.provider, r.apiKey.trim())
           setApiKeysSaved(prev => ({ ...prev, [r.provider]: true }))
+        }
+        if (form.type === 'voices' && r.needsKey && r.apiKey.trim()) {      // WHISPER_API_KEY
+          await api.setApiKey('whisper', r.apiKey.trim())
+          setApiKeysSaved(prev => ({ ...prev, whisper: true }))
         }
       }
     }
@@ -1097,12 +1110,44 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
         </div>
 
       {warmMsg && (
-        <div className={`mx-2 mt-2 px-2 py-1 rounded border text-[11px] flex items-start gap-1 ${
-          warmMsg.level === 'ok' ? 'bg-green-50 border-green-200 text-green-700'
-            : warmMsg.level === 'warn' ? 'bg-amber-50 border-amber-200 text-amber-700'
-            : 'bg-red-50 border-red-200 text-red-700'}`}>
-          <span className="flex-1 break-words">{warmMsg.level === 'ok' ? '🔥 ' : warmMsg.level === 'warn' ? '⚠ ' : '✖ '}{warmMsg.text}</span>
-          <button onClick={() => setWarmMsg(null)} className="text-gray-400 hover:text-gray-600" title="Hide">×</button>
+        <div className="mx-2 mt-2 flex items-start gap-1">
+          {warmMsg.kinds && Object.keys(warmMsg.kinds).length > 0 ? (
+            <div className="flex-1 grid grid-cols-3 gap-1">
+              {WARM_KINDS.map(([kind, name]) => {
+                const k = warmMsg.kinds?.[kind]
+                const lv = k?.level
+                const ok = k ? k.servers.filter(x => x.ok).length : 0
+                const bad = k ? k.servers.filter(x => !x.ok) : []
+                return (
+                  <div key={kind}
+                    title={k ? k.servers.map(x => `${x.primary ? '★ ' : ''}${x.connection} ${x.label}: ${x.ok ? `ready (${x.sec} s)` : x.error}`).join('\n') : 'no server of this kind'}
+                    className={`px-1.5 py-1 rounded border text-[11px] leading-tight ${
+                      lv === 'ok' ? 'bg-green-50 border-green-300 text-green-700'
+                        : lv === 'warn' ? 'bg-amber-50 border-amber-300 text-amber-700'
+                        : lv === 'error' ? 'bg-red-50 border-red-300 text-red-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+                    <div className="flex items-center gap-1 font-medium">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        lv === 'ok' ? 'bg-green-500' : lv === 'warn' ? 'bg-amber-500' : lv === 'error' ? 'bg-red-500' : 'bg-gray-300'}`} />
+                      {name}
+                    </div>
+                    <div>{k ? `${lv === 'ok' ? 'ready' : lv === 'warn' ? 'fallback' : 'failed'} ${ok}/${k.servers.length}` : '—'}</div>
+                    {bad.map(x => (
+                      <div key={`${x.connection}-${x.idx}`} className="text-[10px] opacity-80 break-words">✖ {x.label}</div>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className={`flex-1 px-2 py-1 rounded border text-[11px] break-words ${
+              warmMsg.level === 'ok' ? 'bg-green-50 border-green-200 text-green-700'
+                : warmMsg.level === 'warn' ? 'bg-amber-50 border-amber-200 text-amber-700'
+                : 'bg-red-50 border-red-200 text-red-700'}`}>
+              {warmMsg.level === 'ok' ? '🔥 ' : warmMsg.level === 'warn' ? '⚠ ' : '✖ '}{warmMsg.text}
+            </div>
+          )}
+          <button onClick={() => setWarmMsg(null)} className="text-gray-400 hover:text-gray-600 text-xs" title="Hide">×</button>
         </div>
       )}
 

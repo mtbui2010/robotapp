@@ -557,31 +557,6 @@ export default function Home() {
               ⚠ no {voiceLang} voice
             </span>
           )}
-          <div className="flex items-center gap-1">
-            <select value={qaInput} onChange={e => pickQaInput(e.target.value as 'voice' | 'text')} disabled={qaActive}
-              title="Ask by voice (browser mic) or by typing in the Q&A card"
-              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
-              <option value="voice">🎤 Voice</option>
-              <option value="text">⌨ Text</option>
-            </select>
-            <select value={qaCam} onChange={e => pickQaCam(e.target.value as 'head' | 'arm')} disabled={qaActive}
-              title="Camera the robot answers from: head (looks up / straight / down) or arm (one photo, the head stays)"
-              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
-              <option value="head">📷 Head</option>
-              <option value="arm">🦾 Arm</option>
-            </select>
-            <select value={qaOnce ? 'once' : 'chat'} onChange={e => pickQaOnce(e.target.value === 'once')} disabled={qaActive}
-              title="Interactive: keep answering until a stop word or Stop · Once: answer one question and end"
-              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
-              <option value="chat">🔁 Interactive</option>
-              <option value="once">1️⃣ Once</option>
-            </select>
-            <button onClick={toggleQa} disabled={running && !qaActive}
-              title={qaActive ? 'End the Q&A conversation' : 'Ask the robot about what it sees (browser mic + head camera)'}
-              className={`px-3 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed ${qaActive ? 'bg-emerald-600 hover:bg-emerald-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
-              {qaActive ? '■ Stop Q&A' : '💬 Q&A'}
-            </button>
-          </div>
           <GuidePanel />
         </div>
       </header>
@@ -616,6 +591,51 @@ export default function Home() {
         {/* Sidebar 2 — buttons + plan + execution */}
         <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${planOpen ? 'w-96' : 'w-0'}`}>
           <div className={`flex flex-col h-full overflow-hidden ${planOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} transition-opacity duration-150`}>
+            {/* Control bar: Cancel, language, Q&A — right above the shortcut buttons (2026-10-21). Cancel is
+                also kept on the Cameras / Map tab row, so it stays reachable with this column collapsed. */}
+            <div className="px-3 pt-3 pb-2 border-b border-gray-200 flex-shrink-0 flex items-center gap-1">
+              <button onClick={stop}
+                title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded shadow-sm">
+                ■ Cancel
+              </button>
+              {qaSkill && (
+                <button onClick={endQa}
+                  title="End Q&A: end the conversation as if the user said 그만 — the robot says goodbye, qa succeeds and the plan goes on"
+                  className="px-2 py-1.5 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded">
+                  ⏹
+                </button>
+              )}
+              <select value={lang} onChange={e => pickLang(e.target.value as Lang)} disabled={qaActive}
+                title="Language of the robot's speech and of what it hears — Agent runs and Q&A"
+                className="ml-auto text-sm border border-gray-300 rounded px-0.5 py-0.5 bg-white disabled:opacity-50">
+                <option value="ko">KO</option>
+                <option value="en">EN</option>
+              </select>
+              <select value={qaInput} onChange={e => pickQaInput(e.target.value as 'voice' | 'text')} disabled={qaActive}
+                title="Q&A by voice (🎤 browser mic) or by typing (⌨ in the Q&A card)"
+                className="text-sm border border-gray-300 rounded px-0.5 py-0.5 bg-white disabled:opacity-50">
+                <option value="voice" title="Voice">🎤</option>
+                <option value="text" title="Text">⌨</option>
+              </select>
+              <select value={qaCam} onChange={e => pickQaCam(e.target.value as 'head' | 'arm')} disabled={qaActive}
+                title="Camera the robot answers from: 📷 head (looks up / straight / down) or 🦾 arm (one photo, the head stays)"
+                className="text-sm border border-gray-300 rounded px-0.5 py-0.5 bg-white disabled:opacity-50">
+                <option value="head" title="Head camera">📷</option>
+                <option value="arm" title="Arm camera">🦾</option>
+              </select>
+              <select value={qaOnce ? 'once' : 'chat'} onChange={e => pickQaOnce(e.target.value === 'once')} disabled={qaActive}
+                title="🔁 Interactive: keep answering until a stop word or Stop · 1️⃣ Once: answer one question and end"
+                className="text-sm border border-gray-300 rounded px-0.5 py-0.5 bg-white disabled:opacity-50">
+                <option value="chat" title="Interactive">🔁</option>
+                <option value="once" title="Once">1️⃣</option>
+              </select>
+              <button onClick={toggleQa} disabled={running && !qaActive}
+                title={qaActive ? 'End the Q&A conversation' : 'Ask the robot about what it sees (browser mic + head camera)'}
+                className={`px-2.5 py-1.5 text-xs rounded text-white whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed ${qaActive ? 'bg-emerald-600 hover:bg-emerald-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                {qaActive ? '■ Q&A' : '💬 Q&A'}
+              </button>
+            </div>
             <div className="p-3 border-b border-gray-200 flex-shrink-0">
               {/* Button-panel shortcuts run silently — no voice announcements. */}
               <ButtonPanel
@@ -638,7 +658,7 @@ export default function Home() {
         <main className="flex-1 flex flex-col overflow-y-auto">
 
           <section className="px-5 pt-2 pb-1 border-b border-gray-200">
-            <AgentPanel running={running} lang={lang} onLangChange={pickLang} langLocked={qaActive} onRun={run} onStop={stop} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
+            <AgentPanel running={running} lang={lang} onRun={run} onStop={stop} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
           </section>
 
           <section className="px-5 pt-1 pb-3">
@@ -652,16 +672,9 @@ export default function Home() {
               {/* Always live, unlike the Agent panel's Stop: a skill run from the
                   CLI or another client can be moving the robot while this tab
                   shows nothing running. */}
-              {qaSkill && (
-                <button onClick={endQa}
-                  title="End the Q&A conversation as if the user said 그만: the robot says goodbye, qa succeeds and the plan goes on"
-                  className="ml-auto self-center px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded">
-                  ⏹ End Q&A
-                </button>
-              )}
               <button onClick={stop}
                 title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
-                className={`${qaSkill ? 'ml-2' : 'ml-auto'} self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded`}>
+                className={`ml-auto self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded`}>
                 Cancel
               </button>
             </div>

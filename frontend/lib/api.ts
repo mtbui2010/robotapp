@@ -137,6 +137,15 @@ async function skillResponse(r: Response) {
   return body
 }
 
+async function mapPost(body: Record<string, unknown>) {
+  const r = await fetch(`${getAgentUrl()}/map/snapshot`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const b = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(typeof b?.detail === 'string' ? b.detail : `HTTP ${r.status}`)
+  return b
+}
+
 export const api = {
   // Agent URL helpers (used by DevicePanel)
   getAgentUrl,
@@ -608,16 +617,16 @@ export const api = {
   // URL of a static file of the active site (map layers), GET /config/locations/_active/files/<path>.
   /** Save a SLAM map connection (nav_msgs/OccupancyGrid) as the active site's map files and
    *  update its MAP config (POST /map/snapshot). Throws with the backend's reason. */
-  async mapSnapshot(connection: string, inflate_m = 0.3): Promise<{
+  async mapSnapshot(connection: string, opts: { keep?: [number, number][]; inflate_m?: number } = {}): Promise<{
     ok: boolean; frame: { origin: [number, number]; resolution: number; width: number; height: number }
-    size_m: [number, number]; cells: { known: number; occupied: number; unknown: number }; missing: string[] }> {
-    const r = await fetch(`${getAgentUrl()}/map/snapshot`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ connection, inflate_m }),
-    })
-    const body = await r.json().catch(() => ({}))
-    if (!r.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : `HTTP ${r.status}`)
-    return body
+    size_m: [number, number]; cells: { known: number; occupied: number; unknown: number }; missing: string[]
+    kept: boolean; specks: number }> {
+    return mapPost({ connection, inflate_m: opts.inflate_m ?? 0.3, ...(opts.keep ? { keep: opts.keep } : {}) })
+  },
+
+  /** The connection's whole map as a PNG data URL, untidied and not saved (Map tab → Keep area). */
+  async mapPreview(connection: string): Promise<{ image: string; frame: { origin: [number, number]; resolution: number; width: number; height: number } }> {
+    return mapPost({ connection, preview: true })
   },
 
   siteFileUrl(path: string): string {

@@ -196,7 +196,10 @@ export interface MapConfig {
   // (map/map.png written by POST /map/snapshot from a SLAM map connection)
   image?: { connection?: string; url?: string; file?: string; frame: MapFrame }
   // where the saved map came from (POST /map/snapshot): the OccupancyGrid connection etc.
-  source?: { connection: string; saved_at?: string; inflate_m?: number; occupied?: number }
+  // keep: the area kept (map frame; outside = unknown, images cropped to it), speck_cells: lone obstacle
+  // blobs below this size were dropped — both applied again by every later snapshot
+  source?: { connection: string; saved_at?: string; inflate_m?: number; occupied?: number
+             keep?: [number, number][]; speck_cells?: number }
   layers?: { occupancy?: MapLayer; height?: MapLayer }
   surfaces?: MapSurface[]
   places?: 'ENV' | null                // draw ENV entries; clicking one runs move::<name>
