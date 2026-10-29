@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useSimEditor } from './mapSim'
+import { MapSettings } from './MapSettings'
+import { getPath, poseFrom } from '../lib/robotPose'
 import type { ClientEntry, MapConfig, MapFrame, MapLayer, MapOrigin, MapSkillCall, MapSurface } from '../lib/types'
 
 // Map tab: the site's map with the robot on it. Everything comes from the active site's `MAP`
@@ -35,13 +37,6 @@ function toMap(o: MapOrigin, u: number, v: number): [number, number] {
 }
 const wrapDeg = (d: number) => ((d + 180) % 360 + 360) % 360 - 180
 
-function getPath(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj)
-}
-
-function quatYaw(q: { x: number; y: number; z: number; w: number }): number {
-  return Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
-}
 
 // "{x}" -> 1.23 (number); "x={x}" -> "x=1.23" (string)
 function fill(call: MapSkillCall, vars: Record<string, number>): Record<string, unknown> {
@@ -167,6 +162,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
   const [previewShift, setPreviewShift] = useState(false)                     // hovering "move places": ghost dots
   const [undo, setUndo] = useState<{ origin: MapOrigin; env: Record<string, EnvEntry> | null } | null>(null)
   // keep area being drawn: the robot's whole map (not saved) and the polygon's corners (map frame)
+  const [showSettings, setShowSettings] = useState(false)                      // ⚙ MAP settings
   const [keepEdit, setKeepEdit] = useState<{ img: string; frame: MapFrame; pts: [number, number][] } | null>(null)
   const svgRef  = useRef<SVGSVGElement | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -213,13 +209,10 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
     let stop = false
     const tick = async () => {
       try {
-        const v = await api.agentGet(p.agent)
-        const x = Number(getPath(v, p.x)), y = Number(getPath(v, p.y))
-        let yaw = 0
-        if (p.orientation) yaw = quatYaw(getPath(v, p.orientation) as { x: number; y: number; z: number; w: number })
-        else if (p.yaw) yaw = Number(getPath(v, p.yaw)) * (p.angle === 'deg' ? DEG : 1)
-        if (!stop && Number.isFinite(x) && Number.isFinite(y)) {
-          setPose({ x, y, yaw })
+        const got = poseFrom(await api.agentGet(p.agent), p)
+        if (!stop && got) {
+          const { x, y } = got
+          setPose(got)
           setTrail(t => {
             const last = t[t.length - 1]
             return !last || Math.hypot(last[0] - x, last[1] - y) > 0.05 ? [...t.slice(-400), [x, y]] : t
@@ -488,6 +481,8 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
         <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40" disabled={!pose || busy} onClick={savePlace}>Save as place</button>
         <button className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" onClick={() => { api.cancelRun(); setStatus('stop sent') }}>Stop</button>
         <button className="text-blue-600 hover:underline" onClick={() => { setTrail([]); reload() }}>reload</button>
+        <button className={`px-2 py-1 rounded border hover:bg-gray-50 ${showSettings ? 'border-blue-400 bg-blue-50' : 'border-gray-300'}`}
+                onClick={() => setShowSettings(v => !v)} title="The MAP config: robot pose, what a click / ← → / auto lift run">⚙ Settings</button>
         <MapUpdater clients={clients} current={cfg.source?.connection} onSaved={reload} />
         {cfg.source?.connection && (!keepEdit
           ? <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" onClick={startKeep}
@@ -518,6 +513,8 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
             </span>)}
         <span className="ml-auto text-gray-500">click: go (keeps heading) · ← →: rotate {cfg.rotate?.step_deg ?? 15}° · dots: saved places</span>
       </div>
+
+      {showSettings && <MapSettings cfg={cfg} onSaved={reload} onClose={() => setShowSettings(false)} />}
 
       {sim.bar}
 

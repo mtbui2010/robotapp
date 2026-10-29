@@ -152,9 +152,12 @@ const DEFAULT_FORM: FormFields = {
   servers: [], cooldown: '',
 }
 
+export interface ActiveTarget { robot: string; url: string; location: string; host: string }
+
 interface Props {
   onClientsChange: (clients: ClientEntry[]) => void
   onAgentConnect?: () => void
+  onActiveChange?: (t: ActiveTarget) => void      // the robot / site this tab drives (shown by the Cameras / Map tabs)
 }
 
 function getHead(name: string): string {
@@ -178,7 +181,7 @@ interface WarmKind {
 }
 const WARM_KINDS: [string, string][] = [['vlms', 'VLMs'], ['visions', 'Visions'], ['voices', 'Voices']]
 
-export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) {
+export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveChange }: Props) {
   const [clients, setClients]   = useState<ClientEntry[]>([])
   const [rosData, setRosData]   = useState<RosScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -262,6 +265,10 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     }, 30000)
     return () => clearInterval(t)
   }, [])
+  useEffect(() => {
+    onActiveChange?.({ robot: activeRobot, url: robots.find(r => r.name === activeRobot)?.url ?? '',
+                       location: activeLocation, host: locHost })
+  }, [activeRobot, robots, activeLocation, locHost, onActiveChange])
   const locUsers = (loc: string) => locOthers.filter(o => o.location === loc && !o.clash).map(o => o.host)
   const locClash = locOthers.find(o => o.clash)
 

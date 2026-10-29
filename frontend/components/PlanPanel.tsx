@@ -516,9 +516,13 @@ function PlannerMeta({ meta }: { meta: Record<string, unknown> }) {
   )
 }
 
+// Plan and Execution blocks at 80 % (2026-10-27, narrower column): every size inside them — text, icons, the log
+// lines, the 4-line cap — scales together, instead of rewriting each text-* class.
+const SMALL: React.CSSProperties = { zoom: 0.8 }
+
 export default function PlanPanel({ events, steps, planMethod }: Props) {
-  // Plan block: full (uncapped) by default; unchecking collapses it to ~4 lines.
-  const [planFull, setPlanFull] = useState(true)
+  // Plan block: ~4 lines with scroll by default (2026-10-27; was full); "full" uncaps it.
+  const [planFull, setPlanFull] = useState(false)
   // The 'plan' event differs by path: legacy/direct sends `plan` (a string),
   // the closed-loop (GRACE) sends `steps` (an array of {action, object}). Render
   // either — otherwise a GRACE plan never shows and "Generating…" stays stuck.
@@ -642,7 +646,7 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
 
       {/* Task plan */}
       {plan && (
-        <div className="bg-gray-50 border border-gray-200 rounded p-3">
+        <div className="bg-gray-50 border border-gray-200 rounded p-3" style={SMALL}>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[11px] text-gray-400 uppercase">Plan</p>
             <div className="flex items-center gap-2">
@@ -660,7 +664,7 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
               />
             </div>
           </div>
-          <pre className={`text-sm text-green-700 whitespace-pre-wrap leading-relaxed ${planFull ? '' : 'max-h-24 overflow-y-auto'}`}>{plan}</pre>
+          <pre className={`text-sm text-green-700 whitespace-pre-wrap [overflow-wrap:anywhere] leading-relaxed ${planFull ? '' : 'max-h-24 overflow-y-auto'}`}>{plan}</pre>
         </div>
       )}
 
@@ -672,7 +676,7 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
 
       {/* Execution timeline */}
       {steps.length > 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-2 flex-1 min-h-0">
+        <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-2 flex-1 min-h-0" style={SMALL}>
           <div className="flex items-center justify-between">
             <p className="text-[11px] text-gray-400 uppercase">
               Execution — {steps.length} step{steps.length > 1 ? 's' : ''}
@@ -689,7 +693,7 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
               </span>
               <div className="flex-1 min-w-0">
                 <span className="text-xs text-gray-500">Step {step.index}/{step.total}: </span>
-                <span className="text-sm text-gray-900 font-mono">{(step.task || '').replace(/->/g, ' → ')}</span>
+                <span className="text-sm text-gray-900 font-mono [overflow-wrap:anywhere]">{(step.task || '').replace(/->/g, ' → ')}</span>
                 {step.startedAt != null && step.endedAt != null && (
                   <span className="text-[10px] text-gray-400 ml-1">({((step.endedAt - step.startedAt) / 1000).toFixed(1)}s)</span>
                 )}

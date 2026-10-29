@@ -106,6 +106,8 @@ export interface AgentEvent {
   ts?: number
   // Closed-loop (GRACE) events
   say?: string                       // localized phrase for voice output
+  say_lang?: string                  // the phrase's language when not the run's (a plain-name step is said in English)
+  quiet?: boolean                    // step_start of a `%skill::…` step: not narrated (nor the 15 s nudge)
   // HRI skills (kcare hri.reply / hri.ask, source='dashboard'). `speak` is
   // always voiced — it is the skill's own output, not narration like `say`.
   // `listen` asks the dashboard to capture one phrase and POST it back to

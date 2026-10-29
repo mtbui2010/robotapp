@@ -4,7 +4,10 @@ import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, LlmIn
 // Robot registry — multiple named robots, one active at a time.
 // Stored in localStorage:
 //   robotapp_robots         JSON: [{ name, url }, ...]
-//   robotapp_active_robot   name of the currently active robot
+//   robotapp_active_robot   name of the currently active robot — the default for a NEW tab; each tab keeps its
+//                           own choice in sessionStorage (same key), so two tabs can drive two robots (2026-10-27:
+//                           both tabs read the one localStorage key at every call, and the tab that picked a robot
+//                           last sent the other tab's calls — skills, configs, Location — to its robot)
 // Legacy single-URL `agent_url` is auto-migrated on first read.
 // ------------------------------------------------------------------
 export interface Robot { name: string; url: string }
@@ -45,12 +48,22 @@ function listRobots(): Robot[] {
 
 function getActiveRobotName(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem(LS_ACTIVE)
+  try {
+    const own = sessionStorage.getItem(LS_ACTIVE)
+    if (own !== null) return own
+    // first read in this tab: adopt the last choice, and keep it even when another tab picks another robot
+    const last = localStorage.getItem(LS_ACTIVE)
+    if (last !== null) sessionStorage.setItem(LS_ACTIVE, last)
+    return last
+  } catch {
+    return localStorage.getItem(LS_ACTIVE)
+  }
 }
 
 function setActiveRobot(name: string): void {
-  if (typeof window !== 'undefined')
-    localStorage.setItem(LS_ACTIVE, name)
+  if (typeof window === 'undefined') return
+  try { sessionStorage.setItem(LS_ACTIVE, name) } catch { /* no session storage: shared choice only */ }
+  localStorage.setItem(LS_ACTIVE, name)       // the default for tabs opened later
 }
 
 function addRobot(name: string, url: string): { ok: boolean; error?: string } {
@@ -291,6 +304,28 @@ export const api = {
       throw new Error(typeof detail === 'string' ? detail : `HTTP ${r.status}`)
     }
     return body
+  },
+
+  /** Save only what changed since `base` (the group as loaded): PATCH /skill-configs/<name> merges
+   *  per top-level entry (per location for ENV), so another machine's newer entries are kept.
+   *  Returns the group as saved. */
+  async mergeSkillConfig(name: string, base: Record<string, unknown>, value: Record<string, unknown>):
+      Promise<Record<string, unknown>> {
+    const r = await fetch(`${getAgentUrl()}/skill-configs/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base, value }),
+    })
+    if (r.status === 405) {          // a backend from before 2026-10-26: plain PUT of the whole group
+      await api.updateSkillConfig(name, value)
+      return value
+    }
+    const body = await r.json().catch(() => ({}))
+    if (!r.ok) {
+      const detail = (body as { detail?: unknown }).detail
+      throw new Error(typeof detail === 'string' ? detail : `HTTP ${r.status}`)
+    }
+    return (body as { value: Record<string, unknown> }).value
   },
 
   async updateSkill(name: string, data: Partial<SkillDef>) {

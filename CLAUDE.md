@@ -66,7 +66,11 @@ hot-switch between them. Wrappers live in [frontend/lib/api.ts](frontend/lib/api
 (`listLocations`, `activateLocation`, `createLocation`, `renameLocation`,
 `deleteLocation`); switching triggers a backend device reconnect, so the UI
 refreshes the connections list right after. Sites are a **per-robot backend**
-concept (distinct from the multi-robot URL registry kept in `localStorage`).
+concept (distinct from the multi-robot URL registry kept in `localStorage`). **The robot a tab talks to is per tab**
+(2026-10-27, `api.getActiveRobotName`: sessionStorage, the last choice in localStorage only seeds a new tab): two
+tabs of one browser on two robots used to share the one localStorage key read at every call, so the tab that picked
+last sent the other tab's skills / configs / Location calls to its robot (a tab on .110 showed .101's "also on
+m-ax-jetpack" warning).
 
 **Several machines on one configs folder (2026-10-08).** The configs folder is
 shared (`/remote_dir`, sshfs on the robots) by every machine running the same
@@ -122,7 +126,7 @@ ROS is not shared between robots: the apps container's Fast DDS profile
 
 ### Location names and aliases (ENV)
 
-Each `ENV` entry (Global Configs) is keyed by its canonical name and may list
+Each `ENV` entry (sidebar **Locations (ENV)**, formerly Global Configs) is keyed by its canonical name and may list
 other names for the same spot:
 
 ```json
@@ -165,6 +169,95 @@ object part and retry, as before.
   line per location (`- dressroom@main room (also: 옷장, tủ áo)`) from the live
   ENV. Guides without the marker are unchanged.
 
+### Config groups in the dashboard (2026-10-26)
+
+- **Deleted:** `HOME_LOC`, `CALIB_PARAMS`, `KR2EN`, `EN2KR`, `LLM_SERVERS` — gone from robot_agent
+  (`skill_configs` proxies, `KNOWN_CONFIGS`, defaults, `copy_skill`), kcare `configs/tasks.py`, every kcare site
+  override (copies in `*.before_cleanup_20261026`) and kcare's `skills/calibrattion.py` / `configs/word_mapping.py`.
+  None was read: `move::home` has its own pose, find's head→base goes through `get3d`, the LLM servers are the
+  `vlms` connection. kcare_clobot keeps its own copies (imports them from `kcare_clobot.configs.tasks`).
+- **Where each group is edited:** a group listed for a skill in
+  [frontend/lib/skill_configs.json](frontend/lib/skill_configs.json) is in that skill's form (Skill panel) and not
+  in the sidebar block: `QA_CONFIGS` → `qa`; `HRI_CONFIGS` → `qa` / `ask` / `reply` / `announce`;
+  `EMERGENCY_CONFIGS` → `check_fall` / `check_restroom` / `call_119`. `MAP` → the Map tab's **⚙ Settings**
+  ([components/MapSettings.tsx](frontend/components/MapSettings.tsx): pose, goal, rotate, lift, confirm_goal,
+  places + "+ key" templates; the picture / source / keep area / origin are shown only — Update map, Keep area,
+  Edit origin write them; JSON = the whole group). MAP stays its own group (not inside `MOBILE_CONFIGS`): the
+  map tools and kcare-sim write it, and a site override replaces a whole group. For kcare the sidebar block
+  then holds only ENV and is titled **Locations (ENV)**.
+- **ENV locations** ([components/EnvLocationsEditor.tsx](frontend/components/EnvLocationsEditor.tsx), Fields
+  view): one foldable row per location (mode · height · loc); **+ Add location** — defaults, the robot's
+  position now (MAP.pose, `lib/robotPose.ts`), or a copy of another place (without its aliases / label / qa);
+  **🗑** asks first and names the plan skills / buttons / guides that still say the name or an alias (free text,
+  a warning only), **↶ undo** for the last one; inside a location **×** removes a param and **+ param** adds one
+  (`dforward` or `placepose.dz`, value parsed as JSON else text). `ConfigFieldsEditor` has these as `editKeys`.
+  Nothing is saved before **Save** (`● unsaved`).
+- **Saves are changes, not snapshots:** `PATCH /skill-configs/<name> {base, value}`
+  (`ConfigManager.merge_update`, `api.mergeSkillConfig`) merges per top-level key — per location for ENV —
+  with the group as it is NOW, so a place another machine added after the dashboard loaded is kept (a PUT of
+  the old snapshot dropped it). The sidebar block and Map ⚙ Settings use it; a backend without it (405) gets
+  the old PUT. Test: `kaair_real_capture/config_cleanup_20261026/test_cleanup.py`.
+- **Narration (names as written):** a direct-mode step is said in the run's language; with plain names the
+  names stay as written, the skill name too — `move::drawer` (KO) → "drawer move를 진행합니다"; the translated
+  verb only for a spoken name (`이동->move::서랍->drawer` → "서랍 이동을 진행합니다") or a Korean name
+  (`move::식탁` → "식탁 이동을 …"). `_step_say` in `UnifiedAgent.run_direct`; `pick_top` is said "pick top".
+  kcare's own pick / place lines likewise ("cup 잡을게요"). The word maps that made 테이블 out of table are
+  gone. A failure's msg is said only when it is short plain text — "'Exception in move': {'isdone': …}" was
+  read out word by word. **Only a step's `inputs` is said** (2026-10-27; it was the first param whatever its
+  key: `execute=True, inputs='drawer'` read "True", `lift::height=0.5` "0.5"): `lift::height=0.5` → "lift를
+  진행합니다"; `options` only for the skills in `_SAY_OPTIONS` (`ask` — itself not narrated now).
+  **`%` = this step is not narrated** (2026-10-28): `%move::wait` says neither "… 진행합니다" nor "… 완료했습니다"
+  (`step_start` carries `quiet: true`, which also stops the dashboard's 15 s "still working" nudge); a failure is
+  still said, unless `!` ignores it (`!%lift::0.5`). In an `&&` group the first task is the narrated one, so the
+  `%` goes there. The skill's own lines (`announce`, pick's "cup 잡을게요") are not affected. `%` is stripped
+  wherever `!` / `~` are (`_bare`, `real_step`, `rename_calls`, `PlanSkillEditor`) and refused in skill aliases.
+  Test: `kaair_real_capture/quiet_step_20261028/test_quiet.py`. Step / done events carry `say_lang` (the dashboard picks the voice by it; the 15 s
+  "still working" nudge follows it). Test: `kaair_real_capture/config_cleanup_20261026/test_narration.py`.
+
+### open_drawer: one handle for both looks (2026-10-26)
+
+`open_drawer::drawer` boxed one handle and pulled another: its first wrist look (`detect`, profile
+`detect_object`, target 0.9 m) and the grasp look (`find_grasp`, `detect_grasp`, target 0.3 m) each chose on
+their own — by camera distance only (`distance_sigma` 0.01; the profiles' `weight` was never passed), and the
+first look's result was thrown away (its base drive was commented out). Now (kcare `_pick_helpers.locate_drawer_handle`,
+`recognition._nearest_to_xyz`): the first look takes the handle whose height (base-frame z) is nearest the
+ENV `handle_height` (drawers of one cabinet share the handle name; ⚠ when > 8 cm off — the log lists every
+box's [x, y, z], so handle_height can be set from it; without handle_height: the profile's `weight`, score 80 %
+· distance · image centre), drives the base so the handle's x (base frame) is in `drawer_x_band()` — ARM_CONFIGS `drawer_x`, else pick's
+measured `approach_x.lying` [0.15, 0.7], both sides; refused beyond 0.3 m (carerobotapp's `DRAWER_RANGE`, mirrored
+on the left, was in the wrist CAMERA frame in mm: in base frame it refused the kcare_bucheon handle at x 0.57; the
+old commented line also had the sign reversed), and the grasp look takes the box
+nearest that point (`near_xyz`, a ⚠ line when > 0.1 m away). A skill's `target_distance` / `near_point` /
+`distance_sigma` / `weights` now reach the selector (`weights=True` = the profile's `weight`; pick / find do
+not pass it, so their choice is unchanged). `retract_from_drawer` drives back after a drive > 5 cm (was 50 cm).
+ENV of a drawer needs `handle` (detector name) and `handle_height`; without them open / close_drawer say so.
+Offline test: `kaair_real_capture/drawer_handle_20261026/test_drawer_select.py`. Not yet run on the robot.
+
+### vla_drawer_open: SmolVLA through vla-serve (2026-10-26)
+
+`vla_drawer_open::drawer` (kcare `skills/vla.py`) drives to the ENV place, puts the robot in the trained pose
+(head to the place's `default_mode` side tilted −41°, lift lowest, gripper open, `movej::approach_drawer`),
+checks it (arm ≤ 5°, head ≤ 8°, gripper open) and runs the policy served by vla-serve
+(`docker run --gpus all -p 11450:11450 -v /path/to/ckpt:/ckpt mtbui2010/vlaserve:latest serve --host 0.0.0.0
+/ckpt/<run>/pretrained_model`; checkpoint + README: `/remote_dir/kcare_vla_open_drawer_20261026/`). It is
+`vla_drawer_node_real.py` folded into the skill — its own rclpy node for the head / wrist images and joint states,
+actions to the forward controllers, the trajectory controllers switched back afterwards, also on error and on the
+dashboard's Cancel (watched by the skill: a forward controller is no action goal). The server is the
+**`http` connection `vlaserve`** (Connections panel, its `url` = vla-serve; kcare_bucheon: `http://192.168.0.6:11450`, the dev PC — container
+`vla-serve-drawer`, `--restart unless-stopped`, ~1.2 GB on the 3090, checkpoint mounted read-only from
+`remote_dir/kcare_vla_open_drawer_20261026/checkpoint`; from the robot one call ≈ 210 ms, 0 stalls at 15 fps,
+2026-10-26 dry run `kaair_real_capture/vla_drawer_20261026/dryrun_real_policy.py`). Settings: config group `VLA_CONFIGS.drawer_open` (Skill panel →
+vla_drawer_open): `url` (overrides the connection; neither → the sim's `/drawer/open` action when the site has a
+`vla_drawer_open` connection — the ros_action that had leaked into kcare_bucheon gave "action server not available"), **`execute` False = dry run** (nothing sent; README step 1), `fps` 30 (training speed; the first real run at 15,
+2026-10-26, reached ~60 % of the depth and closed on air), `seconds` 15 = TRAINED-motion seconds (the run lasts
+seconds × 30 / fps), `max_jump` 0.6 rad (0.35 tripped at 30 fps after 2.5 s: the real arm lags the commands), on any stop the arm's own
+position is sent as the last forward command before the switch back (the trajectory controller holds the last
+COMMAND: after the tripped run the arm went on 24°), `prompt` (or the place's ENV `vla_prompt`: "open the top drawer" · "open
+drawer" = middle · "open the bottom drawer"); any of them per call (`…, execute=True`). A text that is no ENV
+place is the prompt, run where the robot is (the old form). The vlaserve client comes from `client_path` (the copy
+next to the checkpoint) when not installed. Offline test (real topics, fake policy, dry run):
+`kaair_real_capture/vla_drawer_20261026/test_vla_drawer.py`. Never run with `execute` on the robot yet.
+
 ### Plan skills (a skill defined as a plan)
 
 Skill panel → **+ Add** → type **Plan** defines a skill as a sequence of other
@@ -182,7 +275,7 @@ movej::give
 
 `pick_top::cup`, `pick_top::inputs='cup', loc='table@kitchen'`. Lines use the
 direct-mode syntax (`&&` parallel, `!skill` ignore failure, `~skill` force
-failure, `#` comment) and the same argument rules (`parse_inputs`, now shared
+failure, `%skill` not narrated, `#` comment) and the same argument rules (`parse_inputs`, now shared
 with `UnifiedAgent._parse_inputs`). Parameter values are inserted **after**
 parsing (as literals in `k=v` form), so commas / quotes in a value cannot break
 the line. Each step's result is passed on to the next steps, as in the direct
@@ -415,6 +508,20 @@ Now (`_ask_shelves` in `kcare_robot/skills/hri.py`):
   bottom; was "오른쪽 선반 가운데 칸"; same 5 + 1 captures: 24 / 24 right).
 - If the bottom of the unit is out of view, levels are counted from the top
   ("위에서 두 번째 칸").
+- **The unit's box has its own call, and a where-question always gets a fixed sentence (2026-10-27).** Live,
+  "머그컵 어디에 있어?" was answered free-form ("머그컵은 흰색 선반 위에 있습니다") 2 times in 3: asked together with
+  the question, the 8B model gave the mug's own box as the unit, no board fits in it, and "shelves found nothing"
+  went to the free answer. Re-saving the photo / shifting it 2 px was enough to flip it (5 / 12 changed photos).
+  Asked with the inventory instead, it boxed nearly the whole photo — the dish rack under shelf2 became a level.
+  Now `_unit_boxes` asks only for it (`_UNIT_PROMPT`, one short call per set of photos, cached on the shots):
+  72 / 72 the cabinet within 3 %, every level right (+ ~0.5 s). `_unit_candidates` refuses a unit box that is
+  (nearly) an object's box or holds < 2 objects; nothing else is tried (the objects' box and the whole photo
+  both took in the dish rack: a wrong level is worse than a side). Seen but no level → **"선반 왼쪽에 있어요."**
+  (left / 가운데 / 오른쪽 across the unit's box, `_side_answer`); not seen → "보이지 않아요."; only a question
+  the model does not take for a where-question still goes to the free answer. Tests (robot container, nothing
+  moves): `kaair_real_capture/qa_shelf_unit_20261027/run_all.sh` (`bench_unit.py` — 12 changed photos per
+  question, `test_side.py` — the fixed answers with faked calls). Not fixed: on the 2026-10-22 photos the board
+  at 1.85 m is missed (red tumbler → "첫 번째 칸", also in that day's live log).
 
 Used for where-questions at a place with no `qa` block or with
 `'shelves': True` (shelf2: `{'views': ['up'], 'shelves': True}`); no shelf found
@@ -449,6 +556,13 @@ dashboard and the robot asks nothing again — the click (or the next words) is 
 `objects`, "X 있어?" / "X 뒤에 있어?" (one thing, ko) is asked as "X 어디에 있어?" (`_as_where`). Lights, drops
 and product questions are not affected. Tests: `kaair_real_capture/qa_shelf_objects_20261022/`
 (`replay_shelf2.py` — hint replay, `test_routing.py` — scripted dialogs).
+**`qa::context='where'` (2026-10-29, scenario 1).** One where-question about the place's `objects`, then qa ends
+(`ended: 'where'`, no "대화를 마칠게요" — the plan goes on). Every sentence but a stop word is that question, whatever
+else was heard: naming one object → "<object> 어디에 있어?" (also "머그컵 떨어졌어?", "텀블러 뭐 있어"); none / several
+/ a short 네 / "불 켜져 있어?" → the object buttons, nothing asked again. No light / product / dropped-object
+routing; the Whisper hint is only the objects' where-lines. A place without `objects`: the sentence is asked as
+heard (`_as_where` still turns "컵 있어?" into a where-question). Scripted test:
+`kaair_real_capture/qa_where_context_20261029/test_where_context.py` (light: `qa_light_context_20261029/`).
 A cut edge needs the unit's back wall beyond the last board (shelf2: x 1.33 m
 above a cut-off top level vs the frame at 1.03 m) — the model's box reached
 the photo's top for a unit that did not go on.
@@ -474,7 +588,13 @@ uses it while it is not connected yet; the log line says which
 big red **■ Cancel**, ⏹ (End Q&A) while a `qa` runs, KO / EN, the icon-only 🎤/⌨ (voice / text), 📷/🦾
 (head / arm camera) and 🔁/1️⃣ (interactive / once) pickers, and the **💬 Q&A** button (they used to be in the top bar and the Agent panel; the top
 bar keeps 🔊 voice and the guide). Cancel is also kept on the Cameras / Map tab row, so it is reachable with the
-column collapsed.
+column collapsed. **🔊 voice off = no sound from the browser at all** (2026-10-27; it used to mute only the milestones):
+the skills' `speak` lines (announce / ask / qa), a listen's prompt, the earcons and the 119 alarm are skipped too
+(`voiceOutRef` in `page.tsx`, read when each line is due, so unticking mid-run silences the rest). The lines still
+show in the Q&A card, `announce(wait=True)` is still answered, and the mic still opens. The robot's own speaker
+(`source='robot'`, gTTS) is not affected. A muted window also never calls `speechSynthesis.cancel()` (only once, on
+unticking): two dashboard windows on one computer share the speech output, and the muted one's cancel before every
+qa listen silenced the other window's lines. Two windows with voice on can still cut each other's lines.
 
 The **💬 Q&A** button starts a run of `qa::lang='<lang>'` in
 direct mode with milestone voice off; pressing it again calls the same `stop()`
@@ -570,8 +690,10 @@ from the robot mic, last 300) with `index.jsonl` {file, text, hint} for offline 
 **꺼 / 켜 (2026-10-22, .101).** After "꺼 드릴까요?" the user's "불 꺼줘" came back as "불 켜져." — 0.89 sure,
 the same with every hint, both servers and the small model — and was taken as the state question again. 꺼 / 켜
 differ by one consonant, so a verb no longer decides anything: (1) the answer to an offer is read as 네 / 아니요
-only (`_offer_reply`), even with 불 in it ("네, 켜 주세요" = yes to the offer); anything else is asked again and
-**네 / 아니요 buttons** pop up on the dashboard (`choose_open`, a click is the answer; closed once answered);
+only (`_offer_reply`), even with 불 in it ("네, 켜 주세요" = yes to the offer); anything else makes
+**네 / 아니요 buttons** pop up on the dashboard (`choose_open`, a click or a clear 네 / 아니요 is the answer; closed
+once answered) and nothing is said (2026-10-27: it also asked "잘 못 들었어요. …불을 끌까요?" again); asked again by
+voice only without a dashboard; after `OFFER_RETRIES` unclear answers "잘 못 들어서 그대로 둘게요";
 the hint is just "네. 아니요."; (2) **the first sentence never switches a light** (the light went off while the
 user was still talking): a command ("불 꺼줘") runs `light_state` and uses only a state heard NOW (`_light_now`;
 a remembered one is not used), then answers like the state question — "세탁실 불은 켜져 있어요. 꺼 드릴까요?",
@@ -579,6 +701,16 @@ whatever verb was heard; not heard now → "지금은 … 확인하지 못했어
 runs `turn_light`. Scripted dialogs (no robot): `kaair_real_capture/qa_light_20261022/test_light_dialog.py`.
 The SwitchBot Bot only knows where its arm is: a light switched by hand still reads as the Bot left it (a
 SwitchBot motion / contact sensor reports bright / dark — not used yet).
+**`qa::context='light'` (2026-10-29, scenario 10).** With plain `qa::` a first sentence that lost 불 or 켜져
+("세탁실 켜져 있어?") went to the camera ("잠깐 둘러볼게요" + a free VLM answer). With the light context: **the first
+sentence gets the state, the second acts** — every first sentence but a stop word is the state question
+(`light_state` → "세탁실 불은 켜져 있어요. 꺼 드릴까요?"); the second: 네, or any request ("꺼 주세요", "불 켜져." —
+the verb is not read, the offer comes from the state) does the offered switch, 아니요 leaves it, garble gets the
+네 / 아니요 buttons (3 unclear → "잘 못 들어서 그대로 둘게요"). No camera / head / VLM; the Whisper hint is only
+"세탁실 불 켜져 있어? 불 꺼 줘. 불 켜 줘." (then "네. 아니요."). qa ends once the light is done with (`ended:
+'light'`, no "대화를 마칠게요" — the plan's next announce follows); state not checkable → says so and ends.
+`light='세탁실'` picks a light (switchbot loc / id / alias; default = the `default` connection); another context
+text fails the step. Scripted test (no robot): `kaair_real_capture/qa_light_context_20261029/test_light_context.py`.
 
 `qa::once=True` answers one question and ends (no goodbye; silence re-asked
 `retries` times like `ask`, then `ended: 'no answer'`, isdone False); the result
@@ -628,7 +760,7 @@ back). The panel shows three cards, VLMs / Visions / Voices, each in its own kin
 `fallback 1/2` / `failed 0/1` and the failed servers under it (hover: every server, ★ = main); the skill's `msg` still reads
 `Voices ✓ (1/1) · VLMs fallback (2/3): vlm #2 …: unreachable · Visions ✓ (2/2)`. `isdone` is False only on red.
 
-Global Config **`HRI_CONFIGS`** (kcare `configs/tasks.py`): `source`
+Config group **`HRI_CONFIGS`** (kcare `configs/tasks.py`; edited in the Skill panel under `qa` / `ask` / `reply` / `announce`): `source`
 (`dashboard` | `robot` — default mic for reply / ask / qa; a call's `source=`
 wins), `dashboard_stt` (`whisper` | `browser`), `stt` (connection id, '' =
 first), `stt_hint` (`{lang: words}` — Whisper's prompt). The Q&A button no
@@ -642,9 +774,21 @@ calibration hears it. Robot side: `robot_agent.utils.earcon` / `play_earcon` (44
 16 kHz, which also breaks `play_audio` at its 16 kHz default), called in hri `_hear`. Dashboard: the `listen`
 event carries `earcon` (volume, 0 = off) and `page.tsx` plays `playEarcon` ([lib/hriVoice.ts](frontend/lib/hriVoice.ts),
 WebAudio, same notes); typed input gets none. `HRI_CONFIGS.earcon` (on) / `earcon_volume` (0.3); `ask::…, earcon=False`
-per call. `ask` (2026-10-16): `read_options` defaults to False — only the question is asked; the chosen option is said ("짜파게티, 알겠습니다"), the user's own words are not (`confirm=True` repeats them when there are no options); where nothing would be said back (no options, or `confirm=False`) the robot says "네, 알겠습니다" / "Okay, got it." so a blind user hears the answer was taken (2026-10-21); the first time it does not understand (no answer / no match) the options pop up as buttons on the dashboard that started the run and the robot waits for a click — it does not say it did not hear or ask again (`screen_choice`, default on; `choose` / `choose_close` events, forwarded by `_make_log_fn`; a click posts `POST /agent/listen/<id> {text: option}` and the choice is said as if spoken; no click in `screen_wait_sec` (30) → the ask fails); without a dashboard or with `screen_choice=False` it asks again by voice as before; the options ("… 중에서 골라 주세요") are read with `read_options=True`, and always after an answer that matched none.
+per call. `ask` (2026-10-16): `read_options` defaults to False — only the question is asked; the chosen option is said ("짜파게티, 알겠습니다"), the user's own words are not (`confirm=True` repeats them when there are no options); where nothing would be said back (no options, or `confirm=False`) the robot says "알겠습니다" (was "네, 알겠습니다", 2026-10-27) / "Okay, got it." so a blind user hears the answer was taken (2026-10-21); the first time it does not understand (no answer / no match) the options pop up as buttons on the dashboard that started the run and the robot waits for a click — it does not say it did not hear or ask again (`screen_choice`, default on; `choose` / `choose_close` events, forwarded by `_make_log_fn`; a click posts `POST /agent/listen/<id> {text: option}` and the choice is said as if spoken; no click in `screen_wait_sec` (30) → the ask fails); without a dashboard or with `screen_choice=False` it asks again by voice as before; the options ("… 중에서 골라 주세요") are read with `read_options=True`, and always after an answer that matched none.
 
-**Speech rate (2026-10-15).** `HRI_CONFIGS.speech_rate` (default **1.3**, clamped 0.5–2.0; Global Configs → HRI_CONFIGS
+**Emergency exchange (`check_fall` / `check_restroom` → `qa::context={answer}`, 2026-10-27).** The first listen
+window without a clear 괜찮아요 / 도와주세요 (unclear or silence) puts the two buttons up; from then on the robot says
+nothing more and only listens until the time is used up (it asked "잘 못 들었어요 … N초 뒤 일일구에 …" every window);
+without a dashboard it still asks again aloud (kcare `emergency.dialog`). **A click acts at once** (ask, qa's light
+offer, emergency): `pickChoice` in `page.tsx` cuts the question being spoken and skips the mic of every listen
+queued before the click (`choiceAtRef`) — `recordPhrase` clears its stop flag when it starts, so a click during
+the question used to be acted on only after the whole question and a full listen window. Scripted test (stubbed
+mic / buttons): `kaair_real_capture/emergency_20261021/test_dialog.py`.
+
+**Speech rate (2026-10-15).** `HRI_CONFIGS.speech_rate_en` (2026-10-26, default **1.0**, its own slider with an
+English sample) is used for English lines — English voices sounded rushed at kcare_bucheon's 1.5; unset → speech_rate.
+hri `_rate_for(lang)`; the dashboard picks per line (`rateFor(say_lang / speak_lang / listen lang)`).
+`HRI_CONFIGS.speech_rate` (default **1.3**, clamped 0.5–2.0; Skill panel → qa / ask / reply → HRI_CONFIGS
 shows it as a slider 0.5–2.0 with a ▶ button that says a sample line at that rate, before saving) sets how fast the browser speaks. kcare's
 hri skills (`reply` / `ask` / `qa` / `announce`, emergency) call `robot_agent.utils.set_speech_rate` (per thread)
 in `_common` / `_set_rate`; a call's `rate=` wins (`announce::inputs='…', rate=0.8`). `say_to_user` puts it in

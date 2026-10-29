@@ -30,7 +30,7 @@ export function stillWorkingPhrase(lang: string): string {
 }
 
 interface UseVoiceOutputResult {
-  speak: (text: string) => void
+  speak: (text: string, sayLang?: string, rate?: number) => void
   supported: boolean
   /** No installed voice matches the selected language — speech would use a
    *  wrong-sounding fallback voice (commonly the case for ko-KR). */
@@ -95,9 +95,13 @@ export function useVoiceOutput(opts: UseVoiceOutputOptions): UseVoiceOutputResul
 
   const voiceRef = useRef<SpeechSynthesisVoice | undefined>(undefined)
   voiceRef.current = voice
+  const voicesRef = useRef(voices)
+  voicesRef.current = voices
 
-  const speakRef = useRef<(text: string) => void>(() => {})
-  speakRef.current = (text: string) => {
+  // `sayLang`: the phrase's own language when it differs from the run's — a step written
+  // with plain names (move::table) is narrated in English even in a Korean run (event `say_lang`).
+  const speakRef = useRef<(text: string, sayLang?: string, rate?: number) => void>(() => {})
+  speakRef.current = (text: string, sayLang?: string, rate?: number) => {
     if (!supported || !enabledRef.current) return
     const trimmed = text.trim()
     if (!trimmed) return
@@ -106,14 +110,20 @@ export function useVoiceOutput(opts: UseVoiceOutputOptions): UseVoiceOutputResul
     // robot with every step. Speak the newest one instead.
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(trimmed)
-    utterance.lang = langToBcp47(langRef.current)
-    if (voiceRef.current) utterance.voice = voiceRef.current
-    if (rateRef.current && rateRef.current > 0) utterance.rate = rateRef.current
+    const own = sayLang && sayLang !== langRef.current ? langToBcp47(sayLang) : null
+    utterance.lang = own ?? langToBcp47(langRef.current)
+    const v = own
+      ? voicesRef.current.find(x => x.lang.replace('_', '-') === own)
+        ?? voicesRef.current.find(x => x.lang.replace('_', '-').split('-')[0] === own.split('-')[0])
+      : voiceRef.current
+    if (v) utterance.voice = v
+    const r = rate ?? rateRef.current            // a line's own rate (its language's) wins
+    if (r && r > 0) utterance.rate = r
     window.speechSynthesis.speak(utterance)
   }
 
   // Stable identity so consumers can list it in effect deps without re-firing.
-  const speak = useMemo(() => (text: string) => speakRef.current(text), [])
+  const speak = useMemo(() => (text: string, sayLang?: string, rate?: number) => speakRef.current(text, sayLang, rate), [])
 
   return { speak, supported, missingVoice }
 }

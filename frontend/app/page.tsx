@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useCallback, useEffect } from 'react'
-import DevicePanel  from '../components/DevicePanel'
+import DevicePanel, { type ActiveTarget } from '../components/DevicePanel'
 import AgentPanel   from '../components/AgentPanel'
 import CameraFeed   from '../components/CameraFeed'
 import SkillPanel   from '../components/SkillPanel'
@@ -49,12 +49,16 @@ const isFailureEvent = (ev: AgentEvent): boolean => {
   return false
 }
 
+// Control-bar pickers (KO / 🎤 / 📷 / 🔁): no native ▾, so the bar fits one row of the w-72 column
+const PICK = 'appearance-none text-center text-xs border border-gray-300 rounded px-1 py-1 bg-white hover:border-gray-400 cursor-pointer disabled:opacity-50'
+
 export default function Home() {
   const [clients, setClients]         = useState<ClientEntry[]>([])
   const [skillRefreshKey, setSkillRefreshKey] = useState(0)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)   // collapsed by default (2026-10-27); ▶ opens it
   const [planOpen, setPlanOpen]       = useState(true)
   const [mainTab, setMainTab]         = useState<'cameras' | 'map'>('cameras')
+  const [target, setTarget]           = useState<ActiveTarget | null>(null)   // robot + site this tab drives
   const [running, setRunning]         = useState(false)
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
   const [agentSteps, setAgentSteps]   = useState<Step[]>([])
@@ -62,6 +66,10 @@ export default function Home() {
   const [runMethod, setRunMethod]     = useState('')   // 'grace' | 'direct' | 'sage' — planner used by the active run
   const [trial, setTrial]             = useState(0)    // current iteration number while looping
   const [voiceOut, setVoiceOut]       = useState(true)   // speak milestones by default
+  // 🔊 off = no sound at all (2026-10-27): milestones, and also the skills' own lines (announce / ask / qa
+  // `speak`, a listen's prompt), the earcons and the alarm — read live, so unticking mid-run silences the rest
+  const voiceOutRef = useRef(voiceOut)
+  voiceOutRef.current = voiceOut
   const [voiceLang, setVoiceLang]     = useState('en')
   const wsRef     = useRef<WebSocket | null>(null)
   const eventsRef = useRef<AgentEvent[]>([])
@@ -70,21 +78,29 @@ export default function Home() {
 
   // How fast the browser speaks: the robot's HRI_CONFIGS.speech_rate (Global Configs), read on mount and at
   // every run; a speak / listen event's own rate (HRI_CONFIGS at that moment, or a call's rate=) wins for that line.
-  const [speechRate, setSpeechRate] = useState<number | undefined>(undefined)
-  const speechRateRef = useRef<number | undefined>(undefined)
-  const takeRate = useCallback((r: unknown) => {
-    const n = Number(r)
-    if (!(n > 0) || n === speechRateRef.current) return
-    speechRateRef.current = n
-    setSpeechRate(n)
+  // English lines use HRI_CONFIGS.speech_rate_en when set (English voices sound rushed at the Korean rate).
+  const [speechRates, setSpeechRates] = useState<{ base?: number; en?: number }>({})
+  const speechRatesRef = useRef<{ base?: number; en?: number }>({})
+  const rateFor = useCallback((lang?: string | null) => {
+    const r = speechRatesRef.current
+    return (lang ?? '').toLowerCase().startsWith('en') && r.en ? r.en : r.base
+  }, [])
+  const takeRates = useCallback((c: Record<string, unknown>) => {
+    const num = (v: unknown) => (Number(v) > 0 ? Number(v) : undefined)
+    const next = { base: num(c.speech_rate), en: num(c.speech_rate_en) }
+    const cur = speechRatesRef.current
+    if (next.base === cur.base && next.en === cur.en) return
+    speechRatesRef.current = next
+    setSpeechRates(next)
   }, [])
   const loadSpeechRate = useCallback(() => {
-    api.getSkillConfig('HRI_CONFIGS').then(c => { if (c) takeRate(c.speech_rate) }).catch(() => {})
-  }, [takeRate])
+    api.getSkillConfig('HRI_CONFIGS').then(c => { if (c) takeRates(c) }).catch(() => {})
+  }, [takeRates])
   useEffect(() => { loadSpeechRate() }, [loadSpeechRate])
 
   // Dashboard voice output — speaks each event's `say` (robot also speaks via backend).
-  const { speak, supported: voiceSupported, missingVoice: voiceMissing } = useVoiceOutput({ enabled: voiceOut, lang: voiceLang, rate: speechRate })
+  const { speak, supported: voiceSupported, missingVoice: voiceMissing } = useVoiceOutput({ enabled: voiceOut, lang: voiceLang,
+    rate: voiceLang.toLowerCase().startsWith('en') && speechRates.en ? speechRates.en : speechRates.base })
   const { recordEnabled, toggleRecord, beginRecording, endRecording, manualRecording, toggleManualRecord, setRecordingPrefix } = useScreenRecorder()
 
   const emit = useCallback((events: AgentEvent[], steps: Step[]) => {
@@ -116,11 +132,18 @@ export default function Home() {
   const addQaLine = (who: QaLine['who'], text: string) => setQaLog(l => [...l, { who, text }])
   // kcare ask did not understand: its options as buttons (a helper clicks; the user is blind)
   const [choice, setChoice] = useState<{ id: string; options: string[]; prompt: string } | null>(null)
+  // When the last click came: a listen queued before it is answered by the click — its prompt is cut and its mic
+  // not opened (2026-10-27: a click while the robot was still asking was acted on only after the whole question
+  // and a full listen window — recordPhrase starts with the stop flag cleared).
+  const choiceAtRef = useRef(0)
   const pickChoice = (opt: string) => {
     if (!choice) return
     const id = choice.id
     setChoice(null)
+    choiceAtRef.current = Date.now()
     stopRecording()                     // the click answers: end the recording in progress
+    textAskRef.current?.(null)          // or the typed answer being waited for
+    if (voiceOutRef.current) { try { window.speechSynthesis.cancel() } catch { /* not supported */ } }  // and the question
     addQaLine('user', `${opt} (화면 선택)`)
     api.answerListen(id, opt).catch(() => {})
   }
@@ -178,7 +201,11 @@ export default function Home() {
     }
     // Stop a milestone that is already playing, just before the browser speaks
     // for the skill (a phrase queued before the HRI event still runs).
+    // Not with 🔊 off: nothing of ours is playing then (unticking cancelled it), and a cancel here can cut the
+    // speech of ANOTHER dashboard window on the same computer (2026-10-27: a muted window running qa — a cancel
+    // before every listen — silenced the other window's lines).
     const silenceNarration = () => {
+      if (!voiceOutRef.current) return
       try { window.speechSynthesis.cancel() } catch { /* not supported */ }
     }
 
@@ -243,19 +270,21 @@ export default function Home() {
       // also restarts the "still working" nudge, so it only fires when a step
       // goes quiet for a while.
       if (a.voice && ev.say && hriPending === 0) {
-        speak(ev.say)
+        speak(ev.say, ev.say_lang, rateFor(ev.say_lang ?? a.lang))
         stopNudge()
         if (ev.event !== 'done' && ev.event !== 'error') {
-          nudgeRef.current = setInterval(() => speak(stillWorkingPhrase(a.lang)), 15_000)
+          const nudgeLang = ev.say_lang ?? a.lang      // "still working" in the language of the last phrase
+          nudgeRef.current = setInterval(() => speak(stillWorkingPhrase(nudgeLang), nudgeLang, rateFor(nudgeLang)), 15_000)
         }
-      } else if (a.voice && ev.say) {
+      } else if (a.voice && ev.say && voiceOutRef.current) {
         // The HRI queue is still talking (ask's read-back "…, 알겠습니다" is not
         // waited for, so the next step starts right away): this milestone used to
         // be dropped ("가운데 선반 이동…" after ask was never said). Say it after
         // the queue, in order — still never while the mic is open.
         const line = ev.say
         stopNudge()
-        enqueueHri(() => speakAndWait(line, a.lang, speechRateRef.current))
+        const lineLang = ev.say_lang ?? a.lang
+        enqueueHri(async () => { if (voiceOutRef.current) await speakAndWait(line, lineLang, rateFor(lineLang)) })
       }
       if (ev.qa_state) setQaSkill(!!ev.qa_state.active)
       if (ev.choose) setChoice({ id: ev.choose.id, options: ev.choose.options, prompt: ev.choose.prompt ?? '' })
@@ -272,16 +301,16 @@ export default function Home() {
 
       // A skill is talking to the user through this browser. The "still
       // working" nudge must not speak over it — or into the open mic.
-      if (ev.speak || ev.listen || ev.alarm) stopNudge()
+      if (ev.speak || ev.listen || ev.alarm || ev.quiet) stopNudge()
       if (ev.speak) {
         const line = ev.speak
         const lang = ev.speak_lang ?? a.lang
-        const rate = ev.speak_rate ?? speechRateRef.current
+        const rate = ev.speak_rate ?? rateFor(lang)
         addQaLine('robot', line)
         const speakId = ev.speak_id
         enqueueHri(async () => {
           silenceNarration()
-          await speakAndWait(line, lang, rate)
+          if (voiceOutRef.current) await speakAndWait(line, lang, rate)
           // announce(wait=True): tell the skill the line has been spoken.
           if (speakId) await api.answerListen(speakId, '').catch(() => {})
         })
@@ -291,17 +320,21 @@ export default function Home() {
         const al = ev.alarm
         enqueueHri(async () => {
           silenceNarration()
-          await playAlarm(al.volume ?? 0.6, al.cycles ?? 3)
+          if (voiceOutRef.current) await playAlarm(al.volume ?? 0.6, al.cycles ?? 3)
         })
       }
       if (ev.listen) {
         const req = ev.listen
         const lang = req.lang ?? a.lang
-        const rate = req.rate ?? speechRateRef.current
+        const rate = req.rate ?? rateFor(lang)
         if (req.prompt) addQaLine('robot', req.prompt)
+        const queuedAt = Date.now()
+        const answeredByClick = () => choiceAtRef.current >= queuedAt   // nothing to post: the click answered it
         enqueueHri(async () => {
+          if (answeredByClick()) return
           silenceNarration()
-          if (req.prompt) await speakAndWait(req.prompt, lang, rate)
+          if (req.prompt && voiceOutRef.current) await speakAndWait(req.prompt, lang, rate)
+          if (answeredByClick()) return
           if (req.mode === 'text') {
             setTextListen(true)
             setChatOpen(true)
@@ -316,10 +349,11 @@ export default function Home() {
             return
           }
           // "your turn": played to the end before the mic opens; "got it" once a phrase was taken
-          const ear = req.earcon ?? 0
+          const ear = voiceOutRef.current ? (req.earcon ?? 0) : 0
           if (ear > 0) {
             await playEarcon('listen', ear)
             await new Promise(r => setTimeout(r, 100))
+            if (answeredByClick()) return
           }
           if (req.capture === 'whisper') {
             // Record only; the robot transcribes it with Whisper (stt connection).
@@ -545,7 +579,7 @@ export default function Home() {
         <span className="text-xs text-gray-400 ml-1">powered by robot_agent</span>
         <div className="ml-auto flex items-center gap-3">
           <label
-            title={voiceSupported ? 'Read agent milestones aloud in the browser' : 'Browser does not support speech synthesis'}
+            title={voiceSupported ? 'Sound in this browser: milestones, the robot\'s lines (announce / ask / qa), earcons, alarm. Off = silent (the lines still show in the Q&A card)' : 'Browser does not support speech synthesis'}
             className={`flex items-center gap-1.5 text-xs cursor-pointer ${voiceSupported ? 'text-gray-600' : 'text-gray-300 cursor-not-allowed'}`}>
             <input type="checkbox" checked={voiceOut} disabled={!voiceSupported}
               onChange={e => setVoiceOut(e.target.checked)} className="accent-blue-600" />
@@ -568,7 +602,7 @@ export default function Home() {
         <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${sidebarOpen ? 'w-80' : 'w-0'}`}>
           <div className={`flex flex-col overflow-y-auto h-full ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} transition-opacity duration-150`}>
             <div className="p-4 border-b border-gray-200">
-              <DevicePanel onClientsChange={setClients} onAgentConnect={() => setSkillRefreshKey(k => k + 1)} />
+              <DevicePanel onClientsChange={setClients} onAgentConnect={() => setSkillRefreshKey(k => k + 1)} onActiveChange={setTarget} />
             </div>
             <div className="p-4 border-t border-gray-200">
               <SkillPanel refreshKey={skillRefreshKey} />
@@ -588,15 +622,17 @@ export default function Home() {
           </button>
         </aside>
 
-        {/* Sidebar 2 — buttons + plan + execution */}
-        <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${planOpen ? 'w-96' : 'w-0'}`}>
+        {/* Sidebar 2 — buttons + plan + execution. w-72 (2026-10-27, was w-96): 5 shortcut buttons per row */}
+        <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${planOpen ? 'w-72' : 'w-0'}`}>
           <div className={`flex flex-col h-full overflow-hidden ${planOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} transition-opacity duration-150`}>
             {/* Control bar: Cancel, language, Q&A — right above the shortcut buttons (2026-10-21). Cancel is
                 also kept on the Cameras / Map tab row, so it stays reachable with this column collapsed. */}
-            <div className="px-3 pt-3 pb-2 border-b border-gray-200 flex-shrink-0 flex items-center gap-1">
+            {/* one row in the w-72 column (2026-10-27): smaller Cancel / Q&A, the pickers without their native ▾
+                (appearance-none — each keeps its title), wrapping only when ⏹ End Q&A is added */}
+            <div className="px-3 pt-3 pb-2 border-b border-gray-200 flex-shrink-0 flex flex-wrap items-center gap-1">
               <button onClick={stop}
                 title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
-                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded shadow-sm">
+                className="px-2 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded shadow-sm whitespace-nowrap">
                 ■ Cancel
               </button>
               {qaSkill && (
@@ -608,31 +644,31 @@ export default function Home() {
               )}
               <select value={lang} onChange={e => pickLang(e.target.value as Lang)} disabled={qaActive}
                 title="Language of the robot's speech and of what it hears — Agent runs and Q&A"
-                className="ml-auto text-sm border border-gray-300 rounded px-0.5 py-0.5 bg-white disabled:opacity-50">
+                className={`ml-auto ${PICK}`}>
                 <option value="ko">KO</option>
                 <option value="en">EN</option>
               </select>
               <select value={qaInput} onChange={e => pickQaInput(e.target.value as 'voice' | 'text')} disabled={qaActive}
                 title="Q&A by voice (🎤 browser mic) or by typing (⌨ in the Q&A card)"
-                className="text-sm border border-gray-300 rounded px-0.5 py-0.5 bg-white disabled:opacity-50">
+                className={PICK}>
                 <option value="voice" title="Voice">🎤</option>
                 <option value="text" title="Text">⌨</option>
               </select>
               <select value={qaCam} onChange={e => pickQaCam(e.target.value as 'head' | 'arm')} disabled={qaActive}
                 title="Camera the robot answers from: 📷 head (looks up / straight / down) or 🦾 arm (one photo, the head stays)"
-                className="text-sm border border-gray-300 rounded px-0.5 py-0.5 bg-white disabled:opacity-50">
+                className={PICK}>
                 <option value="head" title="Head camera">📷</option>
                 <option value="arm" title="Arm camera">🦾</option>
               </select>
               <select value={qaOnce ? 'once' : 'chat'} onChange={e => pickQaOnce(e.target.value === 'once')} disabled={qaActive}
                 title="🔁 Interactive: keep answering until a stop word or Stop · 1️⃣ Once: answer one question and end"
-                className="text-sm border border-gray-300 rounded px-0.5 py-0.5 bg-white disabled:opacity-50">
+                className={PICK}>
                 <option value="chat" title="Interactive">🔁</option>
                 <option value="once" title="Once">1️⃣</option>
               </select>
               <button onClick={toggleQa} disabled={running && !qaActive}
                 title={qaActive ? 'End the Q&A conversation' : 'Ask the robot about what it sees (browser mic + head camera)'}
-                className={`px-2.5 py-1.5 text-xs rounded text-white whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed ${qaActive ? 'bg-emerald-600 hover:bg-emerald-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                className={`px-1.5 py-1.5 text-xs rounded text-white whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed ${qaActive ? 'bg-emerald-600 hover:bg-emerald-500 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
                 {qaActive ? '■ Q&A' : '💬 Q&A'}
               </button>
             </div>
@@ -669,6 +705,16 @@ export default function Home() {
                   {t === 'cameras' ? 'Cameras' : 'Map'}
                 </button>
               ))}
+              {/* which robot and site this tab drives (two tabs may drive two robots) */}
+              {target?.robot && (
+                <span className="self-center ml-3 flex items-center gap-1.5 text-xs text-gray-600 min-w-0"
+                  title={`${target.url}${target.host ? ` · host ${target.host}` : ''}`}>
+                  <span className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium truncate">🤖 {target.robot}</span>
+                  {target.location && (
+                    <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 truncate">📍 {target.location}</span>
+                  )}
+                </span>
+              )}
               {/* Always live, unlike the Agent panel's Stop: a skill run from the
                   CLI or another client can be moving the robot while this tab
                   shows nothing running. */}

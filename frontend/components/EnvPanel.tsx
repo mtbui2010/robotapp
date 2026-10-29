@@ -3,15 +3,18 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
 import { ConfigFieldsEditor, type ConfigView } from './ConfigFields'
 import { EnvNamesEditor } from './EnvNamesEditor'
+import { EnvLocationsEditor } from './EnvLocationsEditor'
 import PanelSearch from './PanelSearch'
 import SKILL_CONFIGS_RAW from '../lib/skill_configs.json'
 
 // Config groups that aren't tied to a specific skill, exposed for global edit:
-// ENV and HOME_LOC first, then every other group the agent serves that no skill
-// edits in the Skill panel (lib/skill_configs.json) — MAP, HRI_CONFIGS,
-// QA_CONFIGS, KR2EN … Used to be just ENV / HOME_LOC, which left those groups
-// with no place in the UI at all.
-const FIRST_NAMES = ['ENV', 'HOME_LOC']
+// ENV first, then every other group the agent serves that no skill edits in the
+// Skill panel (lib/skill_configs.json — QA_CONFIGS / HRI_CONFIGS are in qa / ask / reply,
+// EMERGENCY_CONFIGS in check_fall …) and that has no editor of its own (MAP: the Map
+// tab's ⚙ Settings). For kcare that leaves only ENV, shown as "Locations (ENV)".
+// HOME_LOC, CALIB_PARAMS, KR2EN, EN2KR, LLM_SERVERS were deleted (2026-10-26).
+const FIRST_NAMES = ['ENV']
+const OWN_EDITOR = new Set(['MAP'])
 const SKILL_GROUPS = new Set(Object.values(
   (SKILL_CONFIGS_RAW as { skill_config_map: Record<string, string[] | string> }).skill_config_map,
 ).flatMap(v => (Array.isArray(v) ? v : [v])))
@@ -36,6 +39,8 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [loadErrors,  setLoadErrors]  = useState<Record<string, string>>({})
   const [saveErrors,  setSaveErrors]  = useState<Record<string, string>>({})
   const [savedAt,     setSavedAt]     = useState<Record<string, number>>({})
+  // each group as last loaded / saved: the base of a merged save, and what "unsaved" compares with
+  const [base,        setBase]        = useState<Record<string, Record<string, unknown>>>({})
   // per-config view toggle: 'fields' (form) | 'json' (raw textarea). Default fields.
   const [configView,  setConfigView]  = useState<Record<string, ConfigView>>({})
   // The whole block, and each config in it, start folded; the search box under
@@ -55,6 +60,7 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
           return
         }
         setTexts(prev => ({ ...prev, [name]: JSON.stringify(live, null, 2) }))
+        setBase(prev => ({ ...prev, [name]: live }))
       })
       .catch(err => {
         const msg = err instanceof Error ? err.message : 'Failed to load'
@@ -69,7 +75,7 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
     let stale = false
     api.listSkillConfigNames().then(all => {
       if (stale) return
-      const extra = all.filter(n => !FIRST_NAMES.includes(n) && !SKILL_GROUPS.has(n)).sort()
+      const extra = all.filter(n => !FIRST_NAMES.includes(n) && !SKILL_GROUPS.has(n) && !OWN_EDITOR.has(n)).sort()
       const list = [...FIRST_NAMES, ...extra]
       setNames(list)
       list.forEach(fetchOne)
@@ -88,8 +94,14 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
       return
     }
     setSaveErrors(p => { const n = { ...p }; delete n[name]; return n })
+    const value = parsed as Record<string, unknown>
     try {
-      await api.updateSkillConfig(name, parsed as Record<string, unknown>)
+      // only what changed since it was loaded: a location another machine added meanwhile is kept
+      const saved = base[name] && typeof parsed === 'object' && parsed && !Array.isArray(parsed)
+        ? await api.mergeSkillConfig(name, base[name], value)
+        : (await api.updateSkillConfig(name, value), value)
+      setTexts(prev => ({ ...prev, [name]: JSON.stringify(saved, null, 2) }))
+      setBase(prev => ({ ...prev, [name]: saved }))
       setSavedAt(p => ({ ...p, [name]: Date.now() }))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Save failed'
@@ -110,7 +122,7 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
       <button type="button" onClick={() => setPanelOpen(o => !o)}
         className="flex items-center gap-2 text-left">
         <span className="text-gray-600 text-[10px] w-3">{panelOpen || q ? '▾' : '▸'}</span>
-        <h2 className="font-semibold text-gray-800">Global Configs</h2>
+        <h2 className="font-semibold text-gray-800">{names.length === 1 && names[0] === 'ENV' ? 'Locations (ENV)' : 'Global Configs'}</h2>
       </button>
       <PanelSearch value={search} onChange={setSearch} placeholder="Search configs… (name, location, field)" />
 
@@ -118,8 +130,11 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
         const isLoading   = loading.has(name)
         const loadErr     = loadErrors[name]
         const saveErr     = saveErrors[name]
-        const justSaved   = savedAt[name] && !saveErr
         const text        = texts[name]
+        const unsaved     = text !== undefined && base[name] !== undefined && (() => {
+          try { return JSON.stringify(JSON.parse(text)) !== JSON.stringify(base[name]) } catch { return true }
+        })()
+        const justSaved   = savedAt[name] && !saveErr && !unsaved
         // While searching, show only the configs whose name or text matches, unfolded.
         if (q && !name.toLowerCase().includes(q) && !(text ?? '').toLowerCase().includes(q)) return null
         const isCollapsed = q ? false : !open.has(name)
@@ -164,6 +179,7 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                 <>
                   {saveErr && <span className="text-[10px] text-red-500">{saveErr}</span>}
                   {justSaved && <span className="text-[10px] text-green-600">✓ saved</span>}
+                  {unsaved && <span className="text-[10px] text-amber-600">● unsaved</span>}
                   <button
                     type="button"
                     onClick={() => save(name)}
@@ -193,12 +209,20 @@ export default function EnvPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                         onChange={env => setTexts(prev => ({ ...prev, ENV: JSON.stringify(env, null, 2) }))}
                       />
                     )}
-                    <ConfigFieldsEditor
-                      text={text}
-                      onChange={t => setTexts(prev => ({ ...prev, [name]: t }))}
-                      skipLeaf={name === 'ENV' ? isNameLeaf : undefined}
-                      filter={q && !name.toLowerCase().includes(q) ? q : undefined}
-                    />
+                    {name === 'ENV' && parseObject(text) ? (
+                      <EnvLocationsEditor
+                        env={parseObject(text)!}
+                        filter={q && !name.toLowerCase().includes(q) ? q : ''}
+                        onChange={env => setTexts(prev => ({ ...prev, ENV: JSON.stringify(env, null, 2) }))}
+                      />
+                    ) : (
+                      <ConfigFieldsEditor
+                        text={text}
+                        onChange={t => setTexts(prev => ({ ...prev, [name]: t }))}
+                        skipLeaf={name === 'ENV' ? isNameLeaf : undefined}
+                        filter={q && !name.toLowerCase().includes(q) ? q : undefined}
+                      />
+                    )}
                   </>
                 ) : (
                   <textarea

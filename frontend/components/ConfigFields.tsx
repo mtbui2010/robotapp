@@ -30,9 +30,74 @@ function setByPath(obj: Record<string, unknown>, path: string, value: unknown): 
   const keys = path.split('.')
   const clone = JSON.parse(JSON.stringify(obj)) as Record<string, unknown>
   let cur = clone as Record<string, unknown>
-  for (let i = 0; i < keys.length - 1; i++) cur = cur[keys[i]] as Record<string, unknown>
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (!isPlainObject(cur[keys[i]])) cur[keys[i]] = {}          // a new param under a new object
+    cur = cur[keys[i]] as Record<string, unknown>
+  }
   cur[keys[keys.length - 1]] = value
   return clone
+}
+
+// Immutably remove the value at a dot-path; parent objects left empty go too.
+function removeByPath(obj: Record<string, unknown>, path: string): Record<string, unknown> {
+  const keys = path.split('.')
+  const clone = JSON.parse(JSON.stringify(obj)) as Record<string, unknown>
+  const chain: Record<string, unknown>[] = [clone]
+  for (let i = 0; i < keys.length - 1; i++) {
+    const next = chain[i][keys[i]]
+    if (!isPlainObject(next)) return clone
+    chain.push(next)
+  }
+  delete chain[keys.length - 1][keys[keys.length - 1]]
+  for (let i = keys.length - 2; i >= 0; i--) {
+    if (Object.keys(chain[i + 1]).length === 0) delete chain[i][keys[i]]
+  }
+  return clone
+}
+
+// The typed value of a new param: JSON when it parses (0.3, true, [1, 2], {"dx": 0}), else the text.
+function parseValue(t: string): unknown {
+  try { return JSON.parse(t) } catch { return t }
+}
+
+// "+ param" row: a dot-path (dforward, placepose.dz) and a value.
+function AddParamRow({ obj, onAdd }: { obj: Record<string, unknown>; onAdd: (path: string, v: unknown) => void }) {
+  const [path, setPath] = useState('')
+  const [val, setVal] = useState('')
+  const p = path.trim()
+  let err = ''
+  if (p) {
+    if (p.split('.').some(k => !k)) err = 'empty key in the path'
+    else {
+      let cur: unknown = obj
+      const keys = p.split('.')
+      for (let i = 0; i < keys.length; i++) {
+        if (!isPlainObject(cur)) { err = `${keys.slice(0, i).join('.')} is not an object`; break }
+        if (!(keys[i] in cur)) break
+        if (i === keys.length - 1) err = 'already there — edit it above'
+        cur = cur[keys[i]]
+      }
+    }
+  }
+  const add = () => {
+    if (!p || err) return
+    onAdd(p, parseValue(val.trim()))
+    setPath(''); setVal('')
+  }
+  return (
+    <div className="flex items-center gap-1 text-[11px] pt-1">
+      <input value={path} onChange={e => setPath(e.target.value)} placeholder="+ param (e.g. dforward, placepose.dz)"
+        onKeyDown={e => { if (e.key === 'Enter') add() }}
+        className={`bg-white border rounded px-1.5 py-0.5 font-mono flex-1 min-w-0 focus:outline-none ${
+          err ? 'border-red-400' : 'border-gray-200 focus:border-blue-400'}`} />
+      <input value={val} onChange={e => setVal(e.target.value)} placeholder="value: 0.3, true, [1,2], text"
+        onKeyDown={e => { if (e.key === 'Enter') add() }}
+        className="bg-white border border-gray-200 rounded px-1.5 py-0.5 font-mono w-32 focus:outline-none focus:border-blue-400" />
+      <button type="button" onClick={add} disabled={!p || !!err} title={err || 'Add this param'}
+        className="px-1.5 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40">Add</button>
+      {err && <span className="text-[10px] text-red-500">{err}</span>}
+    </div>
+  )
 }
 
 // One editable row for a single leaf param — input type follows the value type.
@@ -48,8 +113,8 @@ function FieldRow({ path, value, onChange }: { path: string; value: unknown; onC
     )
   }
   if (typeof value === 'number') {
-    // HRI_CONFIGS.speech_rate: a slider, and a button to hear a sample line at that rate (not saved yet).
-    const isRate = /(^|\.)speech_rate$/.test(path)
+    // HRI_CONFIGS.speech_rate / speech_rate_en: a slider, and a button to hear a sample line at that rate (not saved yet).
+    const isRate = /(^|\.)speech_rate(_en)?$/.test(path)       // speech_rate_en: English lines
     if (isRate) {
       // A slider (0.5–2.0, the backend's clamp) + the value + ▶ to hear a sample at it.
       return (
@@ -67,7 +132,8 @@ function FieldRow({ path, value, onChange }: { path: string; value: unknown; onC
             onClick={e => {
               e.preventDefault()
               window.speechSynthesis?.cancel()
-              void speakAndWait('안녕하세요. 이 속도로 말씀드릴게요. 무엇을 도와드릴까요?', 'ko', value)
+              if (path.endsWith('_en')) void speakAndWait('Hello. I will speak at this rate. How can I help you?', 'en', value)
+              else void speakAndWait('안녕하세요. 이 속도로 말씀드릴게요. 무엇을 도와드릴까요?', 'ko', value)
             }}
             className="px-1.5 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-100"
           >
@@ -129,10 +195,11 @@ function JsonLeafRow({
 // `skipLeaf` hides params another editor owns (EnvPanel shows ENV aliases /
 // label in its own Location names block).
 export function ConfigFieldsEditor({
-  text, onChange, skipLeaf, filter: outerFilter,
+  text, onChange, skipLeaf, filter: outerFilter, editKeys = false,
 }: {
   text: string; onChange: (t: string) => void; skipLeaf?: (path: string) => boolean
   filter?: string     // the panel's search box; replaces this editor's own filter while set
+  editKeys?: boolean  // × per param and a "+ param" row (ENV locations)
 }) {
   const [ownFilter, setFilter] = useState('')
   const filter = outerFilter || ownFilter
@@ -167,9 +234,19 @@ export function ConfigFieldsEditor({
         />
       )}
       <div className="flex flex-col gap-0.5 max-h-72 overflow-y-auto divide-y divide-gray-100">
-        {shown.map(l => <FieldRow key={l.path} path={l.path} value={l.value} onChange={v => update(l.path, v)} />)}
-        {shown.length === 0 && <span className="text-[10px] text-gray-400 py-1">No params match “{filter}”.</span>}
+        {shown.map(l => editKeys ? (
+          <div key={l.path} className="flex items-center gap-1">
+            <div className="flex-1 min-w-0">
+              <FieldRow path={l.path} value={l.value} onChange={v => update(l.path, v)} />
+            </div>
+            <button type="button" title={`Remove ${l.path}`}
+              onClick={() => onChange(JSON.stringify(removeByPath(parsed!, l.path), null, 2))}
+              className="text-gray-400 hover:text-red-500 px-1 text-[12px] leading-none">×</button>
+          </div>
+        ) : <FieldRow key={l.path} path={l.path} value={l.value} onChange={v => update(l.path, v)} />)}
+        {shown.length === 0 && q && <span className="text-[10px] text-gray-400 py-1">No params match “{filter}”.</span>}
       </div>
+      {editKeys && <AddParamRow obj={parsed!} onAdd={(p, v) => update(p, v)} />}
     </div>
   )
 }
