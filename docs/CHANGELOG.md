@@ -8,6 +8,8 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-10-30
 
+- Robot State: per-field provenance (sensor with age / operator / belief / unknown), unconfirmed containers, and a
+  note that edits are beliefs the robot re-checks. [features/robot-state.md](features/robot-state.md)
 - Repo rules: `CLAUDE.md` now holds rules only. Specs moved to [docs/features/](features/README.md), history
   indexed here. `make lint`, `make typecheck`, `make smoke`, `make ci` added.
   [backend_coupling.md](backend_coupling.md) lists the robot data the UI bundles, the hand-written types and

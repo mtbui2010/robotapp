@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { ExpandEditor } from './ExpandEditor'
-import type { AgentEvent, WorldState, LlmInfo } from '../lib/types'
+import type { AgentEvent, WorldState, LlmInfo, FieldProvenance } from '../lib/types'
 import { copyText } from '../lib/clipboard'
 
 export interface StepLog {
@@ -117,6 +117,20 @@ function ageHint(since: number | null): string | null {
   return `held ${hrs}h ago`
 }
 
+// Where a Robot State value came from (robot_agent docs/guard.md): sensor-confirmed with its age,
+// or a belief / an operator edit the robot re-checks against its sensors.
+function provenanceHint(p: FieldProvenance | undefined): { text: string; cls: string; title?: string } | null {
+  if (!p) return null
+  if (p.source === 'sensor') {
+    const secs = p.ts == null ? null : Math.max(0, Math.floor(Date.now() / 1000 - p.ts))
+    const ago = secs == null ? '' : secs < 60 ? ` ${secs}s ago` : secs < 3600 ? ` ${Math.floor(secs / 60)}m ago` : ` ${Math.floor(secs / 3600)}h ago`
+    return { text: `✓ sensor${ago}`, cls: 'text-green-600', title: p.detail }
+  }
+  if (p.source === 'operator') return { text: 'operator (unconfirmed)', cls: 'text-amber-600' }
+  if (p.source === 'unknown') return { text: '? unknown', cls: 'text-red-500', title: p.why }
+  return { text: 'belief', cls: 'text-gray-400' }
+}
+
 const splitList = (s: string): string[] =>
   s.split(',').map(x => x.trim()).filter(Boolean)
 
@@ -218,11 +232,16 @@ function WorldStateBlock({ events }: { events: AgentEvent[] }) {
       ? '[' + v.map(n => (typeof n === 'number' ? n.toFixed(3) : String(n))).join(', ') + ']'
       : String(v)
 
-  const field = (label: string, k: keyof WorldDraft, hint?: string | null) => (
+  const prov = world.provenance
+  const unconfirmed = prov?.opened?.unconfirmed ?? []
+  const field = (label: string, k: keyof WorldDraft, hint?: string | null) => {
+    const ph = provenanceHint(prov?.[k])
+    return (
     <label className="flex flex-col gap-0.5">
       <span className="text-[10px] text-gray-400 flex items-center gap-1">
         {label}
         {hint && <span className="text-gray-400 normal-case">· {hint}</span>}
+        {ph && <span className={`${ph.cls} normal-case`} title={ph.title}>· {ph.text}</span>}
       </span>
       <input
         value={draft[k]}
@@ -231,7 +250,8 @@ function WorldStateBlock({ events }: { events: AgentEvent[] }) {
         className="text-xs font-mono bg-white border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-blue-300"
       />
     </label>
-  )
+    )
+  }
 
   // Compact one-line summary shown while collapsed.
   const summary = [
@@ -276,6 +296,15 @@ function WorldStateBlock({ events }: { events: AgentEvent[] }) {
         {field('opened (csv)', 'opened')}
         {field('on (csv)', 'on')}
       </div>
+      {unconfirmed.length > 0 && (
+        <div className="mt-1 text-[10px] text-amber-600">not confirmed by a sensor: {unconfirmed.join(', ')}</div>
+      )}
+      {prov && (
+        <div className="mt-1 text-[10px] text-gray-400">
+          An edit here is a belief (operator): the robot re-checks it against its sensors at the next run,
+          after a pause, and before a step at a place.
+        </div>
+      )}
 
       {/* Geometric memory of the found object — read-only, flagged stale once
           the base has moved away from the detection spot. */}

@@ -1637,6 +1637,18 @@
       },
       "title": "Opened",
       "type": "array"
+     },
+     "provenance": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provenance"
      }
     },
     "title": "WorldStateOut",
