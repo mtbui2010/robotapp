@@ -276,7 +276,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
       const pc = cfg.pose
       const v = await api.agentGet(pc.agent).catch(() => null)
       const px = v ? Number(getPath(v, pc.x)) : x, py = v ? Number(getPath(v, pc.y)) : y
-      if (Math.hypot(px - x, py - y) > 0.3) {          // kcare reports done even when navigation gave up
+      if (Math.hypot(px - x, py - y) > 0.3) {          // kcare reports done even when navigation gave up — BACKEND-WORKAROUND(map-arrive-check)
         setStatus(`stopped ${Math.hypot(px - x, py - y).toFixed(2)} m short of the goal (no path?)`); return
       }
       setStatus('arrived')

@@ -522,6 +522,7 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
   // The 'plan' event differs by path: legacy/direct sends `plan` (a string),
   // the closed-loop (GRACE) sends `steps` (an array of {action, object}). Render
   // either — otherwise a GRACE plan never shows and "Generating…" stays stuck.
+  // BACKEND-WORKAROUND(plan-event-shape)
   const planEv = events.find(e => e.event === 'plan')
   const plan: string | undefined =
     // Prefer the kcare `skill::inputs` text the robot actually runs; then the
@@ -570,6 +571,7 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
   // Two backends, two shapes: the closed-loop (GRACE) sends `status`
   // ('success'|'failed'|'planned'|'aborted'); run_direct / legacy `run` send a
   // boolean `success`. Prefer `status` when present, else fall back to `success`.
+  // BACKEND-WORKAROUND(done-event-shape)
   const ok = done?.status != null
     ? (done.status === 'success' || done.status === 'planned')
     : done?.success === true

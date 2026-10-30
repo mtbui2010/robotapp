@@ -242,6 +242,7 @@ export default function Home() {
       // off, or for Button-panel shortcuts which run silently). Each milestone
       // also restarts the "still working" nudge, so it only fires when a step
       // goes quiet for a while.
+      // BACKEND-WORKAROUND(hri-narrator-gate): no narration while an HRI speak / listen is queued
       if (a.voice && ev.say && hriPending === 0) {
         speak(ev.say)
         stopNudge()

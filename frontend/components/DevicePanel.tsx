@@ -428,6 +428,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect }: Props) 
     try {
       // The backend refuses to delete the active site, so fall back to
       // 'default' first (also hot-reloads devices), then delete.
+      // BACKEND-WORKAROUND(delete-active-location)
       await api.activateLocation('default')
       setActiveLocation('default')
       const res = await api.deleteLocation(target)
