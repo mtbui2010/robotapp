@@ -96,6 +96,28 @@ export interface WorldState {
   found_pose_stale?: boolean
   // Grasp actually used to pick the held object ({grasppose, ts, robot_pose}).
   holding_pose?: Record<string, unknown> | null
+  // Where each value came from (robot_agent docs/guard.md; absent on an older backend).
+  provenance?: WorldProvenance
+}
+
+export type ProvenanceSource = 'sensor' | 'operator' | 'belief' | 'unknown'
+
+export interface FieldProvenance {
+  source: ProvenanceSource
+  ts: number | null          // unix seconds the sensor read it / the operator set it
+  detail?: string
+  why?: string               // unknown: why the sensor could not tell
+}
+
+export interface WorldProvenance {
+  arrived?: FieldProvenance
+  found?: FieldProvenance
+  holding?: FieldProvenance
+  on?: FieldProvenance
+  opened?: FieldProvenance & {
+    containers?: Record<string, { source: ProvenanceSource; ts: number | null; open: boolean }>
+    unconfirmed?: string[]
+  }
 }
 
 export interface AgentEvent {

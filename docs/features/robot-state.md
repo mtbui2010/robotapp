@@ -40,3 +40,13 @@ WebSocket (`/ws/agent`), so the panel updates live each step. Wrappers live in
 [frontend/lib/api.ts](../../frontend/lib/api.ts) (`getWorld`, `setWorld`); the
 `WorldState` type and `AgentEvent.world` field are in
 [frontend/lib/types.ts](../../frontend/lib/types.ts).
+
+## Provenance (SAGE-v2, robot_agent docs/guard.md)
+
+A backend with SAGE-v2 adds `provenance` to the world dict: per field `{source, ts, detail?, why?}` with
+`source` = `sensor` (read off the robot at `ts`), `operator` (set here, `PUT /agent/world`), `belief`
+(anything else) or `unknown` (the pose could not tell); `opened` also lists `containers` and the open ones no
+sensor confirmed (`unconfirmed`). The Robot State block shows it next to each field ("✓ sensor 12s ago",
+"operator (unconfirmed)", "belief", "? unknown"), lists unconfirmed containers, and notes that an edit is a
+belief the robot re-checks against its sensors (next run, after a pause, before a step at a place). An older
+backend sends no `provenance`: nothing extra is shown.
