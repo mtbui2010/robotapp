@@ -42,46 +42,14 @@
     "title": "AddConnectReq",
     "type": "object"
    },
-   "AddSkillReq": {
+   "AgentValue": {
+    "additionalProperties": true,
     "properties": {
-     "description": {
-      "default": "",
-      "title": "Description",
-      "type": "string"
-     },
-     "func_name": {
-      "default": "",
-      "title": "Func Name",
-      "type": "string"
-     },
-     "module_path": {
-      "default": "",
-      "title": "Module Path",
-      "type": "string"
-     },
-     "name": {
-      "title": "Name",
-      "type": "string"
-     },
-     "type": {
-      "enum": [
-       "internal",
-       "external"
-      ],
-      "title": "Type",
-      "type": "string"
-     },
-     "url": {
-      "default": "",
-      "title": "Url",
-      "type": "string"
+     "value": {
+      "title": "Value"
      }
     },
-    "required": [
-     "name",
-     "type"
-    ],
-    "title": "AddSkillReq",
+    "title": "AgentValue",
     "type": "object"
    },
    "ApiKeyWithValueReq": {
@@ -162,6 +130,43 @@
      "items"
     ],
     "title": "BulkIn",
+    "type": "object"
+   },
+   "CancelResult": {
+    "additionalProperties": true,
+    "properties": {
+     "cancelled": {
+      "default": [],
+      "items": {},
+      "title": "Cancelled",
+      "type": "array"
+     },
+     "errors": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Errors",
+      "type": "object"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "run_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Run Id"
+     }
+    },
+    "required": [
+     "ok"
+    ],
+    "title": "CancelResult",
     "type": "object"
    },
    "CreateLocationReq": {
@@ -314,6 +319,184 @@
     "title": "ListenAnswer",
     "type": "object"
    },
+   "Ok": {
+    "additionalProperties": true,
+    "properties": {
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ok"
+    ],
+    "title": "Ok",
+    "type": "object"
+   },
+   "OkCount": {
+    "additionalProperties": true,
+    "properties": {
+     "count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Count"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ok"
+    ],
+    "title": "OkCount",
+    "type": "object"
+   },
+   "OkName": {
+    "additionalProperties": true,
+    "properties": {
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ok"
+    ],
+    "title": "OkName",
+    "type": "object"
+   },
+   "OkText": {
+    "additionalProperties": true,
+    "properties": {
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "text": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Text"
+     }
+    },
+    "required": [
+     "ok"
+    ],
+    "title": "OkText",
+    "type": "object"
+   },
+   "OkValue": {
+    "additionalProperties": true,
+    "properties": {
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "value": {
+      "title": "Value"
+     }
+    },
+    "required": [
+     "ok"
+    ],
+    "title": "OkValue",
+    "type": "object"
+   },
+   "QaEndResult": {
+    "additionalProperties": true,
+    "properties": {
+     "listens_released": {
+      "title": "Listens Released"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ok"
+    ],
+    "title": "QaEndResult",
+    "type": "object"
+   },
    "RenameLocationReq": {
     "properties": {
      "new_name": {
@@ -341,6 +524,539 @@
      "ids"
     ],
     "title": "ReorderIn",
+    "type": "object"
+   },
+   "RunControlReq": {
+    "properties": {
+     "role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Role"
+     },
+     "user_id": {
+      "default": "",
+      "title": "User Id",
+      "type": "string"
+     }
+    },
+    "title": "RunControlReq",
+    "type": "object"
+   },
+   "RunControlResult": {
+    "additionalProperties": true,
+    "properties": {
+     "action": {
+      "title": "Action",
+      "type": "string"
+     },
+     "code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Code"
+     },
+     "intent": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Intent"
+     },
+     "intent_source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Intent Source"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     },
+     "run_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Run Id"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     }
+    },
+    "required": [
+     "action",
+     "ok"
+    ],
+    "title": "RunControlResult",
+    "type": "object"
+   },
+   "RunInfo": {
+    "additionalProperties": true,
+    "properties": {
+     "awaiting": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Awaiting"
+     },
+     "cancel_requested": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cancel Requested"
+     },
+     "created": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created"
+     },
+     "events": {
+      "anyOf": [
+       {
+        "items": {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Events"
+     },
+     "goal": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Goal"
+     },
+     "n_events": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "N Events"
+     },
+     "outcome": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Outcome"
+     },
+     "pending": {
+      "default": [],
+      "items": {},
+      "title": "Pending",
+      "type": "array"
+     },
+     "robot_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Robot Id"
+     },
+     "role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Role"
+     },
+     "run_id": {
+      "title": "Run Id",
+      "type": "string"
+     },
+     "state": {
+      "title": "State",
+      "type": "string"
+     },
+     "updated": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updated"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     }
+    },
+    "required": [
+     "run_id",
+     "state"
+    ],
+    "title": "RunInfo",
+    "type": "object"
+   },
+   "RunInjectReq": {
+    "properties": {
+     "role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Role"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     },
+     "user_id": {
+      "default": "",
+      "title": "User Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "text"
+    ],
+    "title": "RunInjectReq",
+    "type": "object"
+   },
+   "RunList": {
+    "additionalProperties": true,
+    "properties": {
+     "active": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Active"
+     },
+     "runs": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/RunInfo"
+      },
+      "title": "Runs",
+      "type": "array"
+     }
+    },
+    "title": "RunList",
+    "type": "object"
+   },
+   "RunMetrics": {
+    "additionalProperties": true,
+    "properties": {
+     "duration_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Duration S"
+     },
+     "failure_codes": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "default": {},
+      "title": "Failure Codes",
+      "type": "object"
+     },
+     "goal": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Goal"
+     },
+     "live": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Live"
+     },
+     "llm_calls": {
+      "default": 0,
+      "title": "Llm Calls",
+      "type": "integer"
+     },
+     "llm_errors": {
+      "default": 0,
+      "title": "Llm Errors",
+      "type": "integer"
+     },
+     "llm_latency_ms": {
+      "default": 0.0,
+      "title": "Llm Latency Ms",
+      "type": "number"
+     },
+     "loop": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loop"
+     },
+     "outcome": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Outcome"
+     },
+     "planner_calls": {
+      "default": 0,
+      "title": "Planner Calls",
+      "type": "integer"
+     },
+     "replans": {
+      "default": 0,
+      "title": "Replans",
+      "type": "integer"
+     },
+     "robot_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Robot Id"
+     },
+     "run_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Run Id"
+     },
+     "skill_calls": {
+      "default": 0,
+      "title": "Skill Calls",
+      "type": "integer"
+     },
+     "started": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     },
+     "success": {
+      "default": false,
+      "title": "Success",
+      "type": "boolean"
+     },
+     "task_run_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Run Id"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     },
+     "verified_success": {
+      "default": false,
+      "title": "Verified Success",
+      "type": "boolean"
+     }
+    },
+    "title": "RunMetrics",
+    "type": "object"
+   },
+   "RunRecordOut": {
+    "additionalProperties": true,
+    "properties": {
+     "live": {
+      "default": false,
+      "title": "Live",
+      "type": "boolean"
+     },
+     "n_rows": {
+      "default": 0,
+      "title": "N Rows",
+      "type": "integer"
+     },
+     "path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Path"
+     },
+     "rows": {
+      "default": [],
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Rows",
+      "type": "array"
+     },
+     "run_id": {
+      "title": "Run Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "run_id"
+    ],
+    "title": "RunRecordOut",
     "type": "object"
    },
    "SkillIn": {
@@ -411,6 +1127,141 @@
      "type"
     ],
     "title": "SkillIn",
+    "type": "object"
+   },
+   "SkillInfo": {
+    "additionalProperties": true,
+    "properties": {
+     "aliases": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Aliases",
+      "type": "array"
+     },
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "func_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Func Name"
+     },
+     "headers": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Headers"
+     },
+     "method": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Method"
+     },
+     "module_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Module Path"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "plan": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Plan"
+     },
+     "timeout": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Timeout"
+     },
+     "type": {
+      "title": "Type",
+      "type": "string"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     }
+    },
+    "required": [
+     "name",
+     "type"
+    ],
+    "title": "SkillInfo",
+    "type": "object"
+   },
+   "SkillStatus": {
+    "additionalProperties": true,
+    "properties": {
+     "error": {
+      "default": "",
+      "title": "Error",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ok"
+    ],
+    "title": "SkillStatus",
     "type": "object"
    },
    "SkillUpdate": {
@@ -615,6 +1466,13 @@
    },
    "ValidationError": {
     "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
      "loc": {
       "items": {
        "anyOf": [
@@ -644,6 +1502,89 @@
      "type"
     ],
     "title": "ValidationError",
+    "type": "object"
+   },
+   "WorldStateOut": {
+    "additionalProperties": true,
+    "properties": {
+     "arrived": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Arrived"
+     },
+     "found": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Found"
+     },
+     "found_pose": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Found Pose"
+     },
+     "holding": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Holding"
+     },
+     "holding_pose": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Holding Pose"
+     },
+     "holding_since": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Holding Since"
+     },
+     "on": {
+      "default": [],
+      "items": {},
+      "title": "On",
+      "type": "array"
+     },
+     "opened": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Opened",
+      "type": "array"
+     }
+    },
+    "title": "WorldStateOut",
     "type": "object"
    },
    "WorldStateReq": {
@@ -749,7 +1690,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
        }
       },
       "description": "Successful Response"
@@ -775,7 +1718,13 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": {
+          "type": "boolean"
+         },
+         "title": "Response Get Api Keys Agent Api Keys Get",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -792,7 +1741,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/CancelResult"
+        }
        }
       },
       "description": "Successful Response"
@@ -830,7 +1781,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
        }
       },
       "description": "Successful Response"
@@ -868,7 +1821,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/OkText"
+        }
        }
       },
       "description": "Successful Response"
@@ -895,7 +1850,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Llm Config Agent Llm Config Get",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -919,7 +1878,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
        }
       },
       "description": "Successful Response"
@@ -946,7 +1907,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/QaEndResult"
+        }
        }
       },
       "description": "Successful Response"
@@ -962,7 +1925,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/WorldStateOut"
+        }
        }
       },
       "description": "Successful Response"
@@ -986,7 +1951,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/WorldStateOut"
+        }
        }
       },
       "description": "Successful Response"
@@ -1024,7 +1991,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/AgentValue"
+        }
        }
       },
       "description": "Successful Response"
@@ -2074,6 +3043,405 @@
     "summary": "Scan Ros"
    }
   },
+  "/runs": {
+   "get": {
+    "operationId": "list_runs_runs_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunList"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Runs"
+   }
+  },
+  "/runs/{run_id}": {
+   "get": {
+    "operationId": "get_run_runs__run_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "events",
+      "required": false,
+      "schema": {
+       "default": true,
+       "title": "Events",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunInfo"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Run"
+   }
+  },
+  "/runs/{run_id}/cancel": {
+   "post": {
+    "description": "Cancel one run and stop the robot at once (ROS goals, listens). A lower\nrole than the run's starter is refused (403); 409 once it has ended.",
+    "operationId": "cancel_one_run_runs__run_id__cancel_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/RunControlReq"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunControlResult"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cancel One Run"
+   }
+  },
+  "/runs/{run_id}/inject": {
+   "post": {
+    "description": "Something said / typed during the run, routed by the intent router.",
+    "operationId": "inject_run_runs__run_id__inject_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunInjectReq"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunControlResult"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Inject Run"
+   }
+  },
+  "/runs/{run_id}/metrics": {
+   "get": {
+    "description": "The run's metrics line (LLM calls, latency, replans, failure codes,\nverified success); so far, with ``live: true``, while it runs.",
+    "operationId": "get_run_metrics_runs__run_id__metrics_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunMetrics"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Run Metrics"
+   }
+  },
+  "/runs/{run_id}/pause": {
+   "post": {
+    "description": "Pause one run; it holds at the next step boundary.",
+    "operationId": "pause_run_runs__run_id__pause_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/RunControlReq"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunControlResult"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Pause Run"
+   }
+  },
+  "/runs/{run_id}/record": {
+   "get": {
+    "description": "The run's RunRecord rows (robot_agent.observe.record). ``kinds``: a\ncomma-separated filter (``llm,skill``); ``limit``: the last N rows. Works\nfor finished runs too, from disk.",
+    "operationId": "get_run_record_runs__run_id__record_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "kinds",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Kinds"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunRecordOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Run Record"
+   }
+  },
+  "/runs/{run_id}/resume": {
+   "post": {
+    "operationId": "resume_run_runs__run_id__resume_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/RunControlReq"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunControlResult"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resume Run"
+   }
+  },
   "/skill-configs": {
    "get": {
     "operationId": "list_configs_skill_configs_get",
@@ -2081,7 +3449,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response List Configs Skill Configs Get",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -2156,7 +3528,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/OkValue"
+        }
        }
       },
       "description": "Successful Response"
@@ -2203,7 +3577,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
        }
       },
       "description": "Successful Response"
@@ -2278,7 +3654,13 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SkillInfo"
+         },
+         "title": "Response List Skills Skills Get",
+         "type": "array"
+        }
        }
       },
       "description": "Successful Response"
@@ -2292,7 +3674,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/AddSkillReq"
+        "$ref": "#/components/schemas/SkillIn"
        }
       }
      },
@@ -2302,7 +3684,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
        }
       },
       "description": "Successful Response"
@@ -2328,7 +3712,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/OkCount"
+        }
        }
       },
       "description": "Successful Response"
@@ -2344,7 +3730,13 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": {
+          "$ref": "#/components/schemas/SkillStatus"
+         },
+         "title": "Response Skills Status Skills Status Get",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -2355,7 +3747,7 @@
   },
   "/skills/{name}": {
    "delete": {
-    "operationId": "remove_skill_skills__name__delete",
+    "operationId": "delete_skill_skills__name__delete",
     "parameters": [
      {
       "in": "path",
@@ -2371,7 +3763,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
        }
       },
       "description": "Successful Response"
@@ -2387,7 +3781,7 @@
       "description": "Validation Error"
      }
     },
-    "summary": "Remove Skill"
+    "summary": "Delete Skill"
    },
    "put": {
     "operationId": "update_skill_skills__name__put",
@@ -2416,7 +3810,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/OkName"
+        }
        }
       },
       "description": "Successful Response"
