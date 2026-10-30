@@ -216,6 +216,61 @@
     "title": "GuideBodyReq",
     "type": "object"
    },
+   "GuidePreviewReq": {
+    "properties": {
+     "command": {
+      "default": "",
+      "title": "Command",
+      "type": "string"
+     },
+     "guide": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Guide"
+     },
+     "k": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "K"
+     },
+     "leave_one_out": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Leave One Out"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     }
+    },
+    "title": "GuidePreviewReq",
+    "type": "object"
+   },
    "GuideRenameReq": {
     "properties": {
      "new": {
@@ -2743,6 +2798,26 @@
   "/guides": {
    "get": {
     "operationId": "list_guides_guides_get",
+    "parameters": [
+     {
+      "description": "the dashboard's planner choice (grace | sage | direct | a plug-in); default: the server's",
+      "in": "query",
+      "name": "planner",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "the dashboard's planner choice (grace | sage | direct | a plug-in); default: the server's",
+       "title": "Planner"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "content": {
@@ -2751,6 +2826,16 @@
        }
       },
       "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
      }
     },
     "summary": "List Guides"
@@ -2788,6 +2873,60 @@
      }
     },
     "summary": "Create Guide"
+   }
+  },
+  "/guides/preview": {
+   "post": {
+    "operationId": "preview_guide_guides_preview_post",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "planner",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Planner"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GuidePreviewReq"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Preview Guide"
    }
   },
   "/guides/{name}": {

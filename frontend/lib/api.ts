@@ -1,4 +1,4 @@
-import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, LlmInfo, LocationsInfo, PoolStatus } from './types'
+import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, GuideList, GuidePreview, LlmInfo, LocationsInfo, PoolStatus } from './types'
 
 // ------------------------------------------------------------------
 // Robot registry — multiple named robots, one active at a time.
@@ -402,12 +402,28 @@ export const api = {
   },
 
   // ── Planner guides (versioned, server-side) ─────────────────
-  async listGuides(): Promise<{ active: string | null; versions: GuideVersion[] }> {
+  // `planner`: the dashboard's planner choice, so the answer says whether it uses the guide.
+  async listGuides(planner?: string): Promise<GuideList> {
+    const q = planner ? `?planner=${encodeURIComponent(planner)}` : ''
     try {
-      const r = await fetch(`${getAgentUrl()}/guides`)
+      const r = await fetch(`${getAgentUrl()}/guides${q}`)
       if (!r.ok) return { active: null, versions: [] }
       return r.json()
     } catch { return { active: null, versions: [] } }
+  },
+
+  async previewGuide(body: { guide?: string; name?: string; command: string }, planner?: string): Promise<GuidePreview> {
+    const q = planner ? `?planner=${encodeURIComponent(planner)}` : ''
+    const r = await fetch(`${getAgentUrl()}/guides/preview${q}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!r.ok) {
+      const b = await r.json().catch(() => ({}))
+      throw new Error((b as { detail?: string }).detail || `HTTP ${r.status}`)
+    }
+    return r.json()
   },
 
   async createGuide(v: GuideVersion): Promise<GuideVersion> {

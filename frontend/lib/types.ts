@@ -41,6 +41,29 @@ export interface GuideVersion {
   guide: string
   // null → freeform (llm.chat_guide); a JSON schema → structured (llm.chat).
   format: Record<string, unknown> | null
+  // {ROBOT} / {ACTIONS} / {EXAMPLES} the text uses ([] = a legacy guide, sent as written)
+  placeholders?: string[]
+}
+
+// Which planners plan with the guide (GET /guides?planner=…): only the direct
+// path and llm_direct; SAGE (grace / sage) builds its prompts from the manifest.
+export interface GuideUsage {
+  used_by: string[]
+  active_planner: string
+  active_planner_uses_guide: boolean
+}
+
+export interface GuideList extends Partial<GuideUsage> {
+  active: string | null
+  versions: GuideVersion[]
+}
+
+// POST /guides/preview: the guide as the LLM would receive it for a command.
+export interface GuidePreview extends Partial<GuideUsage> {
+  rendered: string
+  placeholders: string[]
+  legacy: boolean
+  examples: { task: string; score?: number; source?: string }[]
 }
 
 export interface SkillDef {

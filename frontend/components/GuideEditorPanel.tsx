@@ -1,13 +1,19 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../lib/api'
-import type { GuideVersion } from '../lib/types'
+import type { GuideVersion, GuideUsage, GuidePreview } from '../lib/types'
+import { PLANNER_EVENT, storedPlanner } from '../lib/planner'
 import PanelSearch from './PanelSearch'
+
+const PLANNER_LABEL: Record<string, string> = { sage: 'SAGE + assist', grace: 'SAGE (plain loop)', direct: 'Direct' }
 
 // Versioned planner guide (the LLM prompt). The active version is what the
 // backend plans with; an empty store falls back to the robot's guide modules.
 // `refreshKey` is bumped by the parent when the active robot connects or the
 // config location changes, so the live versions are refetched.
+// Only the Direct planner plans with the guide; the panel says so when the
+// dashboard's planner (AgentPanel) is SAGE, and previews the rendered prompt
+// ({ROBOT} / {ACTIONS} / {EXAMPLES} filled for a command).
 export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [active,    setActive]    = useState<string | null>(null)
   const [versions,  setVersions]  = useState<GuideVersion[]>([])
@@ -25,6 +31,18 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
   const [busy,      setBusy]      = useState(false)
   const [error,     setError]     = useState('')
   const [savedAt,   setSavedAt]   = useState(0)
+  const [planner,   setPlanner]   = useState('')
+  const [usage,     setUsage]     = useState<GuideUsage | null>(null)
+  const [previewCmd, setPreviewCmd] = useState('')
+  const [preview,   setPreview]   = useState<GuidePreview | null>(null)
+
+  // the planner chosen in the Agent panel (stored + live changes)
+  useEffect(() => {
+    setPlanner(storedPlanner())
+    const on = (e: Event) => setPlanner(String((e as CustomEvent).detail || storedPlanner()))
+    window.addEventListener(PLANNER_EVENT, on)
+    return () => window.removeEventListener(PLANNER_EVENT, on)
+  }, [])
 
   const loadEditor = useCallback((v: GuideVersion | undefined) => {
     setGuideText(v?.guide ?? '')
@@ -35,8 +53,10 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
 
   const refresh = useCallback(async (keep?: string) => {
     try {
-      const r = await api.listGuides()
+      const r = await api.listGuides(planner || undefined)
       setActive(r.active)
+      setUsage(r.used_by ? { used_by: r.used_by, active_planner: r.active_planner ?? '',
+                             active_planner_uses_guide: !!r.active_planner_uses_guide } : null)
       setVersions(r.versions)
       const pick = keep && r.versions.some(v => v.name === keep)
         ? keep
@@ -46,9 +66,20 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load guides')
     }
-  }, [loadEditor])
+  }, [loadEditor, planner])
 
-  useEffect(() => { if (showing) refresh(selected || undefined) }, [showing, refreshKey])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (showing) refresh(selected || undefined) }, [showing, refreshKey, planner])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runPreview = async () => {
+    setBusy(true); setError('')
+    try {
+      setPreview(await api.previewGuide({ guide: guideText, command: previewCmd }, planner || undefined))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Preview failed')
+    } finally { setBusy(false) }
+  }
+  const notUsed = usage !== null && !usage.active_planner_uses_guide
+  const plannerName = PLANNER_LABEL[usage?.active_planner ?? ''] ?? usage?.active_planner ?? ''
 
   const selectVersion = (name: string) => {
     setSelected(name)
@@ -123,7 +154,12 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
           {showing ? '▾' : '▸'}
         </button>
         <h2 className="font-semibold text-gray-800 flex-1">Planner Guide</h2>
-        {active && <span className="text-[10px] text-gray-400 font-mono">active: {active}</span>}
+        {active && (
+          <span className={`text-[10px] font-mono ${notUsed ? 'text-gray-300 line-through' : 'text-gray-400'}`}
+            title={notUsed ? `not used by ${plannerName}` : 'the version the Direct planner plans with'}>
+            active: {active}
+          </span>
+        )}
         {showing && (
           <button type="button" onClick={() => refresh(selected || undefined)}
             title="Reload from agent"
@@ -132,6 +168,14 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
       </div>
 
       <PanelSearch value={search} onChange={setSearch} placeholder="Search guides… (name or text)" />
+
+      {notUsed && (
+        <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          The selected planner ({plannerName}) does not use this guide: SAGE builds its prompts from the
+          robot&apos;s manifest (actions, description, seed examples). The guide applies only to
+          {' '}{(usage?.used_by ?? []).join(' / ')} (Agent panel → Direct).
+        </p>
+      )}
 
       {showing && (
         <div className="border border-gray-200 rounded bg-white p-2 flex flex-col gap-2">
@@ -190,6 +234,29 @@ export default function GuideEditorPanel({ refreshKey = 0 }: { refreshKey?: numb
                     onChange={e => { setFormatText(e.target.value); setDirty(true) }}
                     className="mt-1 w-full font-mono text-[10px] bg-white border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:border-blue-400"
                   />
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1.5">
+                  <input value={previewCmd} onChange={e => setPreviewCmd(e.target.value)}
+                    placeholder="command to preview, e.g. Bring the cup to the sofa"
+                    className="flex-1 min-w-0 bg-white border border-gray-300 text-gray-800 text-[11px] rounded px-1.5 py-1" />
+                  <button type="button" onClick={runPreview} disabled={busy}
+                    title="The prompt the LLM would receive: {ROBOT} / {ACTIONS} / {EXAMPLES} filled"
+                    className="px-2 py-1 border border-gray-300 hover:border-blue-400 text-gray-700 rounded text-[10px]">Preview</button>
+                </div>
+                {preview && (
+                  <>
+                    <span className="text-[10px] text-gray-500">
+                      {preview.legacy
+                        ? 'no {ROBOT} / {ACTIONS} / {EXAMPLES}: sent as written'
+                        : `placeholders: ${preview.placeholders.join(' ')}`}
+                      {preview.examples.length > 0 && ` · examples: ${preview.examples.map(e => e.task).join(' | ')}`}
+                    </span>
+                    <textarea readOnly value={preview.rendered} rows={10} spellCheck={false}
+                      className="font-mono text-[10px] bg-gray-50 border border-gray-200 rounded px-2 py-1.5 resize-y" />
+                  </>
                 )}
               </div>
 

@@ -15,6 +15,15 @@ set the active one; wrappers (`listGuides`/`createGuide`/`updateGuide`/`deleteGu
 [frontend/lib/api.ts](../../frontend/lib/api.ts) / [frontend/lib/types.ts](../../frontend/lib/types.ts).
 (Distinct from `GuidePanel.tsx`, which is the connection-config help modal.)
 
+Only the **Direct** planner (and robot_agent's `llm_direct` backend) plans with the guide;
+SAGE (`sage`, `grace`) builds its prompts from the robot's manifest. The panel calls
+`listGuides(planner)` (`GET /guides?planner=`) with the Agent panel's planner choice
+(`lib/planner.ts`: `robotapp_planner` in localStorage, `robotapp-planner` window event) and,
+when `active_planner_uses_guide` is false, greys out "active" and shows a note. **Preview**
+(`previewGuide`, `POST /guides/preview`) shows the text the LLM would receive for a command,
+with `{ROBOT}` / `{ACTIONS}` / `{EXAMPLES}` filled and the retrieved example tasks. Backend
+side: robot_agent docs/planner_guide.md.
+
 `POST /skill/<name>` is the same path the CLI mode (`<pkg> <name>::<inputs>`)
 ultimately resolves through `SkillRegistry.execute()`. Two clients (UI +
 CLI) calling the same robot simultaneously is **unsafe** — document this
