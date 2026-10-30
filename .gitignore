@@ -39,3 +39,6 @@ docs-hero.png
 data/*
 # installers downloaded into the repo root
 Miniconda3-*.sh
+
+# frontend/node_modules may be a symlink to another checkout's
+node_modules

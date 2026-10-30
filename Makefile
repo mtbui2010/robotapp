@@ -1,12 +1,15 @@
 SHELL := /bin/bash
 ROOT  := $(shell pwd)
+ROBOT_AGENT_DIR ?= $(ROOT)/../robot_agent
+PYTHON          ?= python3
 
 # Cloudflare Pages project
 CF_PROJECT      := robotapp
 CF_ACCOUNT_ID   := 1efcf45616f03bd51d275417c690a3e5
 CF_DOMAIN       := robot.aistations.org
 
-.PHONY: run-frontend install-frontend install terminate build-frontend deploy deploy-status
+.PHONY: run-frontend install-frontend install terminate build-frontend deploy deploy-status \
+        lint typecheck smoke ci gen-types check-deps
 
 run-frontend:
 	cd $(ROOT)/frontend && npm run dev -- -p 3007
@@ -22,6 +25,35 @@ terminate:
 
 build-frontend:
 	cd $(ROOT)/frontend && npm run build
+
+# ── CI: lint + typecheck + smoke (no backend, no network, no dev server) ─────
+# Needs frontend/node_modules (`make install`; a symlink to another checkout's
+# node_modules works too).
+FE_BIN := $(ROOT)/frontend/node_modules/.bin
+
+check-deps:
+	@test -x $(FE_BIN)/tsc || { echo "frontend/node_modules missing: run 'make install' (or symlink one)"; exit 1; }
+
+# Repo rules (scripts/lint.mjs: endpoints in OpenAPI, HTTP only in lib/api.ts,
+# no new bundled robot data, workaround tags inventoried) + ESLint when installed.
+lint: check-deps
+	node $(ROOT)/scripts/lint.mjs
+
+typecheck: check-deps
+	cd $(ROOT)/frontend && $(FE_BIN)/tsc --noEmit -p .
+
+# Static export must build and produce the page (runs without a robot).
+smoke: check-deps
+	cd $(ROOT)/frontend && NEXT_TELEMETRY_DISABLED=1 $(FE_BIN)/next build
+	@grep -q '<html' $(ROOT)/frontend/out/index.html && echo "smoke: out/index.html ok"
+
+ci: lint typecheck smoke
+
+# Refresh frontend/lib/generated/openapi.json (+ openapi.d.ts when
+# openapi-typescript is installed) from a robot_agent checkout.
+#   make gen-types ROBOT_AGENT_DIR=../robot_agent PYTHON=python3
+gen-types:
+	ROBOT_AGENT_DIR=$(ROBOT_AGENT_DIR) PYTHON=$(PYTHON) $(ROOT)/scripts/gen_types.sh
 
 # Deploy static export to Cloudflare Pages.
 # Requires CLOUDFLARE_API_TOKEN in env (and optionally CLOUDFLARE_ACCOUNT_ID).
