@@ -2,11 +2,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { ExpandEditor } from './ExpandEditor'
 import type { Lang } from '../lib/types'
+import { LS_PLANNER, PLANNER_EVENT } from '../lib/planner'
 
 const LS_CELLS   = 'robotapp_cells'
 const LS_PROMPT  = 'robotapp_prompt'
 const LS_AUTORUN = 'robotapp_voice_autorun'
-const LS_PLANNER = 'robotapp_planner'
 const LS_PLAN_ONLY = 'robotapp_plan_only'
 const LS_LOG_DATA = 'robotapp_log_data'
 const LS_LOG_TARGET = 'robotapp_log_target'   // 'backend' | 'frontend'
@@ -262,6 +262,8 @@ export default function AgentPanel({ running, lang, onLangChange, langLocked, on
   const updatePlanner = (val: PlannerMethod) => {
     setPlanner(val)
     localStorage.setItem(LS_PLANNER, val)
+    // the Planner Guide panel shows whether this planner uses the guide
+    window.dispatchEvent(new CustomEvent(PLANNER_EVENT, { detail: val }))
   }
 
   const updatePlanOnly = (val: boolean) => {
