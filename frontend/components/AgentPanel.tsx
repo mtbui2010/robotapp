@@ -271,7 +271,7 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
   const updatePlanner = (val: PlannerMethod) => {
     setPlanner(val)
     localStorage.setItem(LS_PLANNER, val)
-    // the Planner Guide panel shows whether this planner uses the guide
+    // the Planner prompt panel shows whether this planner uses the direct prompt
     window.dispatchEvent(new CustomEvent(PLANNER_EVENT, { detail: val }))
   }
 

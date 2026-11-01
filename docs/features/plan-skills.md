@@ -53,7 +53,7 @@ mode (`find`'s `ins` reaches `pick`).
   `PUT /skills/<name>` with `{name: <new>}` re-keys the skill in place
   (`SkillRegistry.rename`) and rewrites the calls in every other plan skill
   (`plan_skill.rename_calls` — keeps `!` / `~`, `&&`, arguments, comments).
-  Shortcut buttons and guides are free text and keep the old name. Refused for
+  Shortcut buttons are free text and keep the old name. Refused for
   a code skill, a taken name, an invalid name, or a rename+plan that would loop.
-- A guide may contain `PLAN_SKILLS_HERE`; `resolve_guide` fills it with
+- The Direct planner's prompt lists them under "More skills" ([planner-prompt](planner-prompt.md)):
   `- pick_top::<inputs>  (loc=counter2@kitchen, inputs) — <description>`.

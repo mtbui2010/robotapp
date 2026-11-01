@@ -48,7 +48,7 @@ today; "response" = needs a `response_model` first.
 |---|---|---|---|
 | `SkillDef` | `core/skill_registry.SkillDef` (dataclass) | `GET /skills`, `POST/PUT /skills[/{name}]` | request only (`SkillIn`, `SkillUpdate`); response untyped |
 | `WorldState` | `core/planning/base.WorldState.to_dict` | `GET/PUT /agent/world` | request only (`WorldStateReq`: 6 fields; the TS type also has `found_pose`, `found_pose_stale`, `holding_pose`, which only the response has) |
-| `GuideVersion` | `core/guide_manager` | `GET /guides`, `POST/PUT /guides[/{name}]` | request only (`GuideUpsertReq`, `GuideBodyReq`) |
+| `PlannerPrompt` | `api/planner.py` | `GET /planner/prompt` | no (response untyped) |
 | `ClientEntry`, `ClientType` | `core/device_manager`, connect types | `GET /connects`, `POST/PUT /connects` | request only (`AddConnectReq.type` is a free `str`, no enum for `ClientType`) |
 | `PoolKind`, `PoolLevel`, `PoolServerStatus`, `PoolStatus`; `ServerRow`, `Provider` (`components/ServerListEditor.tsx`) | `connect/pool.py` | `GET /connects/servers`, pool server config in `POST/PUT /connects` | no (response untyped; server rows are free dicts) |
 | `RosScanResult` | `api/devices.py` | `GET /ros/scan` | no |
@@ -104,7 +104,7 @@ changes. Replacement for all of them: a dry-run validation endpoint that returns
 
 ## Order suggested for the clean-up
 
-1. Backend: `response_model` on the read endpoints the UI uses most (`/skills`, `/agent/world`, `/guides`,
+1. Backend: `response_model` on the read endpoints the UI uses most (`/skills`, `/agent/world`, `/planner/prompt`,
    `/connects`, `/config/locations`), remove the duplicate `POST /skills`; then run `scripts/gen_types.sh` with
    openapi-typescript installed and replace the matching types in `lib/types.ts`.
 2. Event schema for `/ws/agent` (with `arch/run-manager`), then drop `done-event-shape` and `plan-event-shape`.

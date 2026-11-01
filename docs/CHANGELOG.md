@@ -6,6 +6,12 @@ in `CLAUDE.md`, mixed with the specs. The full text of each entry is still in th
 line, link. Undated features (Cancel / Stop, camera streaming, Robot State, plan skills, skill and location
 aliases, planner guides) predate the dated notes; see their docs.
 
+## 2026-11-02
+
+- Planner Guide removed (editor panel, `/guides` calls, `Guide*` types): the Direct planner's prompt is built by
+  the backend from the manifest, places and memory. A read-only **Planner prompt** panel (`GET /planner/prompt`)
+  shows it for a command. [features/planner-prompt.md](features/planner-prompt.md)
+
 ## 2026-10-30
 
 - Robot State: per-field provenance (sensor with age / operator / belief / unknown), unconfirmed containers, and a

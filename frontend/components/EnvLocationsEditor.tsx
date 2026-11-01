@@ -7,7 +7,7 @@ import { normalizeName } from './EnvNamesEditor'
 
 // ENV in the Fields view (EnvPanel): one foldable row per location with its params, and
 //   • + Add location — empty (defaults), at the robot's position now (MAP.pose), or a copy of another one;
-//   • 🗑 per location — asks first, naming the plan skills / buttons / guides that still say its name;
+//   • 🗑 per location — asks first, naming the plan skills / buttons that still say its name;
 //     ↶ brings the last one back;
 //   • inside a location: × per param and a "+ param" row (add / remove attributes).
 // Nothing is saved until the panel's Save; that save only sends what changed (PATCH, merged per location),
@@ -45,13 +45,11 @@ async function referencesOf(names: string[]): Promise<string[]> {
   const res = names.filter(Boolean).map(n => new RegExp(`(^|[^\\w가-힣])${esc(n)}($|[^\\w가-힣])`, 'i'))
   const hit = (t: unknown) => typeof t === 'string' && res.some(r => r.test(t))
   const out: string[] = []
-  const [skills, buttons, guides] = await Promise.all([
+  const [skills, buttons] = await Promise.all([
     api.listSkills().catch(() => []), api.listButtons().catch(() => []),
-    api.listGuides().catch(() => ({ active: null, versions: [] })),
   ])
   for (const s of skills) if (s.type === 'plan' && hit(s.plan)) out.push(`plan skill ${s.name}`)
   for (const b of buttons) if (hit(b.plan)) out.push(`button "${b.label}"`)
-  for (const g of guides.versions) if (hit(g.guide)) out.push(`guide ${g.name}`)
   return out
 }
 

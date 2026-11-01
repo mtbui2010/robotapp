@@ -1,4 +1,4 @@
-// The dashboard's planner choice (AgentPanel), shared with the Planner Guide panel.
+// The dashboard's planner choice (AgentPanel), shared with the Planner prompt panel.
 export const LS_PLANNER = 'robotapp_planner'
 export const PLANNER_EVENT = 'robotapp-planner'
 export const DEFAULT_PLANNER = 'grace'   // AgentPanel's default when nothing is stored

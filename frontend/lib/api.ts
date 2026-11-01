@@ -1,4 +1,4 @@
-import type { ClientEntry, ClientType, SkillDef, WorldState, GuideVersion, GuideList, GuidePreview, LlmInfo, LocationsInfo, PoolStatus } from './types'
+import type { ClientEntry, ClientType, SkillDef, WorldState, PlannerPrompt, LlmInfo, LocationsInfo, PoolStatus } from './types'
 
 // ------------------------------------------------------------------
 // Robot registry — multiple named robots, one active at a time.
@@ -445,63 +445,12 @@ export const api = {
     return r.json()
   },
 
-  // ── Planner guides (versioned, server-side) ─────────────────
-  // `planner`: the dashboard's planner choice, so the answer says whether it uses the guide.
-  async listGuides(planner?: string): Promise<GuideList> {
-    const q = planner ? `?planner=${encodeURIComponent(planner)}` : ''
-    try {
-      const r = await fetch(`${getAgentUrl()}/guides${q}`)
-      if (!r.ok) return { active: null, versions: [] }
-      return r.json()
-    } catch { return { active: null, versions: [] } }
-  },
-
-  async previewGuide(body: { guide?: string; name?: string; command: string }, planner?: string): Promise<GuidePreview> {
-    const q = planner ? `?planner=${encodeURIComponent(planner)}` : ''
-    const r = await fetch(`${getAgentUrl()}/guides/preview${q}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!r.ok) {
-      const b = await r.json().catch(() => ({}))
-      throw new Error((b as { detail?: string }).detail || `HTTP ${r.status}`)
-    }
-    return r.json()
-  },
-
-  async createGuide(v: GuideVersion): Promise<GuideVersion> {
-    const r = await fetch(`${getAgentUrl()}/guides`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(v),
-    })
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({}))
-      throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
-    }
-    return r.json()
-  },
-
-  async updateGuide(name: string, body: { guide: string; format: Record<string, unknown> | null }): Promise<GuideVersion> {
-    const r = await fetch(`${getAgentUrl()}/guides/${encodeURIComponent(name)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!r.ok) {
-      const b = await r.json().catch(() => ({}))
-      throw new Error((b as { detail?: string }).detail || `HTTP ${r.status}`)
-    }
-    return r.json()
-  },
-
-  async deleteGuide(name: string): Promise<void> {
-    await fetch(`${getAgentUrl()}/guides/${encodeURIComponent(name)}`, { method: 'DELETE' })
-  },
-
-  async activateGuide(name: string): Promise<{ active: string }> {
-    const r = await fetch(`${getAgentUrl()}/guides/${encodeURIComponent(name)}/activate`, { method: 'POST' })
+  // ── Planner prompt (read-only; built by the backend from the robot each time it plans) ──
+  // `planner`: the dashboard's planner choice, so the answer says whether that planner uses it.
+  async plannerPrompt(command: string, planner?: string): Promise<PlannerPrompt> {
+    const q = new URLSearchParams({ command })
+    if (planner) q.set('planner', planner)
+    const r = await fetch(`${getAgentUrl()}/planner/prompt?${q.toString()}`)
     if (!r.ok) {
       const b = await r.json().catch(() => ({}))
       throw new Error((b as { detail?: string }).detail || `HTTP ${r.status}`)

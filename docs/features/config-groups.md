@@ -17,7 +17,7 @@
 - **ENV locations** ([components/EnvLocationsEditor.tsx](../../frontend/components/EnvLocationsEditor.tsx), Fields
   view): one foldable row per location (mode · height · loc); **+ Add location** — defaults, the robot's
   position now (MAP.pose, `lib/robotPose.ts`), or a copy of another place (without its aliases / label / qa);
-  **🗑** asks first and names the plan skills / buttons / guides that still say the name or an alias (free text,
+  **🗑** asks first and names the plan skills / buttons that still say the name or an alias (free text,
   a warning only), **↶ undo** for the last one; inside a location **×** removes a param and **+ param** adds one
   (`dforward` or `placepose.dz`, value parsed as JSON else text). `ConfigFieldsEditor` has these as `editKeys`.
   Nothing is saved before **Save** (`● unsaved`).

@@ -193,127 +193,6 @@
     "title": "CreateLocationReq",
     "type": "object"
    },
-   "GuideBodyReq": {
-    "properties": {
-     "format": {
-      "anyOf": [
-       {
-        "additionalProperties": true,
-        "type": "object"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Format"
-     },
-     "guide": {
-      "default": "",
-      "title": "Guide",
-      "type": "string"
-     }
-    },
-    "title": "GuideBodyReq",
-    "type": "object"
-   },
-   "GuidePreviewReq": {
-    "properties": {
-     "command": {
-      "default": "",
-      "title": "Command",
-      "type": "string"
-     },
-     "guide": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Guide"
-     },
-     "k": {
-      "anyOf": [
-       {
-        "type": "integer"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "K"
-     },
-     "leave_one_out": {
-      "anyOf": [
-       {
-        "type": "boolean"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Leave One Out"
-     },
-     "name": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Name"
-     }
-    },
-    "title": "GuidePreviewReq",
-    "type": "object"
-   },
-   "GuideRenameReq": {
-    "properties": {
-     "new": {
-      "title": "New",
-      "type": "string"
-     }
-    },
-    "required": [
-     "new"
-    ],
-    "title": "GuideRenameReq",
-    "type": "object"
-   },
-   "GuideUpsertReq": {
-    "properties": {
-     "format": {
-      "anyOf": [
-       {
-        "additionalProperties": true,
-        "type": "object"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Format"
-     },
-     "guide": {
-      "default": "",
-      "title": "Guide",
-      "type": "string"
-     },
-     "name": {
-      "title": "Name",
-      "type": "string"
-     }
-    },
-    "required": [
-     "name"
-    ],
-    "title": "GuideUpsertReq",
-    "type": "object"
-   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -2807,341 +2686,6 @@
     "summary": "Diagnostics Boot"
    }
   },
-  "/guides": {
-   "get": {
-    "operationId": "list_guides_guides_get",
-    "parameters": [
-     {
-      "description": "the dashboard's planner choice (grace | sage | direct | a plug-in); default: the server's",
-      "in": "query",
-      "name": "planner",
-      "required": false,
-      "schema": {
-       "anyOf": [
-        {
-         "type": "string"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "description": "the dashboard's planner choice (grace | sage | direct | a plug-in); default: the server's",
-       "title": "Planner"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "List Guides"
-   },
-   "post": {
-    "operationId": "create_guide_guides_post",
-    "requestBody": {
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/GuideUpsertReq"
-       }
-      }
-     },
-     "required": true
-    },
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "Create Guide"
-   }
-  },
-  "/guides/preview": {
-   "post": {
-    "operationId": "preview_guide_guides_preview_post",
-    "parameters": [
-     {
-      "in": "query",
-      "name": "planner",
-      "required": false,
-      "schema": {
-       "anyOf": [
-        {
-         "type": "string"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "title": "Planner"
-      }
-     }
-    ],
-    "requestBody": {
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/GuidePreviewReq"
-       }
-      }
-     },
-     "required": true
-    },
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "Preview Guide"
-   }
-  },
-  "/guides/{name}": {
-   "delete": {
-    "operationId": "delete_guide_guides__name__delete",
-    "parameters": [
-     {
-      "in": "path",
-      "name": "name",
-      "required": true,
-      "schema": {
-       "title": "Name",
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "Delete Guide"
-   },
-   "get": {
-    "operationId": "get_guide_guides__name__get",
-    "parameters": [
-     {
-      "in": "path",
-      "name": "name",
-      "required": true,
-      "schema": {
-       "title": "Name",
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "Get Guide"
-   },
-   "put": {
-    "operationId": "update_guide_guides__name__put",
-    "parameters": [
-     {
-      "in": "path",
-      "name": "name",
-      "required": true,
-      "schema": {
-       "title": "Name",
-       "type": "string"
-      }
-     }
-    ],
-    "requestBody": {
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/GuideBodyReq"
-       }
-      }
-     },
-     "required": true
-    },
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "Update Guide"
-   }
-  },
-  "/guides/{name}/activate": {
-   "post": {
-    "operationId": "activate_guide_guides__name__activate_post",
-    "parameters": [
-     {
-      "in": "path",
-      "name": "name",
-      "required": true,
-      "schema": {
-       "title": "Name",
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "Activate Guide"
-   }
-  },
-  "/guides/{name}/rename": {
-   "post": {
-    "operationId": "rename_guide_guides__name__rename_post",
-    "parameters": [
-     {
-      "in": "path",
-      "name": "name",
-      "required": true,
-      "schema": {
-       "title": "Name",
-       "type": "string"
-      }
-     }
-    ],
-    "requestBody": {
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/GuideRenameReq"
-       }
-      }
-     },
-     "required": true
-    },
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {}
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "Rename Guide"
-   }
-  },
   "/map/snapshot": {
    "post": {
     "operationId": "snapshot_map_snapshot_post",
@@ -3176,6 +2720,102 @@
      }
     },
     "summary": "Snapshot"
+   }
+  },
+  "/planner/prompt": {
+   "get": {
+    "operationId": "planner_prompt_planner_prompt_get",
+    "parameters": [
+     {
+      "description": "the command to build the prompt for",
+      "in": "query",
+      "name": "command",
+      "required": false,
+      "schema": {
+       "default": "",
+       "description": "the command to build the prompt for",
+       "title": "Command",
+       "type": "string"
+      }
+     },
+     {
+      "description": "the dashboard's planner choice (direct | sage | grace | a plug-in); default: the server's",
+      "in": "query",
+      "name": "planner",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "the dashboard's planner choice (direct | sage | grace | a plug-in); default: the server's",
+       "title": "Planner"
+      }
+     },
+     {
+      "description": "examples (default: the env knob)",
+      "in": "query",
+      "name": "k",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maximum": 20,
+         "minimum": 0,
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "examples (default: the env knob)",
+       "title": "K"
+      }
+     },
+     {
+      "description": "never the command itself",
+      "in": "query",
+      "name": "leave_one_out",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "never the command itself",
+       "title": "Leave One Out"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Planner Prompt"
    }
   },
   "/ros/scan": {

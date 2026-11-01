@@ -274,12 +274,12 @@ export default function SkillPanel({ refreshKey = 0 }: { refreshKey?: number }) 
             value={editForm.name ?? s.name}
             onChange={e => setEditForm(f => ({ ...f, name: e.target.value.trim() }))}
             placeholder="skill name"
-            title="Rename: plan skills that call it are updated; shortcut buttons and guides keep the old name"
+            title="Rename: plan skills that call it are updated; shortcut buttons keep the old name"
             className={INPUT_CLS}
           />
           {editForm.name && editForm.name !== s.name && (
             <span className="text-[10px] text-amber-600">
-              Renaming {s.name} → {editForm.name}: plan skills calling it are updated; shortcut buttons and guides still say “{s.name}”.
+              Renaming {s.name} → {editForm.name}: plan skills calling it are updated; shortcut buttons still say “{s.name}”.
             </span>
           )}
           <PlanSkillEditor

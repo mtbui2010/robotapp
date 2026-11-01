@@ -23,5 +23,4 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `GET  /agent/<name>/get` | read a device agent's latest value, read-only (Map tab robot pose) |
 | `GET  /config/locations/<site>/files/<path>` | static site files: Map layers (`_active` = active site) |
 | `GET  /config/locations` → `host`, `others` | which site the other live machines sharing the configs are on (presence) |
-| `GET  /guides` · `GET /guides/<name>` | list / read versioned planner guides |
-| `POST /guides` · `PUT /guides/<name>` · `DELETE /guides/<name>` · `POST /guides/<name>/activate` | create / edit / delete / select the active guide |
+| `GET  /planner/prompt?command=…&planner=…` | the Direct planner's prompt for a command, read-only ([planner-prompt](planner-prompt.md)) |

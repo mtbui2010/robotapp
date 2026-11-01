@@ -6,7 +6,7 @@ import CameraFeed   from '../components/CameraFeed'
 import SkillPanel   from '../components/SkillPanel'
 import EnvPanel     from '../components/EnvPanel'
 import MapPanel     from '../components/MapPanel'
-import GuideEditorPanel from '../components/GuideEditorPanel'
+import PlannerPromptPanel from '../components/PlannerPromptPanel'
 import GuidePanel   from '../components/GuidePanel'
 import PlanPanel    from '../components/PlanPanel'
 import ButtonPanel  from '../components/ButtonPanel'
@@ -612,7 +612,7 @@ export default function Home() {
               <EnvPanel refreshKey={skillRefreshKey} />
             </div>
             <div className="p-4 border-t border-gray-200">
-              <GuideEditorPanel refreshKey={skillRefreshKey} />
+              <PlannerPromptPanel refreshKey={skillRefreshKey} />
             </div>
           </div>
           <button

@@ -41,6 +41,6 @@ object part and retry, as before.
   Backspace to remove) — stacked, since the sidebar is narrow. It runs the same
   clash check as the backend and marks the offending chip red. `aliases` is
   hidden from the generic field list below it.
-- A guide may contain `LOCATIONS_HERE`; `resolve_guide` replaces it with one
-  line per location (`- dressroom@main room (also: 옷장, tủ áo)`) from the live
-  ENV. Guides without the marker are unchanged.
+- The Direct planner's prompt lists the places, one line per location
+  (`- dressroom@main room (also: 옷장, tủ áo)`) from the live ENV
+  ([planner-prompt](planner-prompt.md)).

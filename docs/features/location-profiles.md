@@ -25,7 +25,7 @@ robot package, so nothing one machine saves may undo another's:
 | Robot State (world belief) | `common/world_state.<host>.json` | per machine (was one shared `world_state.json`: robot B inherited A's `holding`) |
 | logs (`<pkg>.log`, ros, llm) | `data/logs/<host>/` | per machine (`runtime._resolve_layout`) |
 | task runs, grace memory | `common/task_runs/<host>/`, `common/grace_memory.<host>.jsonl` | per machine (`planning/loop.py`) |
-| skills (+ aliases, plan skills), buttons, guides | `common/skills.json`, `buttons.json`, `guides.json` | **shared, saved as merges** |
+| skills (+ aliases, plan skills), buttons | `common/skills.json`, `buttons.json` | **shared, saved as merges** |
 | connections, Global Configs | `locations/<site>/connections.json`, `skill_configs_override.json` | per site; **saved as merges** when two machines are on one site |
 | SwitchBot last state | `locations/<site>/switchbot_state.json` | per site (was `data/`), re-read + atomic write |
 | presence | `common/hosts/<host>.json` | heartbeat every 20 s (server mode) |
@@ -36,10 +36,10 @@ robot package, so nothing one machine saves may undo another's:
 Every manager used to rewrite its whole file from memory, so a save on robot B
 dropped the plan skill robot A had added since B loaded. Now a save re-reads the
 file and applies only what this process changed since its last read (per item:
-a skill / button by id / guide version / connection / Global Config group;
+a skill / button by id / connection / Global Config group;
 added, edited, removed, reordered), writes it atomically (own tmp file +
 rename, previous version as `.bak` — the file never disappears), and adopts
-the result. Reads (`GET /skills`, `/buttons`, `/guides`, `cm.get`, `sr.resolve`)
+the result. Reads (`GET /skills`, `/buttons`, `cm.get`, `sr.resolve`)
 reload the file when another machine changed it (one check per 1–2 s). An item
 both machines changed keeps the later save. A connection another machine added
 is carried along but not connected here until a restart / site switch.
