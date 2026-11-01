@@ -6,7 +6,7 @@ Closing the agent WebSocket never reached the robot: the plan runs in a backend
 thread (`UnifiedAgent.run`), so the skill in flight finished and every remaining
 step still executed. Stopping is now explicit — `POST /agent/cancel`
 (`api.cancelRun`), sent by the Agent panel's **Stop** and by the always-live
-**Cancel** button (right end of the Cameras / Map tab row), and also triggered backend-side when the agent
+**Cancel** buttons (control bar above the shortcut buttons, and right end of the Cameras / Map tab row), and also triggered backend-side when the agent
 WebSocket disconnects mid-run (reload, closed tab, dropped network).
 
 The backend side is [robot_agent/core/run_control.py](../../../robot_agent/robot_agent/core/run_control.py)

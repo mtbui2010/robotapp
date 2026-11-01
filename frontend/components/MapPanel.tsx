@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useSimEditor } from './mapSim'
+import { MapSettings } from './MapSettings'
+import { getPath, poseFrom } from '../lib/robotPose'
 import type { ClientEntry, MapConfig, MapFrame, MapLayer, MapOrigin, MapSkillCall, MapSurface } from '../lib/types'
 
 // Map tab: the site's map with the robot on it. Everything comes from the active site's `MAP`
@@ -14,6 +16,8 @@ import type { ClientEntry, MapConfig, MapFrame, MapLayer, MapOrigin, MapSkillCal
 //   • "Save as place"    → current pose + height as a new ENV entry
 //   • origin             → the user's frame (MAP.origin): axes, 1 m grid, scale bar, robot heading arc;
 //                          "Edit origin" drags / rotates it, then asks whether ENV places follow it
+//   • "Keep area"        → draw a polygon on the robot's whole map; outside it the saved map is
+//                          unknown (no clicks) and the picture is cropped to it (POST /map/snapshot keep)
 
 type Pose = { x: number; y: number; yaw: number }          // yaw [rad], map frame
 type Raster = { frame: MapFrame; data: Uint8ClampedArray; url: string; tintUrl?: string }
@@ -33,13 +37,6 @@ function toMap(o: MapOrigin, u: number, v: number): [number, number] {
 }
 const wrapDeg = (d: number) => ((d + 180) % 360 + 360) % 360 - 180
 
-function getPath(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj)
-}
-
-function quatYaw(q: { x: number; y: number; z: number; w: number }): number {
-  return Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
-}
 
 // "{x}" -> 1.23 (number); "x={x}" -> "x=1.23" (string)
 function fill(call: MapSkillCall, vars: Record<string, number>): Record<string, unknown> {
@@ -120,7 +117,8 @@ function MapUpdater({ clients, current, onSaved }: { clients: ClientEntry[]; cur
     setSaving(true); setMsg('saving…')
     try {
       const r = await api.mapSnapshot(conn)
-      setMsg(`saved ${r.size_m[0]}×${r.size_m[1]} m` + (r.missing.length ? ` · view only until MAP has ${r.missing.join(' / ')}` : ''))
+      setMsg(`saved ${r.size_m[0]}×${r.size_m[1]} m` + (r.kept ? ' · keep area applied' : '') + (r.specks ? ` · ${r.specks} specks removed` : '')
+             + (r.missing.length ? ` · view only until MAP has ${r.missing.join(' / ')}` : ''))
       onSaved()
     } catch (e) { setMsg(`failed: ${(e as Error).message}`) }
     finally { setSaving(false) }
@@ -163,6 +161,9 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
   const [askApply, setAskApply]         = useState(false)                     // "places follow?" popup
   const [previewShift, setPreviewShift] = useState(false)                     // hovering "move places": ghost dots
   const [undo, setUndo] = useState<{ origin: MapOrigin; env: Record<string, EnvEntry> | null } | null>(null)
+  // keep area being drawn: the robot's whole map (not saved) and the polygon's corners (map frame)
+  const [showSettings, setShowSettings] = useState(false)                      // ⚙ MAP settings
+  const [keepEdit, setKeepEdit] = useState<{ img: string; frame: MapFrame; pts: [number, number][] } | null>(null)
   const svgRef  = useRef<SVGSVGElement | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const turnRef = useRef({ pending: 0, sending: false })
@@ -179,10 +180,10 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
     if (c.places === 'ENV') setEnv(((await api.getSkillConfig('ENV')) ?? {}) as Record<string, EnvEntry>)
   }, [])
   useEffect(() => { reload() }, [reload])
-  const sim = useSimEditor({ cfg, setStatus, reloadMap: reload, running, otherEdit: editOrigin })
+  const sim = useSimEditor({ cfg, setStatus, reloadMap: reload, running, otherEdit: editOrigin || !!keepEdit })
 
-  // the display frame: the camera picture's, else the occupancy layer's
-  const view: MapFrame | null = cfg?.image?.frame ?? occ?.frame ?? null
+  // the display frame: the whole map while drawing the keep area, else the camera picture's / occupancy layer's
+  const view: MapFrame | null = keepEdit?.frame ?? cfg?.image?.frame ?? occ?.frame ?? null
   const camClient = useMemo(() => clients.find(c => c.name === cfg?.image?.connection), [clients, cfg])
 
   // ── camera picture (same protocol as CameraCell) ────────────────────────────
@@ -208,13 +209,10 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
     let stop = false
     const tick = async () => {
       try {
-        const v = await api.agentGet(p.agent)
-        const x = Number(getPath(v, p.x)), y = Number(getPath(v, p.y))
-        let yaw = 0
-        if (p.orientation) yaw = quatYaw(getPath(v, p.orientation) as { x: number; y: number; z: number; w: number })
-        else if (p.yaw) yaw = Number(getPath(v, p.yaw)) * (p.angle === 'deg' ? DEG : 1)
-        if (!stop && Number.isFinite(x) && Number.isFinite(y)) {
-          setPose({ x, y, yaw })
+        const got = poseFrom(await api.agentGet(p.agent), p)
+        if (!stop && got) {
+          const { x, y } = got
+          setPose(got)
           setTrail(t => {
             const last = t[t.length - 1]
             return !last || Math.hypot(last[0] - x, last[1] - y) > 0.05 ? [...t.slice(-400), [x, y]] : t
@@ -311,6 +309,11 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
   }, [cfg])
 
   const onKey = (e: React.KeyboardEvent) => {
+    if (keepEdit) {                                       // Backspace / Delete: drop the last corner; no robot turns
+      if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); setKeepEdit({ ...keepEdit, pts: keepEdit.pts.slice(0, -1) }) }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.preventDefault()
+      return
+    }
     if (sim.key(e)) return
     if (editOrigin && draft && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {   // rotate the origin
       e.preventDefault()
@@ -342,9 +345,33 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
     setEnv(cur); setStatus(`saved "${name}" — move::${name} brings the robot back here`)
   }
 
+  // ── keep area ───────────────────────────────────────────────────────────────
+  const startKeep = async () => {
+    const conn = cfg?.source?.connection
+    if (!conn) return
+    if (sim.editing || editOrigin) { setStatus('finish the other edit first'); return }
+    setStatus('loading the robot\'s whole map…')
+    try {
+      const r = await api.mapPreview(conn)
+      setKeepEdit({ img: r.image, frame: r.frame, pts: (cfg?.source?.keep ?? []).map(p => [p[0], p[1]] as [number, number]) })
+      setStatus('click the corners of the area to keep (the house) · Backspace removes the last one')
+      wrapRef.current?.focus()
+    } catch (e) { setStatus(`error: ${(e as Error).message}`) }
+  }
+  const applyKeep = async (keep: [number, number][]) => {
+    const conn = cfg?.source?.connection
+    if (!conn) return
+    setStatus(keep.length ? 'saving the map cropped to the keep area…' : 'saving the whole map…')
+    try {
+      const r = await api.mapSnapshot(conn, { keep: keep.map(([x, y]) => [Number(x.toFixed(3)), Number(y.toFixed(3))] as [number, number]) })
+      setStatus(`saved ${r.size_m[0]}×${r.size_m[1]} m` + (r.kept ? ' · outside the keep area is blocked' : ' · whole map') + (r.specks ? ` · ${r.specks} specks removed` : ''))
+      setKeepEdit(null); setTrail([]); reload()
+    } catch (e) { setStatus(`error: ${(e as Error).message}`) }
+  }
+
   // ── origin editing ──────────────────────────────────────────────────────────
   const startEdit = () => {
-    if (sim.editing) { setStatus('finish the scene edit first'); return } setDraft({ ...(cfg?.origin ?? ZERO) }); setEditOrigin(true); setStatus('drag the origin dot to move it, the red arrow tip to rotate it (← → 5°, Shift 1°)'); wrapRef.current?.focus() }
+    if (sim.editing || keepEdit) { setStatus('finish the other edit first'); return } setDraft({ ...(cfg?.origin ?? ZERO) }); setEditOrigin(true); setStatus('drag the origin dot to move it, the red arrow tip to rotate it (← → 5°, Shift 1°)'); wrapRef.current?.focus() }
   const cancelEdit = () => { setEditOrigin(false); setDraft(null); setDrag(null); setAskApply(false); setStatus('') }
   const placesWithLoc = Object.values(env).filter(e => e.loc).length
   // where every place would go if it moved with the axes (old origin -> draft)
@@ -454,7 +481,25 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
         <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40" disabled={!pose || busy} onClick={savePlace}>Save as place</button>
         <button className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" onClick={() => { api.cancelRun(); setStatus('stop sent') }}>Stop</button>
         <button className="text-blue-600 hover:underline" onClick={() => { setTrail([]); reload() }}>reload</button>
+        <button className={`px-2 py-1 rounded border hover:bg-gray-50 ${showSettings ? 'border-blue-400 bg-blue-50' : 'border-gray-300'}`}
+                onClick={() => setShowSettings(v => !v)} title="The MAP config: robot pose, what a click / ← → / auto lift run">⚙ Settings</button>
         <MapUpdater clients={clients} current={cfg.source?.connection} onSaved={reload} />
+        {cfg.source?.connection && (!keepEdit
+          ? <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" onClick={startKeep}
+                    title="Draw the area to keep (the house): outside it is blocked and cut off the picture — lidar noise outside goes away. Applied again by every Update map.">
+              ✂ Keep area{cfg.source.keep ? ' ✓' : ''}</button>
+          : <span className="inline-flex items-center gap-1 bg-yellow-50 border border-yellow-300 rounded px-2 py-0.5">
+              {keepEdit.pts.length} corners
+              <button className="px-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40" disabled={!keepEdit.pts.length}
+                      onClick={() => setKeepEdit({ ...keepEdit, pts: keepEdit.pts.slice(0, -1) })}>undo</button>
+              <button className="px-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40" disabled={!keepEdit.pts.length}
+                      onClick={() => setKeepEdit({ ...keepEdit, pts: [] })}>clear</button>
+              <button className="px-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40" disabled={keepEdit.pts.length < 3}
+                      onClick={() => applyKeep(keepEdit.pts)} title="Save the map cropped to this area (the old one goes to map/history/)">Apply</button>
+              {cfg.source.keep && <button className="px-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50" onClick={() => applyKeep([])}
+                                          title="Save the whole map again, no keep area">whole map</button>}
+              <button className="px-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50" onClick={() => { setKeepEdit(null); setStatus('') }}>Cancel</button>
+            </span>)}
         {!editOrigin
           ? <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" onClick={startEdit} title="Move / rotate the origin of the coordinates shown on this map">✥ Edit origin</button>
           : draft && (
@@ -469,6 +514,8 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
         <span className="ml-auto text-gray-500">click: go (keeps heading) · ← →: rotate {cfg.rotate?.step_deg ?? 15}° · dots: saved places</span>
       </div>
 
+      {showSettings && <MapSettings cfg={cfg} onSaved={reload} onClose={() => setShowSettings(false)} />}
+
       {sim.bar}
 
       {/* map */}
@@ -476,7 +523,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
            className="relative w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
            style={{ aspectRatio: `${view.width} / ${view.height}` }}>
         <svg ref={svgRef} viewBox={`0 0 ${Wm} ${Hm}`} className="absolute inset-0 w-full h-full"
-             style={{ cursor: sim.editing ? (sim.dragging ? 'grabbing' : sim.adding ? 'copy' : 'default') : editOrigin ? (drag ? 'grabbing' : 'grab') : hv?.blocked ? 'not-allowed' : busy ? 'progress' : 'crosshair' }}
+             style={{ cursor: keepEdit ? 'copy' : sim.editing ? (sim.dragging ? 'grabbing' : sim.adding ? 'copy' : 'default') : editOrigin ? (drag ? 'grabbing' : 'grab') : hv?.blocked ? 'not-allowed' : busy ? 'progress' : 'crosshair' }}
              onMouseDown={e => {
                const w = toWorld(e); if (!w) return
                if (sim.down(w)) { e.preventDefault(); return }    // no native image drag stealing the mouse
@@ -491,11 +538,15 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
                                  if (w && draft && drag === 'move') setDraft({ ...draft, x: w[0], y: w[1] })
                                  if (w && draft && drag === 'rotate') setDraft({ ...draft, yaw_deg: Math.atan2(w[1] - draft.y, w[0] - draft.x) / DEG }) }}
              onMouseLeave={() => { setHover(null); setDrag(null) }}
-             onClick={e => { wrapRef.current?.focus(); const w = toWorld(e); if (w && sim.click(w)) return; if (editOrigin) return; if (w) goTo(w[0], w[1]) }}>
-          {frameSrc
+             onClick={e => { wrapRef.current?.focus(); const w = toWorld(e)
+                             if (keepEdit) { if (w) setKeepEdit({ ...keepEdit, pts: [...keepEdit.pts, w] }); return }
+                             if (w && sim.click(w)) return; if (editOrigin) return; if (w) goTo(w[0], w[1]) }}>
+          {keepEdit
+            ? <image href={keepEdit.img} x={0} y={0} width={Wm} height={Hm} preserveAspectRatio="none" style={{ imageRendering: 'pixelated' }} />
+            : frameSrc
             ? <image href={frameSrc} x={0} y={0} width={Wm} height={Hm} preserveAspectRatio="none" />
             : bg ? placeImg(bg, 1) : placeImg(occ, 0.6)}
-          {showBlocked && occ?.tintUrl && placeImg(occ, 1, occ.tintUrl)}
+          {!keepEdit && showBlocked && occ?.tintUrl && placeImg(occ, 1, occ.tintUrl)}
           {gridLines.map(({ a, b, k, axis }) => {
             const [x1, y1] = S(...a), [x2, y2] = S(...b)
             return <line key={`${axis}${k}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={k === 0 ? 'rgba(60,60,60,0.45)' : 'rgba(60,60,60,0.16)'} strokeWidth={k === 0 ? 0.015 : 0.01} pointerEvents="none" />
@@ -518,7 +569,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
             if (!e.loc) return null
             const [px, py] = S(e.loc.x, e.loc.y), a = e.loc.rz * DEG
             return (
-              <g key={name} style={{ cursor: 'pointer' }} onClick={ev => { ev.stopPropagation(); goPlace(name) }}>
+              <g key={name} style={{ cursor: 'pointer' }} pointerEvents={keepEdit ? 'none' : undefined} onClick={ev => { ev.stopPropagation(); goPlace(name) }}>
                 <line x1={px} y1={py} x2={px + 0.22 * Math.cos(a)} y2={py - 0.22 * Math.sin(a)} stroke="rgb(27,175,122)" strokeWidth={0.03} />
                 <circle cx={px} cy={py} r={0.08} fill="rgb(27,175,122)" stroke="white" strokeWidth={0.02}><title>{`move::${name}  (height ${e.height ?? '?'} m)`}</title></circle>
               </g>)
@@ -544,6 +595,15 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
               </g>)
           })()}
           {sim.overlay(S)}
+          {keepEdit && (() => {                                     // the keep area being drawn
+            const pts = keepEdit.pts.map(([x, y]) => S(x, y))
+            const tail = hover && pts.length ? [...pts, S(hover.x, hover.y)] : pts
+            return (
+              <g pointerEvents="none">
+                {tail.length > 1 && <polygon points={tail.map(p => p.join(',')).join(' ')} fill="rgba(42,120,214,0.12)" stroke="rgb(42,120,214)" strokeWidth={0.05} strokeDasharray="0.15 0.08" />}
+                {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={i === 0 ? 0.14 : 0.09} fill={i === 0 ? 'rgb(250,204,21)' : 'rgb(42,120,214)'} stroke="white" strokeWidth={0.03} />)}
+              </g>)
+          })()}
           {askApply && previewShift && draft && shiftedPlaces(cfg.origin ?? ZERO, draft).map(p => {   // where places would go
             const [ax, ay] = S(...p.from), [bx, by] = S(...p.to)
             return (

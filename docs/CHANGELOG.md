@@ -15,6 +15,18 @@ aliases, planner guides) predate the dated notes; see their docs.
   [backend_coupling.md](backend_coupling.md) lists the robot data the UI bundles, the hand-written types and
   the UI workarounds for backend bugs.
 
+## 2026-10-29 / 2026-10-22 (merged from main)
+
+- Config groups: HOME_LOC, CALIB_PARAMS, KR2EN, EN2KR, LLM_SERVERS deleted; per-skill forms, Map ⚙ Settings, ENV
+  locations editor, merge-saves (PATCH). Narration of names as written, `%` quiet steps.
+  [features/config-groups.md](features/config-groups.md)
+- Drawer skills: one handle for both looks, `vla_drawer_open` through vla-serve.
+  [features/drawer-skills.md](features/drawer-skills.md)
+- Control bar, voice off = silent browser, emergency buttons, `qa::context='where' / 'light'`, shelf unit box,
+  per-tab robot, SLAM map keep area, backup Whisper server ([../WHISPER_SERVER.md](../WHISPER_SERVER.md)).
+  [features/visual-qa.md](features/visual-qa.md), [features/map-tab.md](features/map-tab.md),
+  [features/ai-servers.md](features/ai-servers.md)
+
 ## 2026-10-16
 
 - [AI servers](features/ai-servers.md): connections become three pool types (`vlms` / `visions` / `voices`),

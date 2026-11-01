@@ -2,7 +2,7 @@
 
 <!-- Moved verbatim from CLAUDE.md (lines 123-167) on 2026-10-30; links rebased to docs/features/. -->
 
-Each `ENV` entry (Global Configs) is keyed by its canonical name and may list
+Each `ENV` entry (sidebar **Locations (ENV)**, formerly Global Configs) is keyed by its canonical name and may list
 other names for the same spot:
 
 ```json

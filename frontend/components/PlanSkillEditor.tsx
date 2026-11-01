@@ -24,7 +24,7 @@ export interface PlanCheck {
 }
 
 // The skill a step calls: no `!` / `~`, no spoken name (`이동->move` calls move).
-const bare = (action: string) => action.replace(/[!~]/g, '').split('->').pop()!.trim()
+const bare = (action: string) => action.replace(/[!~%]/g, '').split('->').pop()!.trim()
 
 export function checkPlan(name: string, plan: string, known: string[]): PlanCheck {
   const errors: string[] = []

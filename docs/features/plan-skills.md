@@ -17,7 +17,7 @@ movej::give
 
 `pick_top::cup`, `pick_top::inputs='cup', loc='table@kitchen'`. Lines use the
 direct-mode syntax (`&&` parallel, `!skill` ignore failure, `~skill` force
-failure, `#` comment) and the same argument rules (`parse_inputs`, now shared
+failure, `%skill` not narrated, `#` comment) and the same argument rules (`parse_inputs`, now shared
 with `UnifiedAgent._parse_inputs`). Parameter values are inserted **after**
 parsing (as literals in `k=v` form), so commas / quotes in a value cannot break
 the line. Each step's result is passed on to the next steps, as in the direct

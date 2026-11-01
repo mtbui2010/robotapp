@@ -26,7 +26,7 @@ function loadPresets(key: string): Preset[] {
   } catch { return [] }
 }
 
-// Reusable "saved presets" bar: pick / save / delete a named snippet.
+// Reusable "saved presets" bar: pick / save / rename / delete a named snippet.
 function PresetBar({
   label, presets, setPresets, lsKey, selected, setSelected, current, onLoad,
 }: {
@@ -57,6 +57,15 @@ function PresetBar({
     if (exists && !window.confirm(`Overwrite preset "${name}"?`)) return
     persist(exists ? presets.map(p => p.name === name ? { name, text } : p)
                    : [...presets, { name, text }])
+    setSelected(name)
+  }
+  // ✎: the selected preset under a new name; its text as saved (not the input), its place in the list kept
+  const rename = () => {
+    if (!selected) return
+    const name = window.prompt(`Rename preset "${selected}" to:`, selected)?.trim()
+    if (!name || name === selected) return
+    if (presets.some(p => p.name === name)) { alert(`A preset named "${name}" already exists.`); return }
+    persist(presets.map(p => p.name === selected ? { ...p, name } : p))
     setSelected(name)
   }
   const del = () => {
@@ -114,6 +123,8 @@ function PresetBar({
       </select>
       <button type="button" onClick={save} title="Save current input as a preset"
         className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded">Save</button>
+      <button type="button" onClick={rename} disabled={!selected} title="Rename the selected preset"
+        className="px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded disabled:opacity-40">✎</button>
       <button type="button" onClick={del} disabled={!selected} title="Delete selected preset and clear the input"
         className="px-1.5 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded disabled:opacity-40">Del</button>
       <button type="button" onClick={exportPresets} title="Export all presets to a JSON file"
@@ -161,9 +172,7 @@ type PlannerMethod = 'grace' | 'direct' | 'sage'
 
 interface Props {
   running: boolean
-  lang: Lang                       // the app's one language (Agent runs and Q&A)
-  onLangChange: (lang: Lang) => void
-  langLocked?: boolean             // a Q&A conversation is running in this language
+  lang: Lang                       // the app's one language (Agent runs and Q&A), picked in the page's control bar
   onRun: (plan: string, direct: boolean, lang?: string, planner?: PlannerMethod, planOnly?: boolean, logData?: boolean, logTarget?: 'backend' | 'frontend', repeatTimes?: number, continueOnError?: boolean, logAll?: boolean) => void
   onStop: () => void
   recordEnabled: boolean
@@ -174,7 +183,7 @@ interface Props {
   trial: number
 }
 
-export default function AgentPanel({ running, lang, onLangChange, langLocked, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
+export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
   const [mode,       setMode]       = useState<'structured' | 'unstructured'>('structured')
   const [cells,      setCells]      = useState<string[]>(['', '', '', ''])
   const [activeCell, setActiveCell] = useState(0)
@@ -342,7 +351,7 @@ export default function AgentPanel({ running, lang, onLangChange, langLocked, on
     return () => { keepRef.current = false; recognitionRef.current?.stop() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromMic, mode, voiceSupported])
-
+  // Cells 2-3 are about two lines tall and cell 1 about five: a preset loaded into a
   // Cells 2-4 are one line tall and cell 1 about four: a preset loaded into a
   // small cell left six hidden steps under the visible one, and they ran with
   // whatever was typed there. Show how many steps a cell really holds.
@@ -358,7 +367,8 @@ export default function AgentPanel({ running, lang, onLangChange, langLocked, on
   }
 
   const cellClass = (i: number) =>
-    `w-full h-full min-h-0 block bg-white text-gray-800 text-sm font-mono px-3 py-1 placeholder-gray-300 focus:outline-none resize-none border rounded ${
+    // text-[11px] = 80 % of text-sm (2026-10-27, as the Plan / Execution blocks)
+    `w-full h-full min-h-0 block bg-white text-gray-800 text-[11px] font-mono px-2 py-1 placeholder-gray-300 focus:outline-none resize-none border rounded ${
       activeCell === i ? 'border-blue-500' : 'border-gray-300'
     }`
 
@@ -392,12 +402,6 @@ export default function AgentPanel({ running, lang, onLangChange, langLocked, on
               <option value="direct">Direct</option>
             </select>
           )}
-          <select value={lang} onChange={e => onLangChange(e.target.value as Lang)} disabled={langLocked}
-            title="Language of the robot's speech and of what it hears — Agent runs and Q&A"
-            className="bg-white border border-gray-300 text-gray-800 text-sm rounded px-2 py-1 disabled:opacity-50">
-            <option value="ko">KO</option>
-            <option value="en">EN</option>
-          </select>
           {running
             ? <button onClick={onStop}
                 className="px-4 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded">Stop</button>
@@ -538,7 +542,7 @@ export default function AgentPanel({ running, lang, onLangChange, langLocked, on
               />
             </div>
             <div className="flex flex-col gap-1 h-full min-h-0">
-              {[1, 2, 3].map(i => (
+              {[1, 2].map(i => (   // 2 cells on the right (2026-10-27, was 3; a 4th one's text stays stored)
                 <div key={i} className="relative flex-1 min-h-0">
                   <textarea
                     rows={1}
@@ -549,7 +553,7 @@ export default function AgentPanel({ running, lang, onLangChange, langLocked, on
                     placeholder="skill::params"
                     className={cellClass(i)}
                   />
-                  {stepBadge(i, 1, 'top-0.5 right-5')}
+                  {stepBadge(i, 2, 'top-0.5 right-5')}
                   <ExpandEditor
                     value={cells[i]}
                     onChange={v => { setActiveCell(i); updateCell(i, v) }}
@@ -623,7 +627,7 @@ export default function AgentPanel({ running, lang, onLangChange, langLocked, on
               onChange={e => updatePrompt(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && run()}
               placeholder={fromMic ? 'Speak a command — text will appear here…' : 'Command, e.g. "give me the cup"'}
-              className="w-full bg-white border border-gray-300 text-gray-800 text-sm rounded px-3 py-2 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              className="w-full bg-white border border-gray-300 text-gray-800 text-[11px] rounded px-3 py-2 placeholder-gray-400 focus:outline-none focus:border-blue-500"
             />
           )}
         </div>

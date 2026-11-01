@@ -151,6 +151,8 @@ export interface AgentEvent {
   ts?: number
   // Closed-loop (GRACE) events
   say?: string                       // localized phrase for voice output
+  say_lang?: string                  // the phrase's language when not the run's (a plain-name step is said in English)
+  quiet?: boolean                    // step_start of a `%skill::…` step: not narrated (nor the 15 s nudge)
   // HRI skills (kcare hri.reply / hri.ask, source='dashboard'). `speak` is
   // always voiced — it is the skill's own output, not narration like `say`.
   // `listen` asks the dashboard to capture one phrase and POST it back to
@@ -241,7 +243,10 @@ export interface MapConfig {
   // (map/map.png written by POST /map/snapshot from a SLAM map connection)
   image?: { connection?: string; url?: string; file?: string; frame: MapFrame }
   // where the saved map came from (POST /map/snapshot): the OccupancyGrid connection etc.
-  source?: { connection: string; saved_at?: string; inflate_m?: number; occupied?: number }
+  // keep: the area kept (map frame; outside = unknown, images cropped to it), speck_cells: lone obstacle
+  // blobs below this size were dropped — both applied again by every later snapshot
+  source?: { connection: string; saved_at?: string; inflate_m?: number; occupied?: number
+             keep?: [number, number][]; speck_cells?: number }
   layers?: { occupancy?: MapLayer; height?: MapLayer }
   surfaces?: MapSurface[]
   places?: 'ENV' | null                // draw ENV entries; clicking one runs move::<name>

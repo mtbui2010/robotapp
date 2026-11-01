@@ -49,8 +49,8 @@ const STEPS: Step[] = [
   {
     number: 6,
     title: 'Tune skills & globals (optional)',
-    description: 'Edit per-skill configs, global ENV/HOME_LOC, or save shortcut buttons.',
-    detail: 'The Skills panel lists skills loaded from the active robot — click a skill to view/edit its live config, "Reload" to re-import after code changes, or "+ add" for custom internal (Python module) or external (HTTP URL) skills. The Global Configs panel exposes shared values like ENV and HOME_LOC. In the second sidebar, save common plans as one-click shortcut buttons.',
+    description: 'Edit per-skill configs, the locations (ENV), or save shortcut buttons.',
+    detail: 'The Skills panel lists skills loaded from the active robot — click a skill to view/edit its live config, "Reload" to re-import after code changes, or "+ add" for custom internal (Python module) or external (HTTP URL) skills. The Locations (ENV) panel adds, deletes and edits the named places (+ Add location, 🗑, × / + param); ⚙ Settings in the Map tab edits the MAP config. In the second sidebar, save common plans as one-click shortcut buttons.',
     example: '',
   },
   {

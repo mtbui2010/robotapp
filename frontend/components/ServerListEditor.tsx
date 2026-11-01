@@ -13,7 +13,11 @@ export interface ServerRow {
   slowSec: string        // slower than this = on the CPU (blank = the kind's default)
   enabled: boolean
   apiKey: string         // typed here, saved to the site's .env (never into connections.json)
+  needsKey: boolean      // voices: the server wants a key (speaches API_KEY, e.g. behind a public tunnel)
 }
+
+// the env var a voices server's key lives in (robot_agent api/agent.py _PROVIDER_KEY_MAP['whisper'])
+export const WHISPER_KEY_ENV = 'WHISPER_API_KEY'
 
 export const PROVIDER_LABEL: Record<Provider, string> = {
   ollama: 'Ollama', openai: 'ChatGPT (OpenAI)', gemini: 'Gemini', anthropic: 'Claude (Anthropic)',
@@ -25,7 +29,7 @@ export const KIND_DEFAULT_NAME: Record<PoolKind, string> = { vlms: 'vlm', vision
 const SLOW_DEFAULT: Record<PoolKind, number> = { vlms: 20, visions: 8, voices: 5 }
 
 const blank = (p: Partial<ServerRow> = {}): ServerRow => ({
-  provider: 'ollama', url: '', model: '', numCtx: '', slowSec: '', enabled: true, apiKey: '', ...p,
+  provider: 'ollama', url: '', model: '', numCtx: '', slowSec: '', enabled: true, apiKey: '', needsKey: false, ...p,
 })
 
 export function defaultRows(kind: PoolKind): ServerRow[] {
@@ -43,6 +47,7 @@ export function rowsFromConfig(cfg: Record<string, unknown>): ServerRow[] {
     numCtx: s.num_ctx != null ? String(s.num_ctx) : '',
     slowSec: s.slow_sec != null ? String(s.slow_sec) : '',
     enabled: s.enabled !== false,
+    needsKey: Boolean(s.api_key_env),
   }))
 }
 
@@ -55,6 +60,7 @@ export function rowsToConfig(kind: PoolKind, rows: ServerRow[]): Record<string, 
     if (r.model.trim() && kind !== 'visions') s.model = r.model.trim()
     if (kind === 'vlms' && r.provider === 'ollama' && parseInt(r.numCtx) > 0) s.num_ctx = parseInt(r.numCtx)
     if (parseFloat(r.slowSec) > 0) s.slow_sec = parseFloat(r.slowSec)
+    if (kind === 'voices' && r.needsKey) s.api_key_env = WHISPER_KEY_ENV
     return s
   })
 }
@@ -112,7 +118,14 @@ export default function ServerListEditor({ kind, rows, onChange, keysSaved, stat
                   {(Object.keys(PROVIDER_LABEL) as Provider[]).map(p => <option key={p} value={p}>{PROVIDER_LABEL[p]}</option>)}
                 </select>
               )}
-              <label className="flex items-center gap-1 text-[10px] text-gray-500 ml-auto cursor-pointer"
+              {kind === 'voices' && (
+                <label className="flex items-center gap-1 text-[10px] text-gray-500 ml-auto cursor-pointer"
+                  title="The server wants a key (speaches API_KEY — set it when the server is reachable from the Internet, e.g. https://whisper.aistations.org)">
+                  <input type="checkbox" checked={r.needsKey} onChange={e => set(i, { needsKey: e.target.checked })} />
+                  key
+                </label>
+              )}
+              <label className={`flex items-center gap-1 text-[10px] text-gray-500 ${kind === 'voices' ? '' : 'ml-auto'} cursor-pointer`}
                 title="A disabled server is kept in the list but never called">
                 <input type="checkbox" checked={r.enabled} onChange={e => set(i, { enabled: e.target.checked })} />
                 on
@@ -153,6 +166,14 @@ export default function ServerListEditor({ kind, rows, onChange, keysSaved, stat
                   placeholder={keysSaved[r.provider] ? '••••••  (key saved — blank keeps it)' : `${PROVIDER_LABEL[r.provider]} API key`}
                   className={`${inputCls} flex-1`} />
                 {keysSaved[r.provider] && <span className="text-[10px] text-green-600 whitespace-nowrap">✓ saved</span>}
+              </div>
+            )}
+            {kind === 'voices' && r.needsKey && (
+              <div className="flex items-center gap-1.5">
+                <input type="password" value={r.apiKey} onChange={e => set(i, { apiKey: e.target.value })}
+                  placeholder={keysSaved.whisper ? '••••••  (key saved — blank keeps it)' : `Whisper API key (${WHISPER_KEY_ENV})`}
+                  className={`${inputCls} flex-1`} />
+                {keysSaved.whisper && <span className="text-[10px] text-green-600 whitespace-nowrap">✓ saved</span>}
               </div>
             )}
             {st && (st.error || st.cooldown > 0) && (

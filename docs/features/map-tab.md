@@ -58,6 +58,19 @@ pair to `map/history/`, and sets `MAP.image = {file, frame}`, `MAP.layers.occupa
 `MAP.source` — other MAP keys are kept. `MAP.image.file` is drawn under everything (else the
 occupancy layer, as before). Without `pose` / `goal` the map is **view-only** (clicks explain why).
 kcare_bucheon: 267×422 cells at 5 cm, origin (−3.8, −14.85); pose / goal / places not set yet.
+**Tidying a SLAM map (2026-10-22).** clobot_bucheon's Slamtec map (.101, 508×404 at 5 cm) has lidar dots
+outside the house (through windows), and marks everything it never saw as **free** (319 unknown cells of
+205 k) — clicks outside the house were accepted. **✂ Keep area** (Map tab, when `MAP.source` exists) loads
+the robot's whole map (`POST /map/snapshot {preview: true}`: a PNG data URL, nothing saved), you click the
+corners of the house (Backspace = last one off), **Apply** saves with `keep: [[x, y], …]` (map frame):
+outside is unknown (blocked), both images are cropped to the polygon + 0.3 m (frame origin moved to match).
+Every snapshot also drops obstacle blobs < `speck_cells` (4) cells with no other obstacle within 0.5 m
+(chair legs come in groups and stay). Both are saved in `MAP.source` and applied again by every later
+**Update map**; **whole map** (`keep: []`) removes the area. Only the dashboard's picture and click check
+change — the robot still plans on its own map (for that: virtual walls in RoboStudio). On the .101 map:
+10 specks removed; the noise outside comes in clusters, so the keep area is what clears it.
+Offline check: `kaair_real_capture/map_tidy_20261022/test_tidy.py`.
+
 
 **Sim bar: reset / scenes / object + furniture catalog (sim only, 2026-10-08).** Shown when
 `MAP.sim = {agent}` is set (kcare-sim: `sim_command`, a ROS-service connection to the bridge's

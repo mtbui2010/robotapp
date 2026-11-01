@@ -29,6 +29,14 @@
     "shift":           ["MOBILE_CONFIGS"],
     "forward":         [],
     "inform":          [],
-    "select_response": []
+    "select_response": [],
+    "reply":           ["HRI_CONFIGS"],
+    "ask":             ["HRI_CONFIGS"],
+    "announce":        ["HRI_CONFIGS"],
+    "qa":              ["QA_CONFIGS", "HRI_CONFIGS"],
+    "check_fall":      ["EMERGENCY_CONFIGS"],
+    "check_restroom":  ["EMERGENCY_CONFIGS"],
+    "call_119":        ["EMERGENCY_CONFIGS"],
+    "vla_drawer_open": ["VLA_CONFIGS"]
   }
 }

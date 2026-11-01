@@ -10,7 +10,7 @@ AI connections are now three types, each one **role** served by an **ordered lis
 |---|---|---|
 | `vlms` | `vlm` — qa, find verify, and the planner when active | `provider` ollama / openai / gemini / anthropic, `url` (Ollama), `model`, `num_ctx` |
 | `visions` | `visionserve` — find / find_grasp / products | `url` |
-| `voices` | `whisper` — reply / ask / qa (`dm.stt_client()`) | `url`, `model` (a smaller Whisper on the same server needs less GPU) |
+| `voices` | `whisper` — reply / ask / qa (`dm.stt_client()`) | `url`, `model` (a smaller Whisper on the same server needs less GPU), `api_key_env` (`WHISPER_API_KEY`, for a server behind a public tunnel) |
 
 Each server also has `enabled`, `slow_sec`, `timeout`; the connection `cooldown_sec` (60).
 
@@ -45,3 +45,5 @@ Each server also has `enabled`, `slow_sec`, `timeout`; the connection `cooldown_
   `kaair_real_capture/server_pool_20261016/tidy_preview.py <site>…`. Test against the real servers (a dead
   first server, a cloud server without a key → the dev PC answers; nothing moves):
   `kaair_real_capture/server_pool_20261016/test_pool.py`.
+- Installing a backup Whisper server (speaches on the A6000, optional Cloudflare tunnel) and adding it to the
+  Voices list: [WHISPER_SERVER.md](../../WHISPER_SERVER.md).

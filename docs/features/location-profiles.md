@@ -9,7 +9,11 @@ hot-switch between them. Wrappers live in [frontend/lib/api.ts](../../frontend/l
 (`listLocations`, `activateLocation`, `createLocation`, `renameLocation`,
 `deleteLocation`); switching triggers a backend device reconnect, so the UI
 refreshes the connections list right after. Sites are a **per-robot backend**
-concept (distinct from the multi-robot URL registry kept in `localStorage`).
+concept (distinct from the multi-robot URL registry kept in `localStorage`). **The robot a tab talks to is per tab**
+(2026-10-27, `api.getActiveRobotName`: sessionStorage, the last choice in localStorage only seeds a new tab): two
+tabs of one browser on two robots used to share the one localStorage key read at every call, so the tab that picked
+last sent the other tab's skills / configs / Location calls to its robot (a tab on .110 showed .101's "also on
+m-ax-jetpack" warning).
 
 **Several machines on one configs folder (2026-10-08).** The configs folder is
 shared (`/remote_dir`, sshfs on the robots) by every machine running the same

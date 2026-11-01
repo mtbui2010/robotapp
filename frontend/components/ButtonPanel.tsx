@@ -170,7 +170,9 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
     <div className="flex flex-col gap-2">
       {/* Button grid */}
       {buttons.length > 0 && (
-        <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(56px, 1fr))' }}>
+        <div className="grid gap-1.5"
+          // 2026-10-27: ~60 % of the old width (min 56 px: 5 columns of ~82 px in the control column; now 8 of ~49)
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(46px, 1fr))' }}>
           {buttons.map(b => (
             <div
               key={b.id}
@@ -184,7 +186,7 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
               <button
                 onClick={() => onRun(b.plan)}
                 title={b.plan}
-                className="w-full h-11 px-1 py-1.5 bg-gray-100 hover:bg-blue-50 hover:border-blue-400 border border-gray-200 text-gray-800 text-xs rounded text-center leading-tight line-clamp-2 break-words"
+                className="w-full h-11 px-0.5 py-1.5 bg-gray-100 hover:bg-blue-50 hover:border-blue-400 border border-gray-200 text-gray-800 text-[11px] rounded text-center leading-tight line-clamp-2 break-words"
               >
                 {b.label}
               </button>
