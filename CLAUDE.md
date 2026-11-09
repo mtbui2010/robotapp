@@ -26,3 +26,9 @@ Full rules and reasons: [docs/rules.md](docs/rules.md). Docs index: [docs/README
 - [docs/commands.md](docs/commands.md): commands and deploy
 - [docs/features/README.md](docs/features/README.md): feature specs
 - [docs/backend_coupling.md](docs/backend_coupling.md): UI-side backend knowledge to remove
+
+## Quy tắc phát triển chung (skill `dev-principles`)
+Chi tiết: `~/.claude/skills/dev-principles/SKILL.md`. Mã nguồn không phải Python hoặc chưa có cấu hình lint thì áp dụng bằng review, các script kiểm tra là bản Python.
+1. **Tổng quát hóa:** không đặt dữ kiện riêng của một robot, mô hình, miền hay benchmark trong lõi; chúng là cấu hình/dữ liệu khai báo có nhãn nguồn; thiếu dữ liệu thì tính năng không làm gì.
+2. **Mô-đun:** mỗi tính năng là một mô-đun đăng ký vào lõi; phân tầng rõ (lõi → tùy chọn/backend → cấu hình); giới hạn kích thước hàm/file, không tăng mức hiện tại; tái cấu trúc phải chứng minh hành vi giống hệt.
+3. Không đoán khi thiếu dữ liệu, không sao chép luật chấm điểm hay benchmark vào hệ thống được đánh giá.
