@@ -317,8 +317,17 @@ test('chatRun: stop button label is the same everywhere (Stopping..., Force rese
   assert.equal(CR.stopLabel(play('start', 'stop', 'timeout'), 'Cancel'), 'Force reset')
 })
 
+test('chatRun: stop button label and action pair up in every state (the same flow for every base label)', () => {
+  const play = (...ev) => ev.reduce((s, t) => CR.runReduce(s, { t }), CR.INITIAL_RUN)
+  for (const st of [CR.INITIAL_RUN, play('start'), play('start', 'stop'), play('start', 'stop', 'timeout')])
+    for (const base of ['Stop', 'Cancel', 'Run/Stop'])
+      assert.equal(CR.stopAction(st) === 'force-reset', CR.stopLabel(st, base) === 'Force reset')
+})
+
 test('chatRun: a 404 on the audio answer (listen timed out) has a chat note', () => {
   assert.match(CR.LISTEN_GONE_NOTE, /timed out/)
+  assert.match(CR.noteForListenReply({ gone: true }), /timed out/)
+  assert.equal(CR.noteForListenReply({ gone: false }), null)
 })
 
 
@@ -344,7 +353,7 @@ test('mapObjects actions: Move / Remove / Add exist only when the backend declar
   assert.equal(MO.hasAction(undefined, 'move'), false)
   assert.deepEqual(MO.fillCall(OBJ_CFG.actions.move, { id: 'o1', x: 1.23456, y: 2, place: 'desk' }),
                    { id: 'o1', x: 1.235, y: 2, where: 'at desk' })
-  assert.equal(MO.fillCall({ skill: 's', params: { p: '{place}' } }, {}).p, '{place}')     // not given: left as written
+  assert.deepEqual(MO.fillCall({ skill: 's', params: { p: '{place}', q: 'k' } }, {}), { q: 'k' })     // not given: left out, never the literal
 })
 
 test('mapObjects actions: a device-agent command template ({agent, send}) counts as declared and is filled like a skill call', () => {
@@ -352,6 +361,14 @@ test('mapObjects actions: a device-agent command template ({agent, send}) counts
   assert.equal(MO.hasAction(cfg, 'move'), true)
   assert.equal(MO.hasAction(cfg, 'spawn'), false)                      // no agent: not usable
   assert.deepEqual(MO.fillCall(cfg.actions.move, { id: 'cup', x: 0.5 }), { cmd: 'move_object', body: 'cup', x: 0.5 })
+})
+test('mapObjects move templates: click-move and place-pick send only what is filled (HL-like and sim-like templates)', () => {
+  const hl = { skill: 'move_object', params: { id: '{id}', x: '{x}', y: '{y}', place: '{place}' } }
+  assert.deepEqual(MO.fillCall(hl, { id: 'o1', x: 1, y: 2, cls: 'mug' }), { id: 'o1', x: 1, y: 2 })
+  assert.deepEqual(MO.fillCall(hl, { id: 'o1', place: 'desk' }), { id: 'o1', place: 'desk' })
+  const ks = { agent: 'sim', send: { cmd: 'move_object', body: '{id}', x: '{x}', y: '{y}' } }
+  assert.deepEqual(MO.fillCall(ks, { id: 'cup', x: 0.5, y: 1 }), { cmd: 'move_object', body: 'cup', x: 0.5, y: 1 })
+  assert.equal(MO.callUses(ks, 'place'), false); assert.equal(MO.callUses(hl, 'place'), true)   // the place select shows only for hl
 })
 test('mapObjects read / poll / colour / pick: send body, minimum period, same kind same colour, nearest marker', () => {
   assert.deepEqual(MO.readRequest(OBJ_CFG), { agent: 'a', send: null })

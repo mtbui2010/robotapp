@@ -121,6 +121,8 @@ Shown only when the site's `MAP` config has an `objects` block; the dashboard kn
 - **A click on a marker selects it.** Then **Move** (arm it, click the map) or **to a place...** (a saved ENV place) call the declared
   `move` skill; **Remove** calls `remove` after a confirmation. **Add** (a kind and a place) calls `spawn`. Each of the three
   controls exists only if the backend declared that action; a missing action means the backend cannot do it.
-- Placeholders in the templates: `{id}` `{x}` `{y}` `{place}` `{cls}`. A lone placeholder keeps its type (x, y are numbers).
+- Placeholders in the templates: `{id}` `{x}` `{y}` `{place}` `{cls}`. A lone placeholder keeps its type (x, y are numbers). A template entry whose placeholder the call did not fill is left out
+  (a map click sends no `place`, a place pick sends no `x` / `y`), and the **to a place...** select is shown only when the `move` template
+  uses `{place}`.
 - Code: pure logic in `frontend/lib/mapObjects.ts` (tests named `mapObjects ...` in `scripts/test_lib.mjs`), the layer and bar in
   `frontend/components/mapObjects.tsx`, wired into `MapPanel.tsx` like the sim bar.

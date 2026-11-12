@@ -8,6 +8,8 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-12
 
+- [Map tab](features/map-tab.md): object action templates leave out entries whose placeholders were not filled (click-move no longer sends `place: "{place}"`); the place select shows only if `move` uses `{place}`.
+- Chat: the 404 note on a late audio answer comes from `noteForListenReply` (tested); stop label and action are tested as a pair.
 - [Map tab](features/map-tab.md): objects layer. `MAP.objects` (declared by the backend) makes the Map tab draw labelled object markers, polled
   read-only; Move / Remove / Add appear only for the actions the backend declares. Logic in `lib/mapObjects.ts`.
 - [Map tab](features/map-tab.md): an objects action may be a device-agent command (`{agent, send}`); before, a backend without a skill for it (symbolic sim) showed no Move / Add.

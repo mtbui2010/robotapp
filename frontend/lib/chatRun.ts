@@ -72,3 +72,5 @@ export const stopLabel = (s: RunState, base = 'Stop'): string =>
 
 // The robot's listen was already gone (HTTP 404: it timed out) when the recording was posted.
 export const LISTEN_GONE_NOTE = 'the robot had already stopped listening (timed out): your answer was not used; say it again when asked'
+/** The chat note for the reply to a recorded answer: the note when the listen was already gone (404), else none. */
+export const noteForListenReply = (res: { gone?: boolean }): string | null => (res.gone ? `⚠ ${LISTEN_GONE_NOTE}` : null)

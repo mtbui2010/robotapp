@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
-import { drawnAt, fillCall, hasAction, kindColor, objectTitle, parseObjects, pollMs, readRequest, type MapObject } from '../lib/mapObjects'
+import { callUses, drawnAt, fillCall, hasAction, kindColor, objectTitle, parseObjects, pollMs, readRequest, type MapObject } from '../lib/mapObjects'
 import type { MapConfig } from '../lib/types'
 
 // The Map tab's objects layer (only when the site's MAP config has `objects`): labelled markers, polled read-only
@@ -86,7 +86,7 @@ export function useMapObjects({ cfg, robot, places, setStatus, running }: {
       {selected && canMove && (
         <>
           <button className={btn} disabled={busy} onClick={() => { setMoving(m => !m); setStatus(moving ? '' : `click the map to put ${selected.label} there`) }}>{moving ? 'cancel move' : 'Move'}</button>
-          {places.length > 0 && (
+          {places.length > 0 && callUses(oc?.actions?.move, 'place') && (
             <select className="bg-white border border-gray-300 rounded px-1 py-0.5" value="" disabled={busy}
                     onChange={e => { if (e.target.value) void call('move', { id: selected.id, place: e.target.value, cls: selected.kind }, `move ${selected.label} to ${e.target.value}`) }}>
               <option value="">to a place…</option>

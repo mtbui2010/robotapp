@@ -73,8 +73,12 @@ export function nearestObject(objs: MapObject[], x: number, y: number, radius = 
 export const readRequest = (c: MapObjectsConfig): { agent: string; send: Record<string, unknown> | null } =>
   ({ agent: c.agent, send: c.read?.method === 'send' ? (c.read.body ?? {}) : null })
 
-/** Fill an action template. A lone "{x}" keeps its type (number / string); "{a}-{b}" is a string; unknown
- *  placeholders and values the caller did not give stay as written. */
+/** The placeholder names a template uses ("{x}" -> x), so the UI offers only the inputs the backend can take. */
+export const callUses = (call: ObjectActionCall | undefined | null, name: string): boolean =>
+  !!call && Object.values(('skill' in call ? call.params : call.send) ?? {}).some(t => String(t).includes(`{${name}}`))
+
+/** Fill an action template. A lone "{x}" keeps its type (number / string); "{a}-{b}" is a string. An entry that uses a
+ *  placeholder the caller did not give is left out (never sent as the literal "{place}"), so the backend falls back. */
 export function fillCall(call: ObjectActionCall, vars: CallVars): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   const val = (n: string): string | number | undefined => {
@@ -82,9 +86,10 @@ export function fillCall(call: ObjectActionCall, vars: CallVars): Record<string,
     return typeof v === 'number' ? Number(v.toFixed(3)) : v
   }
   for (const [k, t] of Object.entries(('skill' in call ? call.params : call.send) ?? {})) {
+    const names = Array.from(String(t).matchAll(/\{(\w+)\}/g), m => m[1])
+    if (names.some(n => val(n) === undefined)) continue
     const lone = /^\{(\w+)\}$/.exec(t)
-    out[k] = lone && val(lone[1]) !== undefined ? val(lone[1])
-      : String(t).replace(/\{(\w+)\}/g, (m, n: string) => (val(n) === undefined ? m : String(val(n))))
+    out[k] = lone ? val(lone[1]) : String(t).replace(/\{(\w+)\}/g, (_m, n: string) => String(val(n)))
   }
   return out
 }
