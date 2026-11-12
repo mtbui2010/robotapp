@@ -23,6 +23,8 @@ import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
 import type { Outcome } from '../lib/datasetLog'
 import { pinTabPref, readTabPref, writeTabPref } from '../lib/tabPref'
 import type { ClientEntry, AgentEvent, Lang } from '../lib/types'
+import { useRobotLanguages } from '../lib/useRobotLanguages'
+import { resolveLanguage, languageLabel, languageOptions } from '../lib/robotLanguages'
 import type { Step } from '../components/PlanPanel'
 
 // Filename-safe prefix from a task string, e.g. 'find::apple' → 'find_apple'.
@@ -663,7 +665,10 @@ export default function Home() {
     api.endQa().catch(e => alert(`End Q&A: ${e instanceof Error ? e.message : e}`))
   }, [])
   // One language for everything (chat and Structured runs): picked in the chat header or the control bar.
-  const [lang, setLang]         = useState<Lang>('ko')
+  // The languages come from the connected robot's manifest (GET /robot/languages): the picker's options, and the default
+  // of a tab that has not chosen (or whose choice this robot does not talk in).
+  const robotLangs = useRobotLanguages()
+  const [lang, setLang]         = useState<Lang>('en')
   const [chatOpen, setChatOpen] = useState(false)
   // Chat settings: the planner (SAGE + assist by default) and plan-only (default ON, kept in localStorage)
   const [planner, setPlanner]   = useState<PlannerMethod>(DEFAULT_PLANNER)
@@ -675,17 +680,19 @@ export default function Home() {
   const [micError, setMicError] = useState('')
   useEffect(() => {
     try {
-      const l = readTabPref('robotapp_lang', 'robotapp_qa_lang')     // this tab's own choice, else the last one chosen in any tab
-      if (l === 'ko' || l === 'en') setLang(l)
       const pm = readTabPref(LS_PLANNER)
       if (pm === 'grace' || pm === 'direct' || pm === 'sage') setPlanner(pm)
     } catch { /* no storage */ }
     setPlanOnly(storedPlanOnly())
-    pinTabPref('robotapp_lang', readTabPref('robotapp_lang', 'robotapp_qa_lang') === 'en' ? 'en' : 'ko')   // this tab keeps what it started with
     pinTabPref(LS_PLANNER, storedPlanner())
     pinTabPref(LS_PLAN_ONLY, storedPlanOnly() ? '1' : '0')
     setMicSupported(!!(window.SpeechRecognition || window.webkitSpeechRecognition))
   }, [])
+  useEffect(() => {
+    const l = resolveLanguage(readTabPref('robotapp_lang', 'robotapp_qa_lang'), robotLangs)   // this tab's own choice, else the last one chosen in any tab, else the robot's default
+    setLang(l)
+    if (robotLangs && robotLangs.languages.includes(l)) pinTabPref('robotapp_lang', l)        // this tab keeps what it started with
+  }, [robotLangs])
   const pickLang = (v: Lang) => {
     setLang(v)
     writeTabPref('robotapp_lang', v)
@@ -815,8 +822,7 @@ export default function Home() {
               <select value={lang} onChange={e => pickLang(e.target.value as Lang)} disabled={running}
                 title="Language of the robot's speech and of what it hears — chat and Structured runs"
                 className={`ml-auto ${PICK}`}>
-                <option value="ko">KO</option>
-                <option value="en">EN</option>
+                {languageOptions(robotLangs, lang).map(l => <option key={l} value={l}>{languageLabel(l)}</option>)}
               </select>
               <button onClick={() => setChatOpen(o => !o)}
                 title={listenId && !chatOpen ? 'The robot is waiting for your answer: open the chat to type it' : 'Chat with the robot: give it a task in words, answer when it asks (type or speak)'}
@@ -921,7 +927,7 @@ export default function Home() {
         <ChatPanel
           log={qaLog}
           state={chatSt}
-          lang={lang} onLang={pickLang}
+          lang={lang} onLang={pickLang} languages={languageOptions(robotLangs, lang)}
           planner={planner} onPlanner={pickPlanner}
           planOnly={planOnly} onPlanOnly={pickPlanOnly}
           handsFree={handsFree} onHandsFree={v => { void toggleHandsFree(v) }}

@@ -9,7 +9,7 @@
 
 **Languages (2026-10-13): Korean and English only.** Vietnamese was dropped from
 the skills (hri `LANGS = ('ko', 'en')`; `lang='vi'` is refused) and the UI. The
-dashboard has ONE language picker, KO / EN in the control bar (see below)
+dashboard has ONE language picker in the control bar (see below; since 2026-11-13 it lists the languages of the robot's manifest — `language` is the default, `languages` the rest — and kcare's are ko and en)
 (`page.tsx` `lang`, `localStorage` `robotapp_lang`), used by Agent runs and by
 the earlier Q&A button (now the Chat); it is locked while a Q&A conversation runs. robot_agent's own
 narrator (`announcer.py`) and TTS helpers still know `vi` — framework, not skills.

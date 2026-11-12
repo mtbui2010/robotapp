@@ -6,6 +6,14 @@ in `CLAUDE.md`, mixed with the specs. The full text of each entry is still in th
 line, link. Undated features (Cancel / Stop, camera streaming, Robot State, plan skills, skill and location
 aliases, planner guides) predate the dated notes; see their docs.
 
+## 2026-11-13
+
+- The language picker (control bar and chat) and its default come from the robot's manifest (`GET /robot/languages`,
+  [features/backend-contract.md](features/backend-contract.md)): `language` is the default, `languages` the options; a tab's
+  choice is kept when the robot talks in it, else the default. Before: KO / EN fixed in the UI, default KO. The speech
+  tag of a language is the code itself (`ja` -> `ja`). Logic and tests: `lib/robotLanguages.ts`, `make unit`.
+  [features/chat.md](features/chat.md)
+
 ## 2026-11-12
 
 - Screen recordings have sound: the tab's audio (default) and, if ticked, the microphone, mixed into one track; an

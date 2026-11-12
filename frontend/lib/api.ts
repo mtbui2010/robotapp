@@ -1,4 +1,5 @@
 import type { ClientEntry, ClientType, SkillDef, WorldState, PlannerPrompt, LlmInfo, LocationsInfo, PoolStatus } from './types'
+import type { RobotLanguages } from './robotLanguages'
 
 // ------------------------------------------------------------------
 // Robot registry — multiple named robots, one active at a time.
@@ -60,10 +61,14 @@ function getActiveRobotName(): string | null {
   }
 }
 
+/** Fired (on window) when the robot this tab talks to changes: what was read from the old one (languages …) is stale. */
+export const ROBOT_CHANGED_EVENT = 'robotapp:robot-changed'
+
 function setActiveRobot(name: string): void {
   if (typeof window === 'undefined') return
   try { sessionStorage.setItem(LS_ACTIVE, name) } catch { /* no session storage: shared choice only */ }
   localStorage.setItem(LS_ACTIVE, name)       // the default for tabs opened later
+  window.dispatchEvent(new Event(ROBOT_CHANGED_EVENT))
 }
 
 function addRobot(name: string, url: string): { ok: boolean; error?: string } {
@@ -455,6 +460,13 @@ export const api = {
       const body = await r.json().catch(() => ({}))
       throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
     }
+    return r.json()
+  },
+
+  // ── The robot's languages (manifest `language` / `languages`): the language picker and its default ──
+  async getRobotLanguages(): Promise<RobotLanguages> {
+    const r = await fetch(`${getAgentUrl()}/robot/languages`)
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   },
 

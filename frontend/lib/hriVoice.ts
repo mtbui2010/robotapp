@@ -11,7 +11,7 @@
 
 function bcp47(lang?: string | null): string {
   const map: Record<string, string> = { en: 'en-US', ko: 'ko-KR' }
-  if (!lang) return 'ko-KR'
+  if (!lang) return (typeof navigator !== 'undefined' && navigator.language) || 'en-US'
   return map[lang] ?? lang
 }
 

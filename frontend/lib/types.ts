@@ -21,7 +21,7 @@ export interface PoolStatus {
 }
 
 // Languages the robot speaks and understands (skills: hri LANGS).
-export type Lang = 'ko' | 'en'
+export type Lang = string      // a language code of the robot's manifest ('ko', 'en', …): see lib/robotLanguages.ts
 
 export interface ClientEntry {
   id: string

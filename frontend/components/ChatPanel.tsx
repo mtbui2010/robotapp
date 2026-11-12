@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import type { Lang } from '../lib/types'
+import { languageLabel } from '../lib/robotLanguages'
 import type { PlannerMethod } from '../lib/planner'
 import type { ChatState } from '../lib/chatMic'
 
@@ -20,13 +21,14 @@ const HELP = 'Type a task ("put the apple on the counter") and the robot plans a
   + 'and Stop / Cancel stops both.'
 
 export default function ChatPanel({
-  log, state, lang, onLang, planner, onPlanner, planOnly, onPlanOnly,
+  log, state, lang, onLang, languages, planner, onPlanner, planOnly, onPlanOnly,
   handsFree, onHandsFree, micSupported, micListening, micNote,
   onSend, onStop, onReset, canStop, canType, lost, stuck, onClear, onClose,
 }: {
   log: ChatLine[]
   state: ChatState
   lang: Lang
+  languages: string[]               // the robot's languages (manifest), for the picker
   onLang: (l: Lang) => void
   planner: PlannerMethod
   onPlanner: (p: PlannerMethod) => void
@@ -98,8 +100,7 @@ export default function ChatPanel({
         <select value={lang} onChange={e => onLang(e.target.value as Lang)} disabled={state !== 'idle'}
           title="Language of the robot's speech and of what it hears"
           className="bg-white border border-gray-300 rounded px-1 py-0.5 disabled:opacity-50">
-          <option value="ko">KO</option>
-          <option value="en">EN</option>
+          {languages.map(l => <option key={l} value={l}>{languageLabel(l)}</option>)}
         </select>
         <label data-testid="chat-plan-only" title={planOnly ? 'ON: the robot only PLANS the command, it does not move' : 'OFF: the robot executes the plan (it moves)'}
           className={`flex items-center gap-1 cursor-pointer px-1.5 py-0.5 rounded border ${planOnly ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-red-50 border-red-300 text-red-700'}`}>

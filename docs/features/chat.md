@@ -60,7 +60,7 @@ Limits: the recogniser is the browser's (Chrome needs the network; Korean worked
 quiet room for real runs. Not tested with a real mic and speakers (see the CHANGELOG line).
 
 ## Language per tab
-The language (KO / EN) belongs to the tab: it is kept in `sessionStorage` and survives a reload of that tab; `localStorage` holds only the
+The language belongs to the tab (the picker lists the robot's languages from its manifest, `GET /robot/languages`; a tab whose choice the robot does not talk in, e.g. after switching robot, falls back to the robot's default `language`): it is kept in `sessionStorage` and survives a reload of that tab; `localStorage` holds only the
 last choice made in any tab, used by a tab that has none yet (a new tab). Picking EN in one tab no longer changes another tab.
 The planner and "plan only" work the same way. A tab that has not chosen yet **pins** what it started with (`pinTabPref`), so a reload
 never picks up another tab's choice (un-checking "plan only" in one tab cannot make another tab's robot move after a reload).

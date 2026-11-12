@@ -22,6 +22,7 @@ const load = async name => {
 const PV = await load('planView')
 const CM = await load('chatMic')
 const CR = await load('chatRun')
+const RL = await load('robotLanguages')
 
 const FIX = join(ROOT, 'scripts/fixtures/events')
 const fixtures = Object.fromEntries(readdirSync(FIX).filter(f => f.endsWith('.json'))
@@ -443,4 +444,29 @@ test('tabPref: a tab that never chose keeps what it started with (pin) even when
   assert.equal(TP.readTabPref('robotapp_plan_only'), '1')
   TP.pinTabPref('robotapp_plan_only', '0')                     // a pin never overrides a value the tab already has
   assert.equal(TP.readTabPref('robotapp_plan_only'), '1')
+})
+
+
+// ── lib/robotLanguages.ts: the picker's languages and the default come from the robot's manifest ──────────
+const ko = { robot: 'kaair', language: 'ko', languages: ['ko', 'en'] }
+const ja = { robot: 'other', language: 'ja', languages: ['ja'] }
+
+test('resolveLanguage: the tab keeps its choice when the robot talks in it, else the robot default', () => {
+  assert.equal(RL.resolveLanguage('en', ko), 'en')
+  assert.equal(RL.resolveLanguage('ko', ko), 'ko')
+  assert.equal(RL.resolveLanguage(null, ko), 'ko')           // nothing chosen: the manifest's default
+  assert.equal(RL.resolveLanguage('en', ja), 'ja')           // another robot that does not talk in it
+  assert.equal(RL.resolveLanguage(' EN ', ko), 'en')
+})
+
+test('resolveLanguage: before the robot answers the stored choice stands, else English', () => {
+  assert.equal(RL.resolveLanguage('ko', null), 'ko')
+  assert.equal(RL.resolveLanguage(null, null), 'en')
+})
+
+test('languageOptions / languageLabel: the robot\'s languages, never a blank select', () => {
+  assert.deepEqual(RL.languageOptions(ko, 'en'), ['ko', 'en'])
+  assert.deepEqual(RL.languageOptions(null, 'en'), ['en'])    // robot not answered: just the one in use
+  assert.deepEqual(RL.languageOptions(ja, 'ko'), ['ja', 'ko'])
+  assert.equal(RL.languageLabel('ko'), 'KO')
 })
