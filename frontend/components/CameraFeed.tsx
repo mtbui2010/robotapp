@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import type { ClientEntry } from '../lib/types'
 import CameraCell from './CameraCell'
 import { decodeRawDepth, encode16BitGrayPng, downloadBlob } from '../lib/depthPng'
+import { captureName, captureStamp } from '../lib/captureName'
 
 type Channel = 'rgb' | 'depth'
 type DepthMode = 'colored' | 'raw'
@@ -143,6 +144,7 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
   // One-shot raw-depth PNG save: set when save_raw is clicked in colored mode.
   // Holds the depthMode to restore on the wire once the raw frame is captured.
   const pendingRawSaveRef           = useRef<DepthMode | null>(null)
+  const pendingRawStampRef          = useRef<string | null>(null)   // stamp shared with Save both
 
   // ── Depth controls ────────────────────────────────────────────────────────
   const [depthMode, setDepthMode]       = useState<DepthMode>('colored')
@@ -338,11 +340,12 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
         if (pendingRawSaveRef.current !== null) {
           const restore = pendingRawSaveRef.current
           pendingRawSaveRef.current = null
-          const camName = (selected?.name || selected?.id || 'camera').replace(/[^\w.-]+/g, '_')
-          const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+          const camName = selected?.name || selected?.id || 'camera'
+          const stamp = pendingRawStampRef.current || captureStamp()
+          pendingRawStampRef.current = null
           decodeRawDepth(data.depth_raw)
             .then(u16 => encode16BitGrayPng(u16, w, h))
-            .then(blob => downloadBlob(blob, `depth_raw_${camName}_${stamp}.png`))
+            .then(blob => downloadBlob(blob, captureName(camName, 'depth_raw', 'png', stamp)))
             .catch(err => console.error('save_raw (one-shot):', err))
             .finally(() => {
               if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -414,6 +417,19 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
     ctx.putImageData(img, 0, 0)
   }, [rawDepth, depthMode, activeMeta, channel])
 
+  // Save both: the RGB frame on screen + the raw depth, one stamp, so the pair matches by name.
+  const saveBoth = () => {
+    const stamp = captureStamp()
+    const camName = selected?.name || selected?.id || 'camera'
+    if (srcs.rgb) {
+      const a = document.createElement('a')
+      a.href = srcs.rgb
+      a.download = captureName(camName, 'rgb', 'jpg', stamp)
+      document.body.appendChild(a); a.click(); a.remove()
+    }
+    if (srcs.depth || rawDepth) saveRaw(stamp)
+  }
+
   const capture = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       pendingSaveRef.current = true   // download the frame that comes back
@@ -427,18 +443,19 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
   // Save the RAW depth as a 16-bit grayscale PNG.
   // If raw depth is already streaming (raw mode), encode the held frame directly.
   // Otherwise do a one-shot raw capture on the wire and restore the mode after.
-  const saveRaw = () => {
+  const saveRaw = (sharedStamp?: string) => {
     if (rawDepth) {
-      const camName = (selected?.name || selected?.id || 'camera').replace(/[^\w.-]+/g, '_')
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const camName = selected?.name || selected?.id || 'camera'
+      const stamp = sharedStamp || captureStamp()
       encode16BitGrayPng(rawDepth.data, rawDepth.w, rawDepth.h)
-        .then(blob => downloadBlob(blob, `depth_raw_${camName}_${stamp}.png`))
+        .then(blob => downloadBlob(blob, captureName(camName, 'depth_raw', 'png', stamp)))
         .catch(err => console.error('save_raw:', err))
       return
     }
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       setError(null)
       pendingRawSaveRef.current = depthMode   // restore current mode after capture
+      pendingRawStampRef.current = sharedStamp || null
       wsRef.current.send(JSON.stringify({ depth_mode: 'raw' }))
     } else {
       setError('Camera not connected')
@@ -500,11 +517,10 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
     }
     if (!dataUrl) return   // nothing rendered yet — wait for the next frame
     pendingSaveRef.current = false
-    const name  = (selected?.name || selected?.id || 'camera').replace(/[^\w.-]+/g, '_')
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const name  = selected?.name || selected?.id || 'camera'
     const a = document.createElement('a')
     a.href = dataUrl
-    a.download = `capture_${name}_${channel}_${stamp}.${ext}`
+    a.download = captureName(name, channel, ext)
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -1037,10 +1053,16 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
                 className="text-[11px] px-2 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
               >Capture</button>
 
+              <button
+                onClick={saveBoth}
+                title="Save the RGB frame and the raw depth together, same name + _rgb / _depth_raw"
+                className="text-[11px] px-2 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
+              >Save both</button>
+
               {/* save_raw — depth view only: 16-bit grayscale PNG of raw depth */}
               {channel === 'depth' && (
                 <button
-                  onClick={saveRaw}
+                  onClick={() => saveRaw()}
                   title="Save RAW depth as a 16-bit grayscale PNG"
                   className="text-[11px] px-2 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
                 >save_raw</button>

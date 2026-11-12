@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { ClientEntry } from '../lib/types'
 import { decodeRawDepth, encode16BitGrayPng, downloadBlob } from '../lib/depthPng'
+import { captureName, captureStamp, registerSaver, saveGroup } from '../lib/captureName'
 
 type Channel = 'rgb' | 'depth'
 
@@ -24,6 +25,7 @@ export default function CameraCell({ client }: { client: ClientEntry }) {
   const [error, setError]     = useState<string | null>(null)
   const [imgNat, setImgNat]   = useState<{ w: number; h: number } | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const rawStampRef = useRef<string | null>(null)   // stamp shared with Save both
   // One-shot raw-depth PNG save: the cell streams colored depth, so save_raw
   // briefly switches the wire to raw, grabs one frame, then restores colored.
   const pendingRawSaveRef = useRef(false)
@@ -58,11 +60,9 @@ export default function CameraCell({ client }: { client: ClientEntry }) {
             pendingRawSaveRef.current = false
             const w = data.depth_w as number
             const h = data.depth_h as number
-            const safe  = name.replace(/[^\w.-]+/g, '_')
-            const stamp = new Date().toISOString().replace(/[:.]/g, '-')
             decodeRawDepth(data.depth_raw)
               .then(u16 => encode16BitGrayPng(u16, w, h))
-              .then(blob => downloadBlob(blob, `depth_raw_${safe}_${stamp}.png`))
+              .then(blob => downloadBlob(blob, captureName(name, 'depth_raw', 'png', rawStampRef.current || captureStamp())))
               .catch(err => console.error('save_raw (cell):', err))
               .finally(() => {
                 if (!cancelled && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -118,17 +118,33 @@ export default function CameraCell({ client }: { client: ClientEntry }) {
     if (!src) return
     const a = document.createElement('a')
     a.href = src
-    const safe  = name.replace(/[^\w.-]+/g, '_')
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    a.download = `capture_${safe}_${channel}_${stamp}.jpg`
+    a.download = captureName(name, channel, 'jpg')
     document.body.appendChild(a); a.click(); a.remove()
   }
 
+  // What this cell's own stream carries: the RGB frame on screen, and the raw depth when it has depth.
+  const saveOwn = (stamp: string) => {
+    if (srcs.rgb) {
+      const a = document.createElement('a')
+      a.href = srcs.rgb
+      a.download = captureName(name, 'rgb', 'jpg', stamp)
+      document.body.appendChild(a); a.click(); a.remove()
+    }
+    if (srcs.depth) saveRaw(stamp)
+  }
+  const saveOwnRef = useRef(saveOwn)
+  saveOwnRef.current = saveOwn
+  useEffect(() => registerSaver(id, name, s => saveOwnRef.current(s)), [id, name])
+
+  // Save both: every cell of this camera (head_rgb + head_depth) under one stamp.
+  const saveBoth = () => { if (!saveGroup(name)) saveOwn(captureStamp()) }
+
   // Save RAW depth as a 16-bit grayscale PNG via a one-shot raw capture:
   // switch the wire to raw, grab one frame (handled in onmessage), restore colored.
-  const saveRaw = () => {
+  const saveRaw = (sharedStamp?: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) { setError('not connected'); return }
     pendingRawSaveRef.current = true
+    rawStampRef.current = sharedStamp || null
     wsRef.current.send(JSON.stringify({ depth_mode: 'raw' }))
   }
 
@@ -188,6 +204,13 @@ export default function CameraCell({ client }: { client: ClientEntry }) {
           title="Download the displayed frame"
           className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
         >Save</button>
+
+        <button
+          onClick={e => { stop(e); saveBoth() }}
+          onMouseDown={stop}
+          title="Save the RGB frame and the raw depth together, same name + _rgb / _depth_raw"
+          className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white"
+        >Save both</button>
 
         {/* save_raw — depth view only: 16-bit grayscale PNG of raw depth */}
         {channel === 'depth' && (
