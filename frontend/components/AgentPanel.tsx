@@ -2,20 +2,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { ExpandEditor } from './ExpandEditor'
 import type { Lang } from '../lib/types'
-import { LS_PLANNER, PLANNER_EVENT } from '../lib/planner'
+import type { PlannerMethod } from '../lib/planner'
 
 const LS_CELLS   = 'robotapp_cells'
-const LS_PROMPT  = 'robotapp_prompt'
-const LS_AUTORUN = 'robotapp_voice_autorun'
-const LS_PLAN_ONLY = 'robotapp_plan_only'
 const LS_LOG_DATA = 'robotapp_log_data'
 const LS_LOG_TARGET = 'robotapp_log_target'   // 'backend' | 'frontend'
 const LS_LOG_ALL    = 'robotapp_log_all'      // '1' = every run, '0' = failed cases only
 const LS_REPEAT_MODE = 'robotapp_repeat_mode' // 'once' | 'n' | 'forever'
 const LS_REPEAT_N    = 'robotapp_repeat_n'
 const LS_REPEAT_COE  = 'robotapp_repeat_continue_on_error'
-const LS_PRESETS_S = 'robotapp_presets_structured'   // saved plan presets (structured)
-const LS_PRESETS_U = 'robotapp_presets_unstructured' // saved command presets (unstructured)
+const LS_PRESETS_S = 'robotapp_presets_structured'   // saved plan presets (Structured step editor)
 
 interface Preset { name: string; text: string }
 
@@ -136,41 +132,13 @@ function PresetBar({
   )
 }
 
-// Web Speech API is not in the default DOM lib types.
-declare global {
-  interface Window {
-    SpeechRecognition?: new () => SpeechRecognitionLike
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike
-  }
-}
-interface SpeechRecognitionLike {
-  lang: string
-  interimResults: boolean
-  maxAlternatives: number
-  continuous: boolean
-  start: () => void
-  stop: () => void
-  onresult: ((e: { results: { length: number; [i: number]: { 0: { transcript: string } } } }) => void) | null
-  onend: (() => void) | null
-  onerror: ((e: { error?: string }) => void) | null
-}
-
 function loadCells(): string[] {
   try { return JSON.parse(localStorage.getItem(LS_CELLS) || '["","","",""]') }
   catch { return ['', '', '', ''] }
 }
 
-// Map the UI lang selector to a BCP-47 tag for speech recognition.
-function langToBcp47(lang: string): string {
-  const map: Record<string, string> = { en: 'en-US', ko: 'ko-KR' }
-  if (map[lang]) return map[lang]
-  if (lang.includes('-')) return lang
-  return lang
-}
-
-type PlannerMethod = 'grace' | 'direct' | 'sage'
-
 interface Props {
+  toolbarExtra?: React.ReactNode    // shown before Run / Stop (the page's voice toggle and Guide)
   running: boolean
   lang: Lang                       // the app's one language (Agent runs and Q&A), picked in the page's control bar
   onRun: (plan: string, direct: boolean, lang?: string, planner?: PlannerMethod, planOnly?: boolean, logData?: boolean, logTarget?: 'backend' | 'frontend', repeatTimes?: number, continueOnError?: boolean, logAll?: boolean) => void
@@ -183,13 +151,9 @@ interface Props {
   trial: number
 }
 
-export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
-  const [mode,       setMode]       = useState<'structured' | 'unstructured'>('structured')
+export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
   const [cells,      setCells]      = useState<string[]>(['', '', '', ''])
   const [activeCell, setActiveCell] = useState(0)
-  const [prompt,     setPrompt]     = useState('')
-  const [planner,    setPlanner]    = useState<PlannerMethod>('grace')
-  const [planOnly,   setPlanOnly]   = useState(true)
   const [logData,    setLogData]    = useState(true)
   const [logTarget,  setLogTarget]  = useState<'backend' | 'frontend'>('frontend')
   const [logAll,     setLogAll]     = useState(false)  // false → keep failed cases only
@@ -198,30 +162,12 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
   const [repeatN,    setRepeatN]    = useState(2)
   const [repeatCOE,  setRepeatCOE]  = useState(false)   // continue looping on failure
 
-  // Saved presets (per mode) — picked from a dropdown, edited via Save/Del
+  // Saved presets of the Structured step editor — picked from a dropdown, edited via Save/Del
   const [structPresets,  setStructPresets]  = useState<Preset[]>([])
-  const [unstructPresets,setUnstructPresets]= useState<Preset[]>([])
   const [structSel,      setStructSel]      = useState('')
-  const [unstructSel,    setUnstructSel]    = useState('')
-
-  // Voice input (Web Speech API) — continuous listening while "from mic" is on
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
-  const keepRef        = useRef(false)  // loop should keep (re)starting recognition
-  const autoRunRef     = useRef(false)  // current autoRun, read inside async handlers
-  const [fromMic,       setFromMic]       = useState(false)
-  const [listening,     setListening]     = useState(false)
-  const [autoRun,       setAutoRun]       = useState(false)
-  const [voiceSupported, setVoiceSupported] = useState(false)
 
   useEffect(() => {
     setCells(loadCells())
-    setPrompt(localStorage.getItem(LS_PROMPT) || '')
-    const ar = localStorage.getItem(LS_AUTORUN) === '1'
-    setAutoRun(ar); autoRunRef.current = ar
-    const pm = localStorage.getItem(LS_PLANNER)
-    if (pm === 'grace' || pm === 'direct' || pm === 'sage') setPlanner(pm)
-    const po = localStorage.getItem(LS_PLAN_ONLY)
-    setPlanOnly(po === null ? true : po === '1')
     // Defaults when nothing is stored yet: log data ON, frontend target,
     // failed cases only — capture what matters without filling Downloads.
     setLogData(localStorage.getItem(LS_LOG_DATA) !== '0')
@@ -234,11 +180,6 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
     if (Number.isFinite(rn) && rn >= 1) setRepeatN(rn)
     setRepeatCOE(localStorage.getItem(LS_REPEAT_COE) === '1')
     setStructPresets(loadPresets(LS_PRESETS_S))
-    setUnstructPresets(loadPresets(LS_PRESETS_U))
-    setVoiceSupported(
-      typeof window !== 'undefined' &&
-      !!(window.SpeechRecognition || window.webkitSpeechRecognition)
-    )
   }, [])
 
   const updateCell = (i: number, val: string) => {
@@ -250,11 +191,6 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
     })
   }
 
-  const updatePrompt = (val: string) => {
-    setPrompt(val)
-    localStorage.setItem(LS_PROMPT, val)
-  }
-
   // Repeat only applies to structured plan execution (the Plan-presets row).
   const repeatTimes = repeatMode === 'once' ? 1 : repeatMode === 'forever' ? Infinity : Math.max(1, repeatN)
   const updateRepeatMode = (v: 'once' | 'n' | 'forever') => { setRepeatMode(v); localStorage.setItem(LS_REPEAT_MODE, v) }
@@ -263,22 +199,7 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
 
   // Structured mode runs the ACTIVE cell (blue border) — editing a cell through
   // its ⤢ editor makes it active too, else Run would send another cell's plan.
-  const run = () => {
-    if (mode === 'structured') onRun(cells[activeCell], true, lang, undefined, undefined, logData, logTarget, repeatTimes, repeatCOE, logAll)
-    else onRun(prompt, false, lang, planner, planOnly, logData, logTarget, 1, false, logAll)
-  }
-
-  const updatePlanner = (val: PlannerMethod) => {
-    setPlanner(val)
-    localStorage.setItem(LS_PLANNER, val)
-    // the Planner prompt panel shows whether this planner uses the direct prompt
-    window.dispatchEvent(new CustomEvent(PLANNER_EVENT, { detail: val }))
-  }
-
-  const updatePlanOnly = (val: boolean) => {
-    setPlanOnly(val)
-    localStorage.setItem(LS_PLAN_ONLY, val ? '1' : '0')
-  }
+  const run = () => onRun(cells[activeCell], true, lang, undefined, undefined, logData, logTarget, repeatTimes, repeatCOE, logAll)
 
   const updateLogData = (val: boolean) => {
     setLogData(val)
@@ -295,62 +216,6 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
     localStorage.setItem(LS_LOG_ALL, val ? '1' : '0')
   }
 
-  const updateAutoRun = (val: boolean) => {
-    setAutoRun(val)
-    autoRunRef.current = val
-    localStorage.setItem(LS_AUTORUN, val ? '1' : '0')
-  }
-
-  const startListening = () => {
-    const Ctor = typeof window !== 'undefined'
-      ? (window.SpeechRecognition || window.webkitSpeechRecognition)
-      : undefined
-    if (!Ctor || recognitionRef.current) return
-    const rec = new Ctor()
-    rec.lang = langToBcp47(lang)
-    rec.interimResults = false
-    rec.maxAlternatives = 1
-    rec.continuous = true
-    rec.onresult = (e) => {
-      const last = e.results[e.results.length - 1]
-      const transcript = last[0].transcript.trim()
-      if (!transcript) return
-      updatePrompt(transcript)
-      if (autoRunRef.current) onRun(transcript, false, lang, planner, planOnly, logData, logTarget, 1, false, logAll)
-    }
-    rec.onend = () => {
-      recognitionRef.current = null
-      setListening(false)
-      if (keepRef.current) startListening()   // keep listening continuously
-    }
-    rec.onerror = (ev) => {
-      if (ev?.error === 'not-allowed' || ev?.error === 'service-not-allowed') {
-        keepRef.current = false
-        setFromMic(false)
-      }
-    }
-    recognitionRef.current = rec
-    setListening(true)
-    try { rec.start() } catch { /* already started — ignore */ }
-  }
-
-  const stopListening = () => {
-    keepRef.current = false
-    const rec = recognitionRef.current
-    recognitionRef.current = null
-    setListening(false)
-    rec?.stop()
-  }
-
-  // Start/stop the mic based on "from mic" + being in unstructured mode.
-  useEffect(() => {
-    const shouldListen = fromMic && mode === 'unstructured' && voiceSupported
-    keepRef.current = shouldListen
-    if (shouldListen) startListening()
-    else stopListening()
-    return () => { keepRef.current = false; recognitionRef.current?.stop() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromMic, mode, voiceSupported])
   // Cells 2-3 are about two lines tall and cell 1 about five: a preset loaded into a
   // Cells 2-4 are one line tall and cell 1 about four: a preset loaded into a
   // small cell left six hidden steps under the visible one, and they ran with
@@ -375,44 +240,7 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
   return (
     <div className="flex flex-col gap-1">
 
-      {/* Mode + lang + run row */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-3 text-sm text-gray-700">
-          {(['structured', 'unstructured'] as const).map(m => (
-            <label key={m} className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="inputMode"
-                value={m}
-                checked={mode === m}
-                onChange={() => setMode(m)}
-                className="accent-blue-600"
-              />
-              {m === 'structured' ? 'Structured' : 'Unstructured'}
-            </label>
-          ))}
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {mode === 'unstructured' && (
-            <select value={planner} onChange={e => updatePlanner(e.target.value as PlannerMethod)}
-              title="Planner method for natural-language commands"
-              className="bg-white border border-gray-300 text-gray-800 text-sm rounded px-2 py-1">
-              <option value="sage" title="SAGE plans; the assist layer understands the task first (asks when unclear, reads it back, refuses unsafe) and guards every step">SAGE + assist</option>
-              <option value="grace" title="SAGE planner in the plain closed loop (no understanding / clarification layer)">SAGE (plain loop)</option>
-              <option value="direct">Direct</option>
-            </select>
-          )}
-          {running
-            ? <button onClick={onStop}
-                className="px-4 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded">Stop</button>
-            : <button onClick={run}
-                className="px-4 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded">Run</button>
-          }
-        </div>
-      </div>
-
-      {/* Capture row — logging + screen recording, kept off the mode/run row so
-          neither row grows too wide. */}
+      {/* Capture row — logging + screen recording, and Run / Stop at its end (free-text commands go through the 💬 Chat card) */}
       <div className="flex items-center gap-3 text-[11px] text-gray-600">
         <label className="flex items-center gap-1 cursor-pointer"
           title="Save rgb / depth / detection results of this run">
@@ -475,10 +303,19 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
           <span className={manualRecording ? 'animate-pulse' : ''}>{manualRecording ? '⏹' : '⏺'}</span>
           {manualRecording ? 'stop' : 'record'}
         </button>
+        <div className="ml-auto flex items-center gap-3">
+          {toolbarExtra}
+          {running
+            ? <button onClick={onStop}
+                className="px-4 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded">Stop</button>
+            : <button onClick={run}
+                className="px-4 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded">Run</button>
+          }
+        </div>
       </div>
 
       {/* Input area */}
-      {mode === 'structured' ? (
+      {(
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <PresetBar
@@ -522,7 +359,8 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
               )}
             </div>
           </div>
-          <div className="grid grid-cols-[2fr_1fr] grid-rows-1 gap-2" style={{ height: '90px' }}>
+          {/* 3 lines of the 11px mono text: 3 x 16.5 + padding + border = 60px */}
+          <div className="grid grid-cols-[3fr_2fr] grid-rows-1 gap-2" style={{ height: '60px' }}>
             <div className="relative h-full min-h-0">
               <textarea
                 rows={1}
@@ -533,7 +371,7 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
                 placeholder={'find::apple\nnavigate::kitchen\npick::cup'}
                 className={cellClass(0)}
               />
-              {stepBadge(0, 4, 'bottom-1 right-1')}
+              {stepBadge(0, 3, 'bottom-1 right-1')}
               <ExpandEditor
                 value={cells[0]}
                 onChange={v => { setActiveCell(0); updateCell(0, v) }}
@@ -541,95 +379,26 @@ export default function AgentPanel({ running, lang, onRun, onStop, recordEnabled
                 className="absolute top-1 right-1 text-[11px] leading-none text-gray-400 hover:text-blue-600 bg-white/85 rounded px-1 py-0.5"
               />
             </div>
-            <div className="flex flex-col gap-1 h-full min-h-0">
-              {[1, 2].map(i => (   // 2 cells on the right (2026-10-27, was 3; a 4th one's text stays stored)
-                <div key={i} className="relative flex-1 min-h-0">
-                  <textarea
-                    rows={1}
-                    value={cells[i]}
-                    onChange={e => updateCell(i, e.target.value)}
-                    onFocus={() => setActiveCell(i)}
-                    onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); run() } }}
-                    placeholder="skill::params"
-                    className={cellClass(i)}
-                  />
-                  {stepBadge(i, 2, 'top-0.5 right-5')}
-                  <ExpandEditor
-                    value={cells[i]}
-                    onChange={v => { setActiveCell(i); updateCell(i, v) }}
-                    title={`Cell ${i + 1}`}
-                    className="absolute top-0.5 right-0.5 text-[10px] leading-none text-gray-400 hover:text-blue-600 bg-white/85 rounded px-1"
-                  />
-                </div>
-              ))}
+            <div className="relative h-full min-h-0">
+              <textarea
+                rows={1}
+                value={cells[1]}
+                onChange={e => updateCell(1, e.target.value)}
+                onFocus={() => setActiveCell(1)}
+                onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); run() } }}
+                placeholder="skill::params"
+                className={cellClass(1)}
+              />
+              {stepBadge(1, 3, 'bottom-1 right-1')}
+              <ExpandEditor
+                value={cells[1]}
+                onChange={v => { setActiveCell(1); updateCell(1, v) }}
+                title="Cell 2"
+                className="absolute top-1 right-1 text-[11px] leading-none text-gray-400 hover:text-blue-600 bg-white/85 rounded px-1 py-0.5"
+              />
             </div>
           </div>
           <p className="text-[11px] text-gray-400">Run → <span className="text-blue-600 font-medium">cell {activeCell + 1}</span> (blue border) · click a cell to select · Ctrl+Enter = run active</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <PresetBar
-            label="Command presets"
-            presets={unstructPresets} setPresets={setUnstructPresets} lsKey={LS_PRESETS_U}
-            selected={unstructSel} setSelected={setUnstructSel}
-            current={() => prompt}
-            onLoad={t => updatePrompt(t)}
-          />
-          {/* Voice options */}
-          <div className="flex items-center gap-4 text-[11px] text-gray-500">
-            <label className="flex items-center gap-1.5 cursor-pointer"
-              title={voiceSupported ? '' : 'Browser does not support speech recognition'}>
-              <input
-                type="checkbox"
-                checked={fromMic}
-                disabled={!voiceSupported}
-                onChange={e => setFromMic(e.target.checked)}
-                className="accent-blue-600"
-              />
-              from mic
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer"
-              title="Generate the task plan only — do not execute it">
-              <input
-                type="checkbox"
-                checked={planOnly}
-                onChange={e => updatePlanOnly(e.target.checked)}
-                className="accent-blue-600"
-              />
-              plan only
-            </label>
-            {fromMic && (
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoRun}
-                  onChange={e => updateAutoRun(e.target.checked)}
-                  className="accent-blue-600"
-                />
-                Auto-run after voice
-              </label>
-            )}
-            {fromMic && !voiceSupported && (
-              <span className="text-red-500">Browser does not support speech recognition</span>
-            )}
-          </div>
-
-          {/* Auto-run hides the input → show listening status instead */}
-          {fromMic && autoRun ? (
-            <div className="w-full bg-white border border-gray-300 text-sm rounded px-3 py-2 flex items-center gap-2">
-              <span className={listening ? 'text-red-600 animate-pulse' : 'text-gray-400'}>🎤</span>
-              <span className="text-gray-500">{listening ? 'Listening…' : 'Mic off'}</span>
-              {prompt && <span className="text-gray-700 truncate">· {prompt}</span>}
-            </div>
-          ) : (
-            <input
-              value={prompt}
-              onChange={e => updatePrompt(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && run()}
-              placeholder={fromMic ? 'Speak a command — text will appear here…' : 'Command, e.g. "give me the cup"'}
-              className="w-full bg-white border border-gray-300 text-gray-800 text-[11px] rounded px-3 py-2 placeholder-gray-400 focus:outline-none focus:border-blue-500"
-            />
-          )}
         </div>
       )}
 

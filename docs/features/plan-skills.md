@@ -38,7 +38,7 @@ mode (`find`'s `ins` reaches `pick`).
 - **On a failure the plan stops and the robot stays as it is** — no clean-up
   steps (no fold / lift-home: from an unknown pose they can hit furniture, the
   user's call). The result carries `failed_step`, `failed_line` and a
-  per-step `plan_steps` report; the Execution panel gets one log line per step.
+  per-step `plan_steps` report; the Log panel gets one log line per step.
 - Cancel is checked between steps; nesting is capped at 5; each successful
   sub-step goes through `apply_skill_effect`, so Robot State follows the
   `pick` inside `pick_top`.

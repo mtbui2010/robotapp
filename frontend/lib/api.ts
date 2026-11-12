@@ -394,15 +394,28 @@ export const api = {
   // the skill stopped waiting; nothing to do about it here.
   /** A recorded phrase for a listen with capture='whisper'; the robot
    *  transcribes it and returns the text ('' for none). */
-  async answerListenAudio(id: string, blob: Blob | null, mime: string, note?: string): Promise<string> {
+  /** Post the recording of a `capture='whisper'` listen. `error` = why the speech recognition failed (server
+   *  unreachable, HTTP error such as a 500 when the speech server ran out of GPU memory); `gone` = the listen no
+   *  longer exists (404: it timed out). Never throws. */
+  async answerListenAudio(id: string, blob: Blob | null, mime: string, note?: string): Promise<{ text: string; error?: string; gone?: boolean }> {
     const q = note ? `?note=${encodeURIComponent(note)}` : ''
-    const r = await fetch(`${getAgentUrl()}/agent/listen/${encodeURIComponent(id)}/audio${q}`, {
-      method: 'POST',
-      headers: { 'Content-Type': mime || 'audio/webm' },
-      body: blob ?? new Blob([]),
-    })
-    if (!r.ok) return ''
-    return String((await r.json().catch(() => ({})))?.text ?? '')
+    let r: Response
+    try {
+      r = await fetch(`${getAgentUrl()}/agent/listen/${encodeURIComponent(id)}/audio${q}`, {
+        method: 'POST',
+        headers: { 'Content-Type': mime || 'audio/webm' },
+        body: blob ?? new Blob([]),
+      })
+    } catch (e) {
+      return { text: '', error: `cannot reach the robot (${e instanceof Error ? e.message : e})` }
+    }
+    if (r.status === 404) return { text: '', gone: true }
+    if (!r.ok) {
+      let detail = ''
+      try { const j = await r.json(); detail = typeof j?.detail === 'string' ? j.detail : '' } catch { /* not json */ }
+      return { text: '', error: `HTTP ${r.status}${detail ? `: ${detail.slice(0, 120)}` : ''}` }
+    }
+    return { text: String((await r.json().catch(() => ({})))?.text ?? '') }
   },
 
   async answerListen(id: string, text: string, error?: string, note?: string): Promise<void> {

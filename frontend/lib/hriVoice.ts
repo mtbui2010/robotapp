@@ -140,6 +140,7 @@ interface RecognitionLike {
   onspeechstart?: (() => void) | null
   start(): void
   stop(): void
+  abort?(): void
 }
 type RecognitionCtor = new () => RecognitionLike
 
@@ -154,6 +155,13 @@ export interface Heard {
 // after a pause, which is the silence detection; `maxSec` caps a phrase that
 // never pauses. Hearing nothing is not an error — it resolves with empty text,
 // which the skill treats as "no answer" and may re-ask.
+// abortRecognition(): end the recognition in progress now, its text is thrown away (hands-free: a run started or
+// the robot began to speak; a typed answer arrived first).
+let currentRec: RecognitionLike | null = null
+export function abortRecognition() {
+  try { currentRec?.abort?.() ?? currentRec?.stop() } catch { /* already ended */ }
+}
+
 export function recognizeOnce(lang?: string | null, maxSec = 8): Promise<Heard> {
   return new Promise(resolve => {
     // Cast rather than augment Window: AgentPanel already declares these
@@ -168,6 +176,7 @@ export function recognizeOnce(lang?: string | null, maxSec = 8): Promise<Heard> 
       return
     }
     const rec = new Ctor()
+    currentRec = rec
     rec.lang = bcp47(lang)
     // Interim results on: for a longer Korean phrase Chrome sometimes detects
     // speech, produces interim text and then ends without a final result —
@@ -190,6 +199,7 @@ export function recognizeOnce(lang?: string | null, maxSec = 8): Promise<Heard> 
       if (done) return
       done = true
       clearTimeout(cap)
+      if (currentRec === rec) currentRec = null
       const fin = text.trim()
       const t = fin || interim.trim()
       const secs = `${((Date.now() - t0) / 1000).toFixed(1)} s`
@@ -249,7 +259,7 @@ export async function primeMic(): Promise<string | null> {
   const md = navigator.mediaDevices
   if (!md?.getUserMedia) return 'no-microphone-api'
   try {
-    const stream = await md.getUserMedia({ audio: true })
+    const stream = await md.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
     stream.getTracks().forEach(t => t.stop())
     return null
   } catch (e) {

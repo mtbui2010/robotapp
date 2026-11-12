@@ -12,7 +12,7 @@ dashboard is **not** required to operate the robot.
 robotapp/
 ├── frontend/                 # Next.js 14 app
 │   ├── app/                  # routes (page.tsx = the dashboard)
-│   ├── components/           # DevicePanel, AgentPanel, PlanPanel, MapPanel, …
+│   ├── components/           # DevicePanel, AgentPanel, ChatPanel, PlanPanel (+ PlanList), MapPanel, …
 │   ├── lib/api.ts            # the only HTTP / WebSocket client
 │   ├── lib/types.ts          # hand-written backend types (to be generated)
 │   ├── lib/generated/        # openapi.json (+ openapi.d.ts) from scripts/gen_types.sh

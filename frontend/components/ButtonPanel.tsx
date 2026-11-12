@@ -186,7 +186,7 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
               <button
                 onClick={() => onRun(b.plan)}
                 title={b.plan}
-                className="w-full h-11 px-0.5 py-1.5 bg-gray-100 hover:bg-blue-50 hover:border-blue-400 border border-gray-200 text-gray-800 text-[11px] rounded text-center leading-tight line-clamp-2 break-words"
+                className="w-full h-[30px] px-0.5 py-0 bg-gray-100 hover:bg-blue-50 hover:border-blue-400 border border-gray-200 text-gray-800 text-[11px] rounded text-center leading-tight line-clamp-2 break-words"
               >
                 {b.label}
               </button>

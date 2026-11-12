@@ -1,0 +1,146 @@
+[
+{
+"event": "start",
+"prompt": "Could you put my phone on the bed?"
+},
+{
+"event": "understand",
+"status": "clear",
+"reason": "The request is clear.",
+"goals": [
+{
+"type": "on",
+"object": "phone",
+"from": "",
+"to": "bed@bedroom"
+}
+],
+"question": null
+},
+{
+"event": "clarify",
+"question": "Where is the phone?",
+"round": 1,
+"kind": "where_source"
+},
+{
+"event": "plan",
+"steps": [
+{
+"action": "MoveTo",
+"object": "side_table@living",
+"grounded": true
+},
+{
+"action": "Find",
+"object": "phone"
+},
+{
+"action": "Pick",
+"object": "phone"
+},
+{
+"action": "MoveTo",
+"object": "bed@bedroom",
+"grounded": true
+},
+{
+"action": "Place",
+"object": "bed@bedroom",
+"grounded": true
+}
+],
+"warnings": [],
+"plan_text": "move::side_table@living\nfind::phone\npick::phone\nmove::bed@bedroom\nplace::bed@bedroom",
+"certified": true
+},
+{
+"event": "step_start",
+"index": 0,
+"action": "MoveTo",
+"object": "side_table@living",
+"skill": "move",
+"say": "I will move to living room side table"
+},
+{
+"event": "step_done",
+"index": 0,
+"status": "success",
+"result": {
+"at": "side_table@living",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to living room side table"
+},
+{
+"event": "step_start",
+"index": 1,
+"action": "Find",
+"object": "phone",
+"skill": "find",
+"say": "I will find phone"
+},
+{
+"event": "step_done",
+"index": 1,
+"status": "success",
+"result": {
+"place": "side_table@living",
+"found": "black phone",
+"ins": {
+"black phone": {
+"pose_3d": [
+0.6,
+0.0,
+0.8
+]
+}
+},
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: find phone"
+},
+{
+"event": "step_start",
+"index": 2,
+"action": "Pick",
+"object": "phone",
+"skill": "pick",
+"say": "I will pick phone"
+},
+{
+"event": "step_done",
+"index": 2,
+"status": "failed",
+"result": {
+"isdone": false,
+"msg": "hardware fault: arm motor",
+"code": "hw_fault"
+},
+"reason": "hardware fault: arm motor",
+"say": "Failed to pick phone. hardware fault: arm motor"
+},
+{
+"event": "done",
+"status": "failed",
+"msg": "the robot is not healthy after Pick phone failed (pick: hw_fault): {'base': 'ok', 'arm': 'hw_fault:never', 'camera': 'ok', 'gripper': 'ok', 'speaker': 'ok', 'estop': False, 'ok': False}",
+"code": "hw_fault",
+"device": "pick",
+"evidence": {
+"step": "Pick phone",
+"reason": "hardware fault: arm motor",
+"health": {
+"base": "ok",
+"arm": "hw_fault:never",
+"camera": "ok",
+"gripper": "ok",
+"speaker": "ok",
+"estop": false,
+"ok": false
+}
+},
+"say": "I have to stop: something is wrong with my hardware."
+}
+]

@@ -69,7 +69,7 @@ The UI tier of a three-mode robot stack (UI / CLI / Python API). Talks to
 | [components/CameraFeed.tsx](frontend/components/CameraFeed.tsx) | 615 | Multi-camera tabs, WebSocket frame decode, depth colormap, pixel-hover mm readout, rectangle annotation overlay |
 | [components/DevicePanel.tsx](frontend/components/DevicePanel.tsx) | 1070 | ROS scan, register pub/sub/service/action/WebRTC/TCP/LLM clients, encode/decode template editor |
 | [components/SkillPanel.tsx](frontend/components/SkillPanel.tsx) | 422 | Skill CRUD, hot-reload, per-skill JSON config editor with live diff |
-| [components/AgentPanel.tsx](frontend/components/AgentPanel.tsx) | 131 | Structured / unstructured prompt input, language selector (EN / KO / VI), Ctrl+Enter dispatch |
+| [components/AgentPanel.tsx](frontend/components/AgentPanel.tsx) | 131 | Structured step editor (plan presets, repeat, log options), Ctrl+Enter dispatch; free-text commands go through the 💬 Chat card ([ChatPanel.tsx](frontend/components/ChatPanel.tsx)) |
 | [components/PlanPanel.tsx](frontend/components/PlanPanel.tsx) | 343 | Editable **Robot State** block (persistent world beliefs) above a live task-plan timeline with step status, expandable JSON results, inline log images |
 | [components/ButtonPanel.tsx](frontend/components/ButtonPanel.tsx) | 268 | Server-persisted quick-action buttons with drag-reorder + bulk import |
 | [components/EnvPanel.tsx](frontend/components/EnvPanel.tsx) | 143 | Live ENV / HOME_LOC editor backed by `/skill-configs` |

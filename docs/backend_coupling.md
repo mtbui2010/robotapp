@@ -96,7 +96,6 @@ changes. Replacement for all of them: a dry-run validation endpoint that returns
 |---|---|---|---|
 | `components/MapPanel.tsx:293` | skill `move` for a place click | the `MAP` config (like `goal` / `rotate` / `lift`) or the manifest skill with `action: MoveTo` | **No** (MAP has no `place` skill key) |
 | `components/DevicePanel.tsx:474` | skill `warmup_servers` (Warm up button) | manifest / `GET /skills` capability flag; hide the button when the robot has no such skill | **No** |
-| `app/page.tsx:530-531` | `qa::source='dashboard', lang=..., input='text', cam=...` (Q&A button) | manifest skill with a Q&A action and its params | **No** |
 | `app/page.tsx:71-82`, `components/ConfigFields.tsx:51`, `DevicePanel.tsx:641,1429` | kcare `HRI_CONFIGS` keys (`speech_rate`, `source`, `dashboard_stt`) | a typed HRI settings endpoint, or the group's schema | **No** |
 | `components/EnvPanel.tsx:14` | `FIRST_NAMES = ['ENV', 'HOME_LOC']` | config-group metadata (order / category) | **No** |
 | `lib/api.ts:102` | default backend `http://<host>:8001` (kcare's port) | keep as a default, but make it configurable (env at build time) | n/a |

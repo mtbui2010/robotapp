@@ -56,8 +56,8 @@ const STEPS: Step[] = [
   {
     number: 7,
     title: 'Send a command',
-    description: 'Two input modes — natural language or scripted skill calls.',
-    detail: 'Pick a language (EN / KO / VI), then choose: Unstructured = type a natural-language command (LLM plans it); Structured = type one "skill::params" per line in any of the 4 cells (runs the active cell directly, no LLM). Press Run, or Ctrl+Enter on a Structured cell. Watch the Task Plan and Execution Timeline update live.',
+    description: 'Two ways — chat in words, or scripted skill calls.',
+    detail: 'Chat: open 💬 Chat, pick the planner and language, type (or say) a task; the robot plans and runs it, and your next message answers when it asks. Structured: type one "skill::params" per line in any of the cells (runs the active cell directly, no LLM), then press Run or Ctrl+Enter. Watch Plan progress (one row per step, with durations) and the Log (details of each step) update live.',
     example: 'find::apple\nnavigate::kitchen\npick::cup',
   },
 ]

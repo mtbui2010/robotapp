@@ -1,5 +1,10 @@
 # Visual Q&A (`qa` skill + top-bar button)
 
+> **2026-11-12:** the top-bar **💬 Q&A** button is now **💬 Chat** and no longer starts a `qa` run; its qa-only
+> controls (🎤/⌨ input, 📷/🦾 camera, 🔁/1️⃣ once) and `QaChat.tsx` are gone (the card is `ChatPanel.tsx`, see
+> [chat.md](chat.md)). `qa` is an ordinary skill: put `qa::lang='ko'` (+ `cam=` / `once=True`) in a Structured step.
+> Passages below about the Q&A button, those pickers and the Q&A card describe the earlier design.
+
 <!-- Moved verbatim from CLAUDE.md (lines 385-665) on 2026-10-30; links rebased to docs/features/. -->
 
 **Languages (2026-10-13): Korean and English only.** Vietnamese was dropped from
@@ -88,6 +93,14 @@ else was heard: naming one object → "<object> 어디에 있어?" (also "머그
 routing; the Whisper hint is only the objects' where-lines. A place without `objects`: the sentence is asked as
 heard (`_as_where` still turns "컵 있어?" into a where-question). Scripted test:
 `kaair_real_capture/qa_where_context_20261029/test_where_context.py` (light: `qa_light_context_20261029/`).
+**`qa::context='find_drop'` (2026-11-11).** Where is the dropped fork / spoon: every sentence but a stop word is
+that question, answered from the ARM camera + the user's feet as a clock direction ("포크는 7시 방향, 약 70센티미터
+거리에 있어요."; `_drop_direction` / `_find_drop_answer` in hri.py, the same measure as the "...떨어졌어?" path). An object
+named in the sentence (any word of the drop vocabulary) → that one; none named (Whisper lost it) → fork AND spoon
+are looked for and the ones seen are told (`objects='fork, spoon'` changes the list). No head photos, no model, no
+light / product / place routing; the Whisper hint is the "포크 어디에 떨어졌어?" lines. The answer is said and qa
+ends (`ended: 'find_drop'`, no goodbye). Scripted test (stubbed measure; passes on .110):
+`kaair_real_capture/qa_find_drop_context_20261111/test_find_drop_context.py`. Not yet run with the real camera.
 A cut edge needs the unit's back wall beyond the last board (shelf2: x 1.33 m
 above a cut-off top level vs the frame at 1.03 m) — the model's box reached
 the photo's top for a unit that did not go on.
@@ -97,7 +110,7 @@ to `data/logs/<host>/kcare_robot.log` (`kcare_robot.hri`: user / robot lines,
 `qa: shelves — …`, `qa: answer by …`, why depth was missing), and every
 look-around is saved in `data/logs/<host>/qa/<time>/` (`<view>.jpg`,
 `<view>_geo.npz`: depth, K, R, t; last 60 kept) for offline replays. The
-Execution panel itself stores nothing. (The logger is `robot_agent.skill.hri`:
+Log panel itself stores nothing. (The logger is `robot_agent.skill.hri`:
 only the `robot_agent` tree has the file handler.)
 
 **The VLM switched to 32b @ aistations "after a UI refresh" (2026-10-13).** It
@@ -143,7 +156,7 @@ sets a flag and answers the pending dashboard listen with nothing (`utils.end_pe
 `record_phrase` stops too); qa ends as on a stop word — an answer already worked out is still said, then
 "대화를 마칠게요." — returns `isdone: True, ended: 'operator'`, and the plan goes on (Cancel aborts the run). Only qa
 registers (`dialog_begin` / `dialog_end`): not `ask` / `reply`, not the emergency exchange; 409 when none runs. The photos are logged as one labelled mosaic
-image in the Execution panel.
+image in the Log panel.
 
 The model runs in **Ollama on the dev PC** (RTX 3090, `QA_CONFIGS` in
 `kcare_robot/configs/tasks.py`: `url`, `model`, `views`, …,
@@ -252,7 +265,7 @@ reports `not-allowed`, `qa` (only — `ask` / `reply` still fail) switches the
 run to typed input. When the recogniser hears nothing, the browser posts a
 `note` with the listen answer (`mic opened, no sound, no speech, 8.0 s
 (no-speech)`) and `listen_dashboard` logs it as `dashboard mic: nothing
-recognised — …` in the Execution panel; `no-speech` / `aborted` used to be
+recognised — …` in the Log panel; `no-speech` / `aborted` used to be
 dropped silently.
 
 **Whisper for the dashboard mic (2026-10-06).** Google's recogniser (Chrome's
@@ -327,7 +340,7 @@ while still being said. The robot speaker (gTTS) ignores the rate.
 picker (remembered in `localStorage`) adds `input='voice'|'text'` to the run.
 Text mode reuses the HRI listen channel: `listen_dashboard(mode='text')` puts
 `mode` in the `listen` event, and `page.tsx` then waits for a line typed in the
-**Q&A card** ([components/QaChat.tsx](../../frontend/components/QaChat.tsx)) instead of
+**chat card** ([components/ChatPanel.tsx](../../frontend/components/ChatPanel.tsx)) instead of
 opening the mic, posting it to the same `POST /agent/listen/<id>`. The card shows
 the conversation in both modes (robot lines from `speak` / prompts, user lines
 from the recognizer or the typed text). `qa` waits for a typed question until

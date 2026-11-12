@@ -104,7 +104,7 @@ export interface AgentEvent {
   prompt?: string
   text?: string
   msg?: string
-  plan?: string
+  plan?: string | string[]          // plan text (direct) · replan: the new step list
   step?: number
   total?: number
   task?: string
@@ -128,6 +128,7 @@ export interface AgentEvent {
     results?: unknown
   }
   ts?: number
+  _rx?: number                       // client only: when the dashboard received the event (ms); never sent by the backend
   // Closed-loop (GRACE) events
   say?: string                       // localized phrase for voice output
   say_lang?: string                  // the phrase's language when not the run's (a plain-name step is said in English)
@@ -175,6 +176,12 @@ export interface AgentEvent {
   // violations, and the final verify verdict.
   ok?: boolean
   violations?: Array<Record<string, unknown>>
+  // SAGE + assist: understood goals, the question it asks, a recovery's kind, a goal check's evidence
+  goals?: Array<Record<string, unknown>>
+  goal?: Record<string, unknown>
+  question?: string | null
+  kind?: string
+  evidence?: string
 }
 
 export interface LlmInfo {

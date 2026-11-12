@@ -3,7 +3,7 @@
 <!-- Moved verbatim from CLAUDE.md (lines 897-954) on 2026-10-30; links rebased to docs/features/. -->
 
 **SAGE** is the paper's planner ("SAGE: Symbolic Action-Gating and Editing", code identifier GRACE:
-`pyplanner.GRACEPlanner`, GRACE-Fixed settings). Agent panel → **SAGE + assist** (`planner: 'sage'` on
+`pyplanner.GRACEPlanner`, GRACE-Fixed settings). 💬 Chat → planner **SAGE + assist** (the default; `planner: 'sage'` on
 `/ws/agent`, or `ROBOT_AGENT_PLANNER=sage`) runs [core/planning/assist_loop.py](../../../robot_agent/robot_agent/core/planning/assist_loop.py)
 (`AssistLoop`) around it; **SAGE (plain loop)** (`'grace'`) is the original `ClosedLoop`. Every plan and every
 change of plan comes from SAGE — the assist layer never adds, drops or reorders steps:

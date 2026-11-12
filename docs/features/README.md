@@ -13,7 +13,8 @@ add the dated line to [../CHANGELOG.md](../CHANGELOG.md).
 | [Spoken names in plans: `said->real` (2026-10-08)](spoken-names.md) |
 | [Robot State (persistent world state)](robot-state.md) |
 | [HRI voice (dashboard mic)](hri-voice.md) |
-| [Visual Q&A (`qa` skill + top-bar button)](visual-qa.md) |
+| [Chat (two-way conversation with task planning, plan progress list; 2026-11-12)](chat.md) |
+| [Visual Q&A (`qa` skill; the top-bar button became Chat on 2026-11-12)](visual-qa.md) |
 | [AI servers: vlms / visions / voices, with fallback (2026-10-16)](ai-servers.md) |
 | [Cancel / Stop](cancel-stop.md) |
 | [Camera streaming (multiple viewers)](camera-streaming.md) |

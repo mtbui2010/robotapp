@@ -1,9 +1,9 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import { ExpandEditor } from './ExpandEditor'
 import type { AgentEvent, WorldState, LlmInfo, FieldProvenance } from '../lib/types'
 import { copyText } from '../lib/clipboard'
+import PlanList from './PlanList'
 
 export interface StepLog {
   data: Record<string, unknown>
@@ -78,13 +78,19 @@ function StepResult({ result }: { result: Record<string, unknown> }) {
 
 // Newest first: a conversation (qa) or a plan skill's steps keep logging, and
 // the line that matters is the latest one — at the top, without scrolling.
+// A step_log with nothing in it (`{}` and no camera image) says nothing: it is not shown.
+const meaningful = (logs: StepLog[] | undefined): StepLog[] =>
+  (logs ?? []).filter(l => l.image || (l.data && typeof l.data === 'object' && Object.keys(l.data as object).length > 0))
+
 function StepLogs({ logs }: { logs: StepLog[] }) {
+  const shown = meaningful(logs)
+  if (!shown.length) return null
   return (
     <div className="mt-1 flex flex-col gap-0.5 border-l border-gray-300 pl-2">
-      {logs.length > 1 && (
+      {shown.length > 1 && (
         <span className="text-[9px] text-gray-400 uppercase tracking-wide">newest first</span>
       )}
-      {logs.map((l, i) => ({ l, i })).reverse().map(({ l, i }) => (
+      {shown.map((l, i) => ({ l, i })).reverse().map(({ l, i }) => (
         <div key={i} className="flex items-start gap-1.5">
           <span className="text-[10px] text-blue-400 leading-4 flex-shrink-0">▸</span>
           <div className="flex-1 min-w-0">
@@ -96,14 +102,6 @@ function StepLogs({ logs }: { logs: StepLog[] }) {
     </div>
   )
 }
-
-const stepIcon = (s: Step['status']) =>
-  s === 'running' ? '⟳' : s === 'done' ? '✓' : '✗'
-
-const stepColor = (s: Step['status']) =>
-  s === 'running' ? 'text-yellow-500'
-  : s === 'done'    ? 'text-green-600'
-  : 'text-red-500'
 
 // ── World state ───────────────────────────────────────────
 function ageHint(since: number | null): string | null {
@@ -353,6 +351,7 @@ interface Props {
   events: AgentEvent[]
   steps: Step[]
   planMethod?: string   // 'grace' | 'direct' — planner used by the active run
+  running: boolean      // a run is active (false with no verdict: the plan list shows it as stopped)
 }
 
 // ── GRACE planning trace ──────────────────────────────────
@@ -545,13 +544,11 @@ function PlannerMeta({ meta }: { meta: Record<string, unknown> }) {
   )
 }
 
-// Plan and Execution blocks at 80 % (2026-10-27, narrower column): every size inside them — text, icons, the log
+// Log block at 80 % (2026-10-27, narrower column): every size inside them — text, icons, the log
 // lines, the 4-line cap — scales together, instead of rewriting each text-* class.
 const SMALL: React.CSSProperties = { zoom: 0.8 }
 
-export default function PlanPanel({ events, steps, planMethod }: Props) {
-  // Plan block: ~4 lines with scroll by default (2026-10-27; was full); "full" uncaps it.
-  const [planFull, setPlanFull] = useState(false)
+export default function PlanPanel({ events, steps, planMethod, running }: Props) {
   // The 'plan' event differs by path: legacy/direct sends `plan` (a string),
   // the closed-loop (GRACE) sends `steps` (an array of {action, object}). Render
   // either — otherwise a GRACE plan never shows and "Generating…" stays stuck.
@@ -595,11 +592,21 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
 
   const empty = !plan && steps.length === 0 && !done && !error && !status
 
-  // Show the steps newest-first (current step on top, right under the "Execution"
+  // Show the steps newest-first (current step on top, right under the "Log"
   // header) so the active step is always visible without any auto-scroll — earlier
   // steps sit below and the user scrolls down to read them. This keeps every
   // surrounding panel (camera, plan, robot state) completely still.
-  const stepsView = [...steps].reverse()
+  // The Log shows the detail of ONE step: the step being run (else the last one). Clicking a Plan progress row shows
+  // that step instead; the next step that starts goes back to following the current one.
+  // Rows and Log steps are matched by start order (row.seq = index in `steps`).
+  const logRef = useRef<HTMLDivElement>(null)
+  const [picked, setPicked] = useState<number | null>(null)
+  const pickStep = useCallback((seq: number) => setPicked(seq), [])
+  useEffect(() => { setPicked(null) }, [steps.length])
+  const runningAt = steps.map(st => st.status).lastIndexOf('running')
+  const currentAt = runningAt >= 0 ? runningAt : steps.length - 1
+  const shownAt = picked != null && picked >= 0 && picked < steps.length ? picked : currentAt
+  const stepsView = steps.length ? [{ step: steps[shownAt], i: shownAt }] : []   // SAGE reuses a step index after a splice: key by position
 
   // Two backends, two shapes: the closed-loop (GRACE) sends `status`
   // ('success'|'failed'|'planned'|'aborted'); run_direct / legacy `run` send a
@@ -675,29 +682,8 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
         </p>
       )}
 
-      {/* Task plan */}
-      {plan && (
-        <div className="bg-gray-50 border border-gray-200 rounded p-3" style={SMALL}>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] text-gray-400 uppercase">Plan</p>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer"
-                title="Show the full plan, or collapse it to ~4 lines with scroll">
-                <input type="checkbox" checked={planFull}
-                  onChange={e => setPlanFull(e.target.checked)} className="accent-blue-600" />
-                full
-              </label>
-              <ExpandEditor
-                value={plan}
-                readOnly
-                title="Plan"
-                className="text-[11px] leading-none text-gray-400 hover:text-blue-600"
-              />
-            </div>
-          </div>
-          <pre className={`text-sm text-green-700 whitespace-pre-wrap [overflow-wrap:anywhere] leading-relaxed ${planFull ? '' : 'max-h-24 overflow-y-auto'}`}>{plan}</pre>
-        </div>
-      )}
+      {/* The plan as a list that follows the conversation: ticks, current step, failures, replans, verdict */}
+      <PlanList events={events} running={running} onPick={pickStep} />
 
       {/* Multi-step planner breakdown (post-hoc) */}
       {plan && planMeta && <PlannerMeta meta={planMeta} />}
@@ -705,32 +691,30 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
       {/* GRACE per-sub-goal plan / violations / refine trace */}
       <GracePlanningTrace events={events} />
 
-      {/* Execution timeline */}
+      {/* Log: the detail (logs, result JSON) of the step being run, or of the step picked in Plan progress. */}
       {steps.length > 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-2 flex-1 min-h-0" style={SMALL}>
+        <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-2" style={SMALL}>
           <div className="flex items-center justify-between">
             <p className="text-[11px] text-gray-400 uppercase">
-              Execution — {steps.length} step{steps.length > 1 ? 's' : ''}
+              Log — step {shownAt + 1} of {steps.length}
             </p>
-            {doneBadge}
+            <div className="flex items-center gap-2">
+              {picked != null && shownAt !== currentAt && (
+                <button onClick={() => setPicked(null)} className="text-[10px] text-blue-600 hover:underline"
+                  title="Back to the step being run">↺ current</button>
+              )}
+              {doneBadge}
+            </div>
           </div>
-          <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
-          {stepsView.map((step) => (
-            <div key={step.index} className="flex items-start gap-3">
-              <span className={`text-sm leading-5 flex-shrink-0 ${stepColor(step.status)} ${
-                step.status === 'running' ? 'animate-spin' : ''
-              }`}>
-                {stepIcon(step.status)}
-              </span>
-              <div className="flex-1 min-w-0">
-                <span className="text-xs text-gray-500">Step {step.index}/{step.total}: </span>
-                <span className="text-sm text-gray-900 font-mono [overflow-wrap:anywhere]">{(step.task || '').replace(/->/g, ' → ')}</span>
-                {step.startedAt != null && step.endedAt != null && (
-                  <span className="text-[10px] text-gray-400 ml-1">({((step.endedAt - step.startedAt) / 1000).toFixed(1)}s)</span>
-                )}
-                {step.logs && step.logs.length > 0 && <StepLogs logs={step.logs} />}
-                {step.result && <StepResult result={step.result} />}
-              </div>
+          <div ref={logRef} data-testid="exec-scroll" className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+          {stepsView.map(({ step, i }) => (
+            <div key={i} data-log-seq={i} className="min-w-0">
+              {/* only the log of the step (its msg lines, result): the step's own title is in Plan progress */}
+              {step.logs && <StepLogs logs={step.logs} />}
+              {step.result && <StepResult result={step.result} />}
+              {meaningful(step.logs).length === 0 && !step.result && (
+                <span className="text-[11px] text-gray-400">no log yet…</span>
+              )}
             </div>
           ))}
           </div>
@@ -738,7 +722,7 @@ export default function PlanPanel({ events, steps, planMethod }: Props) {
       )}
 
       {/* Done — when there are no steps, the badge has no header to ride on, so
-          show it on its own row. With steps it appears in the Execution header. */}
+          show it on its own row. With steps it appears in the Log header. */}
       {done && steps.length === 0 && (
         <div>{doneBadge}</div>
       )}

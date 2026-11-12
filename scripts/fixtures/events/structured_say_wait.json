@@ -1,0 +1,120 @@
+[
+ {
+  "event": "start",
+  "prompt": "say::inputs='hello', lang='en'\nwait::1\nsay::inputs='bye', lang='en'\nwait::1"
+ },
+ {
+  "event": "plan",
+  "plan": "say::inputs='hello', lang='en'\nwait::1\nsay::inputs='bye', lang='en'\nwait::1",
+  "say": ""
+ },
+ {
+  "event": "world"
+ },
+ {
+  "event": "step_start",
+  "step": 1,
+  "total": 4,
+  "task": "[['say', \"inputs='hello', lang='en'\"]]",
+  "say": "",
+  "say_lang": "en"
+ },
+ {
+  "event": "step_log",
+  "step": 1,
+  "data": {},
+  "log_image": null,
+  "speak": "hello",
+  "speak_lang": "en"
+ },
+ {
+  "event": "step_done",
+  "step": 1,
+  "result": {
+   "isdone": true,
+   "msg": "ok"
+  },
+  "say": "",
+  "say_lang": "en"
+ },
+ {
+  "event": "world"
+ },
+ {
+  "event": "step_start",
+  "step": 2,
+  "total": 4,
+  "task": "[['wait', '1']]",
+  "say": "",
+  "say_lang": "en"
+ },
+ {
+  "event": "step_done",
+  "step": 2,
+  "result": {
+   "isdone": true,
+   "msg": "ok"
+  },
+  "say": "",
+  "say_lang": "en"
+ },
+ {
+  "event": "world"
+ },
+ {
+  "event": "step_start",
+  "step": 3,
+  "total": 4,
+  "task": "[['say', \"inputs='bye', lang='en'\"]]",
+  "say": "",
+  "say_lang": "en"
+ },
+ {
+  "event": "step_log",
+  "step": 3,
+  "data": {},
+  "log_image": null,
+  "speak": "bye",
+  "speak_lang": "en"
+ },
+ {
+  "event": "step_done",
+  "step": 3,
+  "result": {
+   "isdone": true,
+   "msg": "ok"
+  },
+  "say": "",
+  "say_lang": "en"
+ },
+ {
+  "event": "world"
+ },
+ {
+  "event": "step_start",
+  "step": 4,
+  "total": 4,
+  "task": "[['wait', '1']]",
+  "say": "",
+  "say_lang": "en"
+ },
+ {
+  "event": "step_done",
+  "step": 4,
+  "result": {
+   "isdone": true,
+   "msg": "ok"
+  },
+  "say": "",
+  "say_lang": "en"
+ },
+ {
+  "event": "world"
+ },
+ {
+  "event": "done",
+  "success": true,
+  "say": "Task completed",
+  "say_lang": "en"
+ }
+]

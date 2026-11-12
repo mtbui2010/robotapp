@@ -1,0 +1,229 @@
+[
+{
+"event": "start",
+"prompt": "Put the white towel on the sofa."
+},
+{
+"event": "understand",
+"status": "clear",
+"reason": "The request is clear.",
+"goals": [
+{
+"type": "on",
+"object": "white towel",
+"from": "",
+"to": "sofa@living"
+}
+],
+"question": null
+},
+{
+"event": "clarify",
+"question": "Where is the white towel?",
+"round": 1,
+"kind": "where_source"
+},
+{
+"event": "plan",
+"steps": [
+{
+"action": "MoveTo",
+"object": "shelf@kitchen",
+"grounded": true
+},
+{
+"action": "Find",
+"object": "white towel"
+},
+{
+"action": "Pick",
+"object": "white towel"
+},
+{
+"action": "MoveTo",
+"object": "sofa@living",
+"grounded": true
+},
+{
+"action": "Place",
+"object": "sofa@living",
+"grounded": true
+}
+],
+"warnings": [],
+"plan_text": "move::shelf@kitchen\nfind::white towel\npick::white towel\nmove::sofa@living\nplace::sofa@living",
+"certified": true
+},
+{
+"event": "step_start",
+"index": 0,
+"action": "MoveTo",
+"object": "shelf@kitchen",
+"skill": "move",
+"say": "I will move to kitchen top shelf"
+},
+{
+"event": "step_done",
+"index": 0,
+"status": "success",
+"result": {
+"at": "shelf@kitchen",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to kitchen top shelf"
+},
+{
+"event": "step_start",
+"index": 1,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 1,
+"status": "failed",
+"result": {
+"place": "shelf@kitchen",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "search",
+"object": "white towel"
+},
+{
+"event": "recover",
+"at_index": 1,
+"kind": "search_leg",
+"msg": "looking for the white towel at bath_shelf@restroom"
+},
+{
+"event": "step_start",
+"index": 1,
+"action": "MoveTo",
+"object": "bath_shelf@restroom",
+"skill": "move",
+"say": "I will move to restroom bathroom shelf"
+},
+{
+"event": "step_done",
+"index": 1,
+"status": "success",
+"result": {
+"at": "bath_shelf@restroom",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to restroom bathroom shelf"
+},
+{
+"event": "step_start",
+"index": 2,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 2,
+"status": "success",
+"result": {
+"place": "bath_shelf@restroom",
+"found": "white towel",
+"ins": {
+"white towel": {
+"pose_3d": [
+0.6,
+0.0,
+0.8
+]
+}
+},
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: find white towel"
+},
+{
+"event": "step_start",
+"index": 3,
+"action": "Pick",
+"object": "white towel",
+"skill": "pick",
+"say": "I will pick white towel"
+},
+{
+"event": "step_done",
+"index": 3,
+"status": "success",
+"result": {
+"holding": "towel_1",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: pick white towel"
+},
+{
+"event": "step_start",
+"index": 4,
+"action": "MoveTo",
+"object": "sofa@living",
+"skill": "move",
+"say": "I will move to living room sofa"
+},
+{
+"event": "step_done",
+"index": 4,
+"status": "success",
+"result": {
+"at": "sofa@living",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to living room sofa"
+},
+{
+"event": "step_start",
+"index": 5,
+"action": "Place",
+"object": "sofa@living",
+"skill": "place",
+"say": "I will place living room sofa"
+},
+{
+"event": "step_done",
+"index": 5,
+"status": "success",
+"result": {
+"placed": "towel_1",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: place living room sofa"
+},
+{
+"event": "goal_check",
+"goal": {
+"type": "on",
+"object": "white towel",
+"from": "shelf@kitchen",
+"to": "sofa@living"
+},
+"ok": true,
+"evidence": "the white towel is seen on the sofa in the living"
+},
+{
+"event": "done",
+"status": "success",
+"msg": "",
+"say": "Task completed"
+}
+]

@@ -1,0 +1,454 @@
+[
+{
+"event": "start",
+"prompt": "Put the white towel on the sofa."
+},
+{
+"event": "understand",
+"status": "clear",
+"reason": "The request is clear.",
+"goals": [
+{
+"type": "on",
+"object": "white towel",
+"from": "",
+"to": "sofa@living"
+}
+],
+"question": null
+},
+{
+"event": "clarify",
+"question": "Where is the white towel?",
+"round": 1,
+"kind": "where_source"
+},
+{
+"event": "plan",
+"steps": [
+{
+"action": "MoveTo",
+"object": "shelf@kitchen",
+"grounded": true
+},
+{
+"action": "Find",
+"object": "white towel"
+},
+{
+"action": "Pick",
+"object": "white towel"
+},
+{
+"action": "MoveTo",
+"object": "sofa@living",
+"grounded": true
+},
+{
+"action": "Place",
+"object": "sofa@living",
+"grounded": true
+}
+],
+"warnings": [],
+"plan_text": "move::shelf@kitchen\nfind::white towel\npick::white towel\nmove::sofa@living\nplace::sofa@living",
+"certified": true
+},
+{
+"event": "step_start",
+"index": 0,
+"action": "MoveTo",
+"object": "shelf@kitchen",
+"skill": "move",
+"say": "I will move to kitchen top shelf"
+},
+{
+"event": "step_done",
+"index": 0,
+"status": "success",
+"result": {
+"at": "shelf@kitchen",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to kitchen top shelf"
+},
+{
+"event": "step_start",
+"index": 1,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 1,
+"status": "failed",
+"result": {
+"place": "shelf@kitchen",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "search",
+"object": "white towel"
+},
+{
+"event": "recover",
+"at_index": 1,
+"kind": "search_leg",
+"msg": "looking for the white towel at bath_shelf@restroom"
+},
+{
+"event": "step_start",
+"index": 1,
+"action": "MoveTo",
+"object": "bath_shelf@restroom",
+"skill": "move",
+"say": "I will move to restroom bathroom shelf"
+},
+{
+"event": "step_done",
+"index": 1,
+"status": "success",
+"result": {
+"at": "bath_shelf@restroom",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to restroom bathroom shelf"
+},
+{
+"event": "step_start",
+"index": 2,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 2,
+"status": "failed",
+"result": {
+"place": "bath_shelf@restroom",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "recover",
+"at_index": 2,
+"kind": "search_leg",
+"msg": "looking for the white towel at chest@bedroom (chest@bedroom is closed: Open it, then Find the white towel inside)"
+},
+{
+"event": "step_start",
+"index": 2,
+"action": "MoveTo",
+"object": "chest@bedroom",
+"skill": "move",
+"say": "I will move to bedroom chest of drawers"
+},
+{
+"event": "step_done",
+"index": 2,
+"status": "success",
+"result": {
+"at": "chest@bedroom",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to bedroom chest of drawers"
+},
+{
+"event": "step_start",
+"index": 3,
+"action": "Open",
+"object": "chest@bedroom",
+"skill": "open",
+"say": "I will open bedroom chest of drawers"
+},
+{
+"event": "step_done",
+"index": 3,
+"status": "success",
+"result": {
+"opened": "chest@bedroom",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: open bedroom chest of drawers"
+},
+{
+"event": "step_start",
+"index": 4,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 4,
+"status": "failed",
+"result": {
+"place": "chest@bedroom",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "recover",
+"at_index": 4,
+"kind": "search_leg",
+"msg": "looking for the white towel at counter@kitchen"
+},
+{
+"event": "step_start",
+"index": 4,
+"action": "MoveTo",
+"object": "counter@kitchen",
+"skill": "move",
+"say": "I will move to kitchen counter"
+},
+{
+"event": "step_done",
+"index": 4,
+"status": "success",
+"result": {
+"at": "counter@kitchen",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to kitchen counter"
+},
+{
+"event": "step_start",
+"index": 5,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 5,
+"status": "failed",
+"result": {
+"place": "counter@kitchen",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "recover",
+"at_index": 5,
+"kind": "search_leg",
+"msg": "looking for the white towel at floor@kitchen"
+},
+{
+"event": "step_start",
+"index": 5,
+"action": "MoveTo",
+"object": "floor@kitchen",
+"skill": "move",
+"say": "I will move to kitchen floor"
+},
+{
+"event": "step_done",
+"index": 5,
+"status": "success",
+"result": {
+"at": "floor@kitchen",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to kitchen floor"
+},
+{
+"event": "step_start",
+"index": 6,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 6,
+"status": "failed",
+"result": {
+"place": "floor@kitchen",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "recover",
+"at_index": 6,
+"kind": "search_leg",
+"msg": "looking for the white towel at floor@bedroom"
+},
+{
+"event": "step_start",
+"index": 6,
+"action": "MoveTo",
+"object": "floor@bedroom",
+"skill": "move",
+"say": "I will move to bedroom floor"
+},
+{
+"event": "step_done",
+"index": 6,
+"status": "success",
+"result": {
+"at": "floor@bedroom",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to bedroom floor"
+},
+{
+"event": "step_start",
+"index": 7,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 7,
+"status": "failed",
+"result": {
+"place": "floor@bedroom",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "recover",
+"at_index": 7,
+"kind": "second_look",
+"msg": "looking again for the white towel"
+},
+{
+"event": "step_start",
+"index": 7,
+"action": "MoveTo",
+"object": "shelf@kitchen",
+"skill": "move",
+"say": "I will move to kitchen top shelf"
+},
+{
+"event": "step_done",
+"index": 7,
+"status": "success",
+"result": {
+"at": "shelf@kitchen",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to kitchen top shelf"
+},
+{
+"event": "step_start",
+"index": 8,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 8,
+"status": "failed",
+"result": {
+"place": "shelf@kitchen",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "recover",
+"at_index": 8,
+"kind": "second_look",
+"msg": "looking again for the white towel"
+},
+{
+"event": "step_start",
+"index": 8,
+"action": "MoveTo",
+"object": "bath_shelf@restroom",
+"skill": "move",
+"say": "I will move to restroom bathroom shelf"
+},
+{
+"event": "step_done",
+"index": 8,
+"status": "success",
+"result": {
+"at": "bath_shelf@restroom",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to restroom bathroom shelf"
+},
+{
+"event": "step_start",
+"index": 9,
+"action": "Find",
+"object": "white towel",
+"skill": "find",
+"say": "I will find white towel"
+},
+{
+"event": "step_done",
+"index": 9,
+"status": "failed",
+"result": {
+"place": "bath_shelf@restroom",
+"isdone": false,
+"msg": "white towel not found",
+"code": "absent"
+},
+"reason": "white towel not found",
+"say": "Failed to find white towel. white towel not found"
+},
+{
+"event": "done",
+"status": "failed",
+"msg": "could not find the white towel (looked at chest@bedroom, counter@kitchen, floor@kitchen, floor@bedroom, shelf@kitchen, bath_shelf@restroom)",
+"code": "absent",
+"device": "find",
+"evidence": {
+"step": "Find white towel",
+"reason": "white towel not found"
+},
+"say": "could not find the white towel"
+}
+]

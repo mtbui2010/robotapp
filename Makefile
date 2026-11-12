@@ -9,7 +9,7 @@ CF_ACCOUNT_ID   := 1efcf45616f03bd51d275417c690a3e5
 CF_DOMAIN       := robot.aistations.org
 
 .PHONY: run-frontend install-frontend install terminate build-frontend deploy deploy-status \
-        lint typecheck smoke ci gen-types check-deps
+        lint typecheck unit smoke ci gen-types check-deps
 
 run-frontend:
 	cd $(ROOT)/frontend && npm run dev -- -p 3007
@@ -42,12 +42,16 @@ lint: check-deps
 typecheck: check-deps
 	cd $(ROOT)/frontend && $(FE_BIN)/tsc --noEmit -p .
 
+# Unit tests of the pure lib modules (planView replayed on recorded event files, chatMic): scripts/test_lib.mjs
+unit: check-deps
+	node --test-reporter=spec $(ROOT)/scripts/test_lib.mjs
+
 # Static export must build and produce the page (runs without a robot).
 smoke: check-deps
 	cd $(ROOT)/frontend && NEXT_TELEMETRY_DISABLED=1 $(FE_BIN)/next build
 	@grep -q '<html' $(ROOT)/frontend/out/index.html && echo "smoke: out/index.html ok"
 
-ci: lint typecheck smoke
+ci: lint typecheck unit smoke
 
 # Refresh frontend/lib/generated/openapi.json (+ openapi.d.ts when
 # openapi-typescript is installed) from a robot_agent checkout.

@@ -9,15 +9,21 @@ agent-WebSocket events: `speak` (always voiced, unlike the gated `say`) and
 `listen: {id, lang, max_sec, prompt}`. `page.tsx` queues them in order —
 speak to completion, then `recognizeOnce` ([frontend/lib/hriVoice.ts](../../frontend/lib/hriVoice.ts))
 — and posts `{text, error}` to `POST /agent/listen/<id>` (`api.answerListen`).
-Only runs started from the Agent panel have this channel; `/skill/<name>` and
+Only runs started from the dashboard (the 💬 Chat card, or the Agent panel's Structured Run) have this channel; `/skill/<name>` and
 the CLI must use `source='robot'`.
+
+**Chat and the mic (2026-11-12).** The old Unstructured "from mic" (a continuous recogniser that stayed on while
+the robot spoke and wrote its voice into the command box) is removed. The 💬 Chat card ([chat.md](chat.md)) is the
+place for spoken commands and answers: its input box answers every pending `listen` (voice mode too), and its
+hands-free mic is a one-shot loop that listens for a new command only while idle and after the robot stopped
+speaking; during a run the `listen` handler below is the only mic user.
 
 **Picking the mic.** Nothing in this frontend ever sends `source`, so it has to
 be typed into the plan input — and the plan parser is **not** the CLI parser.
 Check `_common` in [hri.py](../../../kcare_robot/kcare_robot/skills/hri.py) for the
 current default before assuming: it was `'robot'`, and is now `'dashboard'`
 (which makes CLI / `POST /skill/<name>` callers fail with "needs a run started
-from the dashboard's Agent panel", since they have no channel back).
+from the dashboard", since they have no channel back).
 
 ```
 reply::inputs='듣고 있어요', source='dashboard'     # browser mic

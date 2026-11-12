@@ -1,0 +1,179 @@
+[
+{
+"event": "start",
+"prompt": "Could you put the red mug on the dining table?"
+},
+{
+"event": "understand",
+"status": "clear",
+"reason": "The request is clear.",
+"goals": [
+{
+"type": "on",
+"object": "red mug",
+"from": "",
+"to": "dining_table@kitchen"
+}
+],
+"question": null
+},
+{
+"event": "clarify",
+"question": "Where is the red mug?",
+"round": 1,
+"kind": "where_source"
+},
+{
+"event": "plan",
+"steps": [
+{
+"action": "MoveTo",
+"object": "counter@kitchen",
+"grounded": true
+},
+{
+"action": "Find",
+"object": "red mug"
+},
+{
+"action": "Pick",
+"object": "red mug"
+},
+{
+"action": "MoveTo",
+"object": "dining_table@kitchen",
+"grounded": true
+},
+{
+"action": "Place",
+"object": "dining_table@kitchen",
+"grounded": true
+}
+],
+"warnings": [],
+"plan_text": "move::counter@kitchen\nfind::red mug\npick::red mug\nmove::dining_table@kitchen\nplace::dining_table@kitchen",
+"certified": true
+},
+{
+"event": "step_start",
+"index": 0,
+"action": "MoveTo",
+"object": "counter@kitchen",
+"skill": "move",
+"say": "I will move to kitchen counter"
+},
+{
+"event": "step_done",
+"index": 0,
+"status": "success",
+"result": {
+"at": "counter@kitchen",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to kitchen counter"
+},
+{
+"event": "step_start",
+"index": 1,
+"action": "Find",
+"object": "red mug",
+"skill": "find",
+"say": "I will find red mug"
+},
+{
+"event": "step_done",
+"index": 1,
+"status": "success",
+"result": {
+"place": "counter@kitchen",
+"found": "red mug",
+"ins": {
+"red mug": {
+"pose_3d": [
+0.6,
+0.0,
+0.8
+]
+}
+},
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: find red mug"
+},
+{
+"event": "step_start",
+"index": 2,
+"action": "Pick",
+"object": "red mug",
+"skill": "pick",
+"say": "I will pick red mug"
+},
+{
+"event": "step_done",
+"index": 2,
+"status": "success",
+"result": {
+"holding": "mug_1",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: pick red mug"
+},
+{
+"event": "step_start",
+"index": 3,
+"action": "MoveTo",
+"object": "dining_table@kitchen",
+"skill": "move",
+"say": "I will move to kitchen dining table"
+},
+{
+"event": "step_done",
+"index": 3,
+"status": "success",
+"result": {
+"at": "dining_table@kitchen",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: move to kitchen dining table"
+},
+{
+"event": "step_start",
+"index": 4,
+"action": "Place",
+"object": "dining_table@kitchen",
+"skill": "place",
+"say": "I will place kitchen dining table"
+},
+{
+"event": "step_done",
+"index": 4,
+"status": "success",
+"result": {
+"placed": "mug_1",
+"isdone": true,
+"msg": "ok"
+},
+"say": "Done: place kitchen dining table"
+},
+{
+"event": "goal_check",
+"goal": {
+"type": "on",
+"object": "red mug",
+"from": "counter@kitchen",
+"to": "dining_table@kitchen"
+},
+"ok": true,
+"evidence": "the red mug is seen on the dining_table in the kitchen"
+},
+{
+"event": "done",
+"status": "success",
+"msg": "",
+"say": "Task completed"
+}
+]
