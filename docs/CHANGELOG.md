@@ -6,6 +6,12 @@ in `CLAUDE.md`, mixed with the specs. The full text of each entry is still in th
 line, link. Undated features (Cancel / Stop, camera streaming, Robot State, plan skills, skill and location
 aliases, planner guides) predate the dated notes; see their docs.
 
+## 2026-11-12
+
+- Screen recordings have sound: the tab's audio (default) and, if ticked, the microphone, mixed into one track; an
+  **audio test** says whether the robot's spoken lines (`speechSynthesis`) reach the recording.
+  [features/screen-recording.md](features/screen-recording.md)
+
 ## 2026-11-02
 
 - Planner Guide removed (editor panel, `/guides` calls, `Guide*` types): the Direct planner's prompt is built by

@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useRef, useState } from 'react'
+import { buildRecordingStream, displayOptions, getAudioPrefs, type RecordingStream } from './recordAudio'
 
 // Screen recorder for a working session. On enabling the checkbox the user (1)
 // grants a target folder ONCE (File System Access API — they pick/create
@@ -7,7 +8,8 @@ import { useCallback, useRef, useState } from 'react'
 // (preferCurrentTab). Each plan run records a segment that is written into the
 // granted folder as .webm; if the folder isn't available the file falls back to
 // the browser's Downloads. Browsers never allow fully silent screen capture, so
-// a one-time confirmation is unavoidable.
+// a one-time confirmation is unavoidable. Sound (lib/recordAudio.ts): the tab's audio and, if ticked, the microphone,
+// mixed into one audio track; see docs/features/screen-recording.md.
 
 // ── persisted directory handle (IndexedDB) ──────────────────────────────────
 const IDB_DB = 'robotapp', IDB_STORE = 'fs', IDB_KEY = 'kcareDir'
@@ -73,6 +75,7 @@ function saveRecording(dir: FileSystemDirectoryHandle | null, blob: Blob,
 
 export function useScreenRecorder() {
   const streamRef = useRef<MediaStream | null>(null)
+  const mixRef = useRef<RecordingStream | null>(null)       // the display's video + the mixed sound: what the recorder gets
   const recRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const dirRef = useRef<FileSystemDirectoryHandle | null>(null)
@@ -86,12 +89,13 @@ export function useScreenRecorder() {
   // Manual recording — an independent stream/recorder (separate from the per-run
   // auto-record above) so start/stop-on-click never clashes with a plan segment.
   const manualStreamRef = useRef<MediaStream | null>(null)
+  const manualMixRef = useRef<RecordingStream | null>(null)
   const manualRecRef = useRef<MediaRecorder | null>(null)
   const manualChunksRef = useRef<Blob[]>([])
   const [manualRecording, setManualRecording] = useState(false)
 
   const pickMime = (): string => {
-    const cands = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+    const cands = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
     const MR = typeof window !== 'undefined' ? window.MediaRecorder : undefined
     for (const m of cands) if (MR && MR.isTypeSupported?.(m)) return m
     return ''
@@ -105,22 +109,25 @@ export function useScreenRecorder() {
       // 2) Capture stream once — default to the current tab; reused for every run
       //    so the screen-share permission is asked a single time per enable.
       try {
-        const opts = { video: true, audio: false, preferCurrentTab: true,
-                       selfBrowserSurface: 'include' } as unknown as DisplayMediaStreamOptions
-        const stream = await navigator.mediaDevices.getDisplayMedia(opts)
+        const prefs = getAudioPrefs()
+        const stream = await navigator.mediaDevices.getDisplayMedia(displayOptions(prefs))
         streamRef.current = stream
+        mixRef.current = await buildRecordingStream(stream, prefs)
         stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+          mixRef.current?.dispose(); mixRef.current = null
           streamRef.current = null
           setRecordEnabled(false)
         })
         setRecordEnabled(true)
       } catch {
+        mixRef.current?.dispose(); mixRef.current = null
         streamRef.current = null
         setRecordEnabled(false)
       }
     } else {
       try { recRef.current?.state !== 'inactive' && recRef.current?.stop() } catch { /* ignore */ }
       recRef.current = null
+      mixRef.current?.dispose(); mixRef.current = null
       streamRef.current?.getTracks().forEach(t => t.stop())
       streamRef.current = null
       setRecordEnabled(false)
@@ -133,7 +140,7 @@ export function useScreenRecorder() {
     try {
       chunksRef.current = []
       const mime = pickMime()
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      const rec = new MediaRecorder(mixRef.current?.stream ?? stream, mime ? { mimeType: mime } : undefined)
       rec.ondataavailable = e => { if (e.data && e.data.size) chunksRef.current.push(e.data) }
       rec.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'video/webm' })
@@ -176,13 +183,12 @@ export function useScreenRecorder() {
     try { dirRef.current = await loadDirSilent() } catch { dirRef.current = null }
     let stream: MediaStream
     try {
-      const opts = { video: true, audio: false, preferCurrentTab: true,
-                     selfBrowserSurface: 'include' } as unknown as DisplayMediaStreamOptions
-      stream = await navigator.mediaDevices.getDisplayMedia(opts)
+      stream = await navigator.mediaDevices.getDisplayMedia(displayOptions(getAudioPrefs()))
     } catch {
       return   // user cancelled the share prompt
     }
     manualStreamRef.current = stream
+    manualMixRef.current = await buildRecordingStream(stream, getAudioPrefs())
     // If the user stops sharing from the browser's own UI, finish and save too.
     stream.getVideoTracks()[0]?.addEventListener('ended', () => {
       try { if (manualRecRef.current && manualRecRef.current.state !== 'inactive') manualRecRef.current.stop() } catch { /* ignore */ }
@@ -190,11 +196,12 @@ export function useScreenRecorder() {
     try {
       manualChunksRef.current = []
       const mime = pickMime()
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      const rec = new MediaRecorder(manualMixRef.current?.stream ?? stream, mime ? { mimeType: mime } : undefined)
       rec.ondataavailable = e => { if (e.data && e.data.size) manualChunksRef.current.push(e.data) }
       rec.onstop = () => {
         const blob = new Blob(manualChunksRef.current, { type: 'video/webm' })
         manualChunksRef.current = []
+        manualMixRef.current?.dispose(); manualMixRef.current = null
         manualStreamRef.current?.getTracks().forEach(t => t.stop())
         manualStreamRef.current = null
         manualRecRef.current = null
@@ -208,6 +215,7 @@ export function useScreenRecorder() {
       manualRecRef.current = rec
       setManualRecording(true)
     } catch {
+      manualMixRef.current?.dispose(); manualMixRef.current = null
       manualStreamRef.current?.getTracks().forEach(t => t.stop())
       manualStreamRef.current = null
     }
