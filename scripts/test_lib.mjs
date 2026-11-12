@@ -321,6 +321,40 @@ test('chatRun: a 404 on the audio answer (listen timed out) has a chat note', ()
   assert.match(CR.LISTEN_GONE_NOTE, /timed out/)
 })
 
+
+// ── mapObjects: the Map tab's objects layer (declared by MAP.objects) ──────────────────────────────────────────────
+const MO = await load('mapObjects')
+const OBJ_CFG = { agent: 'a', read: { method: 'get' }, path: 'objects', poll_s: 0.1,
+                  fields: { x: 'x', y: 'y', label: 'name', kind: 'cls' },
+                  actions: { move: { skill: 'mv', params: { id: '{id}', x: '{x}', y: '{y}', where: 'at {place}' } } } }
+test('mapObjects parse: a dict under path, entries without x / y dropped, held ones follow the robot', () => {
+  const reply = { objects: { o1: { x: 1, y: 2, name: 'cup', cls: 'mug', at: 'table' }, o2: { name: 'nowhere' }, o3: { x: 0, y: 0, name: 'ball', held: true } } }
+  const objs = MO.parseObjects(reply, OBJ_CFG)
+  assert.deepEqual(objs.map(o => o.id), ['o1', 'o3'])
+  assert.equal(objs[0].label, 'cup'); assert.equal(objs[0].place, 'table')
+  assert.deepEqual(MO.drawnAt(objs[0], null), [1, 2])
+  assert.deepEqual(MO.drawnAt(objs[1], { x: 5, y: 6 }), [5, 6]); assert.equal(MO.drawnAt(objs[1], null), null)
+  assert.deepEqual(MO.parseObjects({ objects: [{ id: 'k', x: 1, y: 1, name: 'n' }] }, OBJ_CFG).map(o => o.id), ['k'])   // a list works too
+  assert.deepEqual(MO.parseObjects({}, OBJ_CFG), []); assert.deepEqual(MO.parseObjects(null, OBJ_CFG), [])
+})
+test('mapObjects actions: Move / Remove / Add exist only when the backend declares them; templates keep types', () => {
+  assert.equal(MO.hasAction(OBJ_CFG, 'move'), true)
+  assert.equal(MO.hasAction(OBJ_CFG, 'remove'), false)
+  assert.equal(MO.hasAction(OBJ_CFG, 'spawn'), false)
+  assert.equal(MO.hasAction(undefined, 'move'), false)
+  assert.deepEqual(MO.fillCall(OBJ_CFG.actions.move, { id: 'o1', x: 1.23456, y: 2, place: 'desk' }),
+                   { id: 'o1', x: 1.235, y: 2, where: 'at desk' })
+  assert.equal(MO.fillCall({ skill: 's', params: { p: '{place}' } }, {}).p, '{place}')     // not given: left as written
+})
+test('mapObjects read / poll / colour / pick: send body, minimum period, same kind same colour, nearest marker', () => {
+  assert.deepEqual(MO.readRequest(OBJ_CFG), { agent: 'a', send: null })
+  assert.deepEqual(MO.readRequest({ agent: 's', read: { method: 'send', body: { cmd: 'state' } } }), { agent: 's', send: { cmd: 'state' } })
+  assert.equal(MO.pollMs({ agent: 'a' }), 1000); assert.equal(MO.pollMs({ agent: 'a', poll_s: 0.01 }), 200)
+  assert.equal(MO.kindColor('mug'), MO.kindColor('mug')); assert.notEqual(MO.kindColor('mug'), MO.kindColor('apple'))
+  const objs = [{ id: 'a', x: 0, y: 0, label: 'a', kind: '', place: '', held: false }, { id: 'b', x: 0.1, y: 0, label: 'b', kind: '', place: '', held: false }]
+  assert.equal(MO.nearestObject(objs, 0.09, 0).id, 'b'); assert.equal(MO.nearestObject(objs, 5, 5), null)
+})
+
 // api.answerListenAudio reports failures instead of swallowing them
 test('api.answerListenAudio: a 500 / unreachable server is an error, 404 is "gone", 200 is the text', async () => {
   const outfile = join(out, 'api.mjs')

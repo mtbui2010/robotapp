@@ -224,6 +224,17 @@ export interface MapSkillCall {
   params: Record<string, string>
 }
 
+// Objects layer (MAP.objects): what the backend declares so the Map tab can draw and edit objects (docs/features/map-tab.md)
+export interface MapObjectsConfig {
+  agent: string                                        // device agent read through GET /agent/<agent>/get or POST /agent/<agent>/send
+  read?: { method: 'get' } | { method: 'send'; body?: Record<string, unknown> }
+  path?: string                                        // where the dict id -> {x, y, ...} sits in the reply ("" = the reply itself)
+  poll_s?: number
+  fields?: { x?: string; y?: string; label?: string; kind?: string; place?: string; held?: string; id?: string }
+  // skill call templates with {id} {x} {y} {place} {cls}; an action the backend cannot do is absent
+  actions?: { spawn?: MapSkillCall; move?: MapSkillCall; remove?: MapSkillCall }
+}
+
 export interface MapConfig {
   // the picture under everything: a camera connection (sim top-down view) or a site file
   // (map/map.png written by POST /map/snapshot from a SLAM map connection)
@@ -249,6 +260,7 @@ export interface MapConfig {
   // simulation only: the agent of the sim's control service (kcare-sim /sim/command) — reset, move / add /
   // remove objects and furniture, save / load scenes
   sim?: { agent: string }
+  objects?: MapObjectsConfig           // the objects layer (markers, move / remove / add if declared)
 }
 
 // kcare-sim /sim/command "state" reply (see MapPanel's Sim bar)

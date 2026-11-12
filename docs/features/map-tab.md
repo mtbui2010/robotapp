@@ -93,3 +93,32 @@ on a piece of furniture follow it when it moves; a removed piece takes its ENV s
 fixed while testing: the SVG `<image>` started a native image drag on mousedown, which swallowed every
 following mousemove / mouseup (now `preventDefault`); the edit row has a fixed height so selecting
 something cannot shift the map under the mouse; ← → / Del never turn the robot while a mode is on.
+
+## Objects layer (2026-11-12)
+
+Shown only when the site's `MAP` config has an `objects` block; the dashboard knows nothing about any object itself
+(rule 2). The block is the contract between the dashboard and the backend:
+
+```json
+"objects": {
+  "agent": "<device agent>",
+  "read": {"method": "get"},            // or {"method": "send", "body": {...}} for a backend that answers a command
+  "path": "objects",                    // where id -> {x, y, ...} sits in the reply ("" = the reply itself; a list also works)
+  "poll_s": 1.0,                        // polling period, at least 0.2
+  "fields": {"x": "x", "y": "y", "label": "name", "kind": "cls", "place": "at", "held": "held", "id": "id"},
+  "actions": {"spawn": {"skill": "...", "params": {"cls": "{cls}", "place": "{place}"}},
+              "move":  {"skill": "...", "params": {"id": "{id}", "x": "{x}", "y": "{y}", "place": "{place}"}},
+              "remove": {"skill": "...", "params": {"id": "{id}"}}}
+}
+```
+
+- **Reading** is `GET /agent/<agent>/get` (or `POST /agent/<agent>/send` with the declared body), never a skill call, so polling
+  cannot clear a Stop. Entries without a finite x and y are not drawn.
+- **Markers** are circles with the label, coloured by kind (a stable hash of the kind, nothing about kinds is built in), a tooltip with
+  name, kind and place. An object whose `held` field is true is drawn at the robot's pose and follows it.
+- **A click on a marker selects it.** Then **Move** (arm it, click the map) or **to a place...** (a saved ENV place) call the declared
+  `move` skill; **Remove** calls `remove` after a confirmation. **Add** (a kind and a place) calls `spawn`. Each of the three
+  controls exists only if the backend declared that action; a missing action means the backend cannot do it.
+- Placeholders in the templates: `{id}` `{x}` `{y}` `{place}` `{cls}`. A lone placeholder keeps its type (x, y are numbers).
+- Code: pure logic in `frontend/lib/mapObjects.ts` (tests named `mapObjects ...` in `scripts/test_lib.mjs`), the layer and bar in
+  `frontend/components/mapObjects.tsx`, wired into `MapPanel.tsx` like the sim bar.

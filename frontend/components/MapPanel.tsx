@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useSimEditor } from './mapSim'
+import { useMapObjects } from './mapObjects'
 import { MapSettings } from './MapSettings'
 import { getPath, poseFrom } from '../lib/robotPose'
 import type { ClientEntry, MapConfig, MapFrame, MapLayer, MapOrigin, MapSkillCall, MapSurface } from '../lib/types'
@@ -180,6 +181,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
     if (c.places === 'ENV') setEnv(((await api.getSkillConfig('ENV')) ?? {}) as Record<string, EnvEntry>)
   }, [])
   useEffect(() => { reload() }, [reload])
+  const objects = useMapObjects({ cfg, robot: pose, places: Object.keys(env), setStatus, running })
   const sim = useSimEditor({ cfg, setStatus, reloadMap: reload, running, otherEdit: editOrigin || !!keepEdit })
 
   // the display frame: the whole map while drawing the keep area, else the camera picture's / occupancy layer's
@@ -517,6 +519,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
       {showSettings && <MapSettings cfg={cfg} onSaved={reload} onClose={() => setShowSettings(false)} />}
 
       {sim.bar}
+      {objects.bar}
 
       {/* map */}
       <div ref={wrapRef} tabIndex={0} onKeyDown={onKey}
@@ -540,7 +543,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
              onMouseLeave={() => { setHover(null); setDrag(null) }}
              onClick={e => { wrapRef.current?.focus(); const w = toWorld(e)
                              if (keepEdit) { if (w) setKeepEdit({ ...keepEdit, pts: [...keepEdit.pts, w] }); return }
-                             if (w && sim.click(w)) return; if (editOrigin) return; if (w) goTo(w[0], w[1]) }}>
+                             if (w && sim.click(w)) return; if (editOrigin) return; if (w && objects.click(w)) return; if (w) goTo(w[0], w[1]) }}>
           {keepEdit
             ? <image href={keepEdit.img} x={0} y={0} width={Wm} height={Hm} preserveAspectRatio="none" style={{ imageRendering: 'pixelated' }} />
             : frameSrc
@@ -595,6 +598,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
               </g>)
           })()}
           {sim.overlay(S)}
+          {objects.overlay(S)}
           {keepEdit && (() => {                                     // the keep area being drawn
             const pts = keepEdit.pts.map(([x, y]) => S(x, y))
             const tail = hover && pts.length ? [...pts, S(hover.x, hover.y)] : pts

@@ -8,6 +8,8 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-12
 
+- [Map tab](features/map-tab.md): objects layer. `MAP.objects` (declared by the backend) makes the Map tab draw labelled object markers, polled
+  read-only; Move / Remove / Add appear only for the actions the backend declares. Logic in `lib/mapObjects.ts`.
 - [Cancel / Stop](features/cancel-stop.md): every Stop / Cancel button (chat Stop, Agent panel Stop, control-bar Cancel, tab-row Cancel) runs the one
   `stop()` flow (`stopAction` / `stopLabel` in `chatRun.ts`): stopping, then Force reset when stuck. A 404 on the audio answer (the listen had timed out) now
   shows a note in the chat.
