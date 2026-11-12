@@ -301,6 +301,26 @@ test('chatRun: cancel-ack with an open socket waits for done; start is ignored u
   assert.equal(play('start', 'listen', 'start').phase, 'waiting')
 })
 
+
+test('chatRun: every stop button asks stopAction: stop first, force reset once stuck', () => {
+  const play = (...ev) => ev.reduce((s, t) => CR.runReduce(s, { t }), CR.INITIAL_RUN)
+  assert.equal(CR.stopAction(CR.INITIAL_RUN), 'stop')           // the tab-row Cancel is always live
+  assert.equal(CR.stopAction(play('start')), 'stop')
+  assert.equal(CR.stopAction(play('start', 'stop')), 'stop')
+  assert.equal(CR.stopAction(play('start', 'stop', 'timeout')), 'force-reset')
+})
+
+test('chatRun: stop button label is the same everywhere (Stopping..., Force reset)', () => {
+  const play = (...ev) => ev.reduce((s, t) => CR.runReduce(s, { t }), CR.INITIAL_RUN)
+  assert.equal(CR.stopLabel(play('start'), 'Cancel'), 'Cancel')
+  assert.equal(CR.stopLabel(play('start', 'stop')), 'Stopping…')
+  assert.equal(CR.stopLabel(play('start', 'stop', 'timeout'), 'Cancel'), 'Force reset')
+})
+
+test('chatRun: a 404 on the audio answer (listen timed out) has a chat note', () => {
+  assert.match(CR.LISTEN_GONE_NOTE, /timed out/)
+})
+
 // api.answerListenAudio reports failures instead of swallowing them
 test('api.answerListenAudio: a 500 / unreachable server is an error, 404 is "gone", 200 is the text', async () => {
   const outfile = join(out, 'api.mjs')

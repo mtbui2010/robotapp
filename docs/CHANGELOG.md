@@ -8,6 +8,9 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-12
 
+- [Cancel / Stop](features/cancel-stop.md): every Stop / Cancel button (chat Stop, Agent panel Stop, control-bar Cancel, tab-row Cancel) runs the one
+  `stop()` flow (`stopAction` / `stopLabel` in `chatRun.ts`): stopping, then Force reset when stuck. A 404 on the audio answer (the listen had timed out) now
+  shows a note in the chat.
 - [Chat](features/chat.md): the planner and "plan only" are kept per tab like the language (a new tab starts from the last choice; a tab pins what
   it started with, so a reload never takes another tab's choice).
 - [Chat](features/chat.md): a spoken answer shows at once as "🎤 …" right after the question and becomes the transcript when the speech server

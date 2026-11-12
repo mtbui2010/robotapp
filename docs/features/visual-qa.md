@@ -1,9 +1,9 @@
-# Visual Q&A (`qa` skill + top-bar button)
+# Visual Q&A (`qa` skill)
 
-> **2026-11-12:** the top-bar **💬 Q&A** button is now **💬 Chat** and no longer starts a `qa` run; its qa-only
+> **2026-11-12:** the old top-bar Q&A button is now **💬 Chat** and no longer starts a `qa` run; its qa-only
 > controls (🎤/⌨ input, 📷/🦾 camera, 🔁/1️⃣ once) and `QaChat.tsx` are gone (the card is `ChatPanel.tsx`, see
 > [chat.md](chat.md)). `qa` is an ordinary skill: put `qa::lang='ko'` (+ `cam=` / `once=True`) in a Structured step.
-> Passages below about the Q&A button, those pickers and the Q&A card describe the earlier design.
+> Passages below that mention a Q&A button, those pickers or a Q&A card describe the earlier design; the chat is in [chat.md](chat.md).
 
 <!-- Moved verbatim from CLAUDE.md (lines 385-665) on 2026-10-30; links rebased to docs/features/. -->
 
@@ -11,7 +11,7 @@
 the skills (hri `LANGS = ('ko', 'en')`; `lang='vi'` is refused) and the UI. The
 dashboard has ONE language picker, KO / EN in the control bar (see below)
 (`page.tsx` `lang`, `localStorage` `robotapp_lang`), used by Agent runs and by
-the Q&A button; it is locked while a Q&A conversation runs. robot_agent's own
+the earlier Q&A button (now the Chat); it is locked while a Q&A conversation runs. robot_agent's own
 narrator (`announcer.py`) and TTS helpers still know `vi` — framework, not skills.
 
 **Where on the shelves — from depth, nothing per place (2026-10-13).** At shelf2
@@ -124,7 +124,7 @@ uses it while it is not connected yet; the log line says which
 
 **Control bar (2026-10-21).** Right above the shortcut buttons (top of the second column) one row holds a
 big red **■ Cancel**, ⏹ (End Q&A) while a `qa` runs, KO / EN, the icon-only 🎤/⌨ (voice / text), 📷/🦾
-(head / arm camera) and 🔁/1️⃣ (interactive / once) pickers, and the **💬 Q&A** button (they used to be in the top bar and the Agent panel; the top
+(head / arm camera) and 🔁/1️⃣ (interactive / once) pickers, and the Chat button (they used to be in the top bar and the Agent panel; the top
 bar keeps 🔊 voice and the guide). Cancel is also kept on the Cameras / Map tab row, so it is reachable with the
 column collapsed. **🔊 voice off = no sound from the browser at all** (2026-10-27; it used to mute only the milestones):
 the skills' `speak` lines (announce / ask / qa), a listen's prompt, the earcons and the 119 alarm are skipped too
@@ -134,7 +134,7 @@ show in the Q&A card, `announce(wait=True)` is still answered, and the mic still
 unticking): two dashboard windows on one computer share the speech output, and the muted one's cancel before every
 qa listen silenced the other window's lines. Two windows with voice on can still cut each other's lines.
 
-The **💬 Q&A** button starts a run of `qa::lang='<lang>'` in
+(Old design, removed) the Q&A button started a run of `qa::lang='<lang>'` in
 direct mode with milestone voice off; pressing it again calls the same `stop()`
 as Cancel, whose `POST /agent/cancel` also releases the listen the skill is
 blocked on. The skill (`qa` in [kcare_robot/skills/hri.py](../../../kcare_robot/kcare_robot/skills/hri.py),
@@ -174,7 +174,7 @@ and 5) — the 8B model's spatial reasoning, not the prompt.
 or `cam='arm'` (one photo from `QA_CONFIGS['arm_camera']`, default `arm_rgb`;
 the head does not move, the prompt calls it "arm camera (on the gripper)").
 The control bar has a 📷 Head / 🦾 Arm picker next to Voice / Text (remembered in
-`localStorage`); the Q&A button adds `cam='arm'` only for the arm. A place's
+`localStorage`); the earlier Q&A button added `cam='arm'` only for the arm. A place's
 `qa` block (left / right shelf, …) still applies with the arm camera, but its
 left / right are written for the head's view.
 
@@ -301,7 +301,7 @@ back). The panel shows three cards, VLMs / Visions / Voices, each in its own kin
 Config group **`HRI_CONFIGS`** (kcare `configs/tasks.py`; edited in the Skill panel under `qa` / `ask` / `reply` / `announce`): `source`
 (`dashboard` | `robot` — default mic for reply / ask / qa; a call's `source=`
 wins), `dashboard_stt` (`whisper` | `browser`), `stt` (connection id, '' =
-first), `stt_hint` (`{lang: words}` — Whisper's prompt). The Q&A button no
+first), `stt_hint` (`{lang: words}` — Whisper's prompt). The earlier Q&A button no
 longer sends `source` in voice mode, so `HRI_CONFIGS.source` picks the mic.
 
 **Earcons (2026-10-14).** A blind user cannot see that the mic is open, so every voice listen (`ask`, `reply`,

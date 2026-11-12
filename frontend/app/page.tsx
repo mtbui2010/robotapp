@@ -16,7 +16,7 @@ import { useVoiceOutput, stillWorkingPhrase } from '../lib/useVoiceOutput'
 import { speakAndWait, recognizeOnce, recordPhrase, primeMic, playEarcon, playAlarm, stopRecording, abortRecognition } from '../lib/hriVoice'
 import { answerBy, createEchoGuard } from '../lib/chatMic'
 import { useHandsFree } from '../lib/useHandsFree'
-import { INITIAL_RUN, STOP_TIMEOUT_MS, runReduce, canStop, canType, isLost, needsForce, type RunEvent, type RunState } from '../lib/chatRun'
+import { INITIAL_RUN, STOP_TIMEOUT_MS, LISTEN_GONE_NOTE, stopAction, stopLabel, runReduce, canStop, canType, isLost, needsForce, type RunEvent, type RunState } from '../lib/chatRun'
 import { LS_PLANNER, PLANNER_EVENT, DEFAULT_PLANNER, LS_PLAN_ONLY, storedPlanOnly, storedPlanner, type PlannerMethod } from '../lib/planner'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
 import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
@@ -436,6 +436,7 @@ export default function Home() {
             const res = await api.answerListenAudio(req.id, rec.blob, rec.mime, rec.note)
             settleHeard(res.text || null)
             if (aborted()) return
+            if (res.gone) { addQaLine('system', `⚠ ${LISTEN_GONE_NOTE}`); return }
             if (res.error) {
               // The speech server failed (down, out of GPU memory, HTTP 5xx). The backend still waits for this listen:
               // say so, and keep the question open for a typed answer (input enabled) instead of treating it as silence.
@@ -637,7 +638,7 @@ export default function Home() {
   // Force reset). Pressed again while stuck, it is a Force reset. The socket stays open so the end of the run is seen.
   const stop = useCallback(() => {
     const cur = rsRef.current
-    if (needsForce(cur)) { reset('force reset'); return }
+    if (stopAction(cur) === 'force-reset') { reset('force reset'); return }
     repeatRef.current.active = false   // cancel any pending repeat
     stopNudge()
     stopReqRef.current = true
@@ -801,7 +802,7 @@ export default function Home() {
               <button onClick={stop}
                 title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
                 className="px-2 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded shadow-sm whitespace-nowrap">
-                ■ Cancel
+                {rs.phase === 'stopping' ? stopLabel(rs, '■ Cancel') : '■ Cancel'}
               </button>
               {qaSkill && (
                 <button onClick={endQa}
@@ -860,7 +861,7 @@ export default function Home() {
             </span>
           )}
           <GuidePanel />
-          </>} running={running} lang={lang} onRun={run} onStop={stop} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
+          </>} running={running} lang={lang} onRun={run} onStop={stop} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
           </section>
 
           <section className="px-5 pt-1 pb-3">
@@ -887,7 +888,7 @@ export default function Home() {
               <button onClick={stop}
                 title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
                 className={`ml-auto self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded`}>
-                Cancel
+                {stopLabel(rs, 'Cancel')}
               </button>
             </div>
             {mainTab === 'cameras'

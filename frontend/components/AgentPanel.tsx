@@ -143,6 +143,7 @@ interface Props {
   lang: Lang                       // the app's one language (Agent runs and Q&A), picked in the page's control bar
   onRun: (plan: string, direct: boolean, lang?: string, planner?: PlannerMethod, planOnly?: boolean, logData?: boolean, logTarget?: 'backend' | 'frontend', repeatTimes?: number, continueOnError?: boolean, logAll?: boolean) => void
   onStop: () => void
+  stopText?: string   // 'Stop' / 'Stopping…' / 'Force reset' (same flow as the other Cancel buttons)
   recordEnabled: boolean
   onToggleRecord: (on: boolean) => void
   manualRecording: boolean
@@ -151,7 +152,7 @@ interface Props {
   trial: number
 }
 
-export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
+export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop, stopText, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
   const [cells,      setCells]      = useState<string[]>(['', '', '', ''])
   const [activeCell, setActiveCell] = useState(0)
   const [logData,    setLogData]    = useState(true)
@@ -307,7 +308,7 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
           {toolbarExtra}
           {running
             ? <button onClick={onStop}
-                className="px-4 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded">Stop</button>
+                className="px-4 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded">{stopText ?? 'Stop'}</button>
             : <button onClick={run}
                 className="px-4 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded">Run</button>
           }

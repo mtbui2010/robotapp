@@ -69,3 +69,10 @@ register it with `node.add_cancel_hook(...)` — no change needed here.
 Stop / Cancel in the dashboard no longer drop the run at once: they send `POST /agent/cancel`, end the browser's captures and wait for the
 backend's `done{status:'aborted'}`; the chat shows "stopping…", and "Force reset" after 5 s. Reset closes the socket, sends cancel
 best effort and clears the browser side whatever the backend does. Details: [chat.md](chat.md#stop-and-reset).
+
+## One flow for every button (2026-11-12)
+
+The chat Stop, the Agent panel Stop, the control-bar Cancel and the tab-row Cancel all call the same `stop()` in `page.tsx`.
+`stopAction(state)` in `lib/chatRun.ts` decides: `stop` (cancel + wait for `done`), or `force-reset` once the run has been
+stopping for `STOP_TIMEOUT_MS`. `stopLabel(state, base)` gives each button the same text (`Stopping…`, `Force reset`). A 404 on
+`POST /agent/listen/<id>/audio` (the listen had already timed out) adds `LISTEN_GONE_NOTE` to the chat instead of failing silently.

@@ -58,3 +58,17 @@ export const canStop = (s: RunState): boolean => s.phase !== 'idle' || s.alive
 export const canType = (s: RunState): boolean => s.phase === 'idle' || s.phase === 'waiting'
 export const isLost = (s: RunState): boolean => s.phase === 'idle' && s.alive
 export const needsForce = (s: RunState): boolean => s.phase === 'stopping' && s.stuck
+
+// One flow for every Stop / Cancel button (chat Stop, Agent panel Stop, control bar Cancel, tab-row Cancel):
+// each calls the same handler, which asks stopAction() what to do.
+export type StopAction = 'stop' | 'force-reset'
+export function stopAction(s: RunState): StopAction {
+  if (needsForce(s)) return 'force-reset'
+  // the tab-row Cancel is always live: a run from another client may be moving the robot
+  return 'stop'
+}
+export const stopLabel = (s: RunState, base = 'Stop'): string =>
+  needsForce(s) ? 'Force reset' : s.phase === 'stopping' ? 'Stopping…' : base
+
+// The robot's listen was already gone (HTTP 404: it timed out) when the recording was posted.
+export const LISTEN_GONE_NOTE = 'the robot had already stopped listening (timed out): your answer was not used; say it again when asked'
