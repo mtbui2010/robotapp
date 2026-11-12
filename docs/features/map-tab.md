@@ -109,6 +109,8 @@ Shown only when the site's `MAP` config has an `objects` block; the dashboard kn
   "actions": {"spawn": {"skill": "...", "params": {"cls": "{cls}", "place": "{place}"}},
               "move":  {"skill": "...", "params": {"id": "{id}", "x": "{x}", "y": "{y}", "place": "{place}"}},
               "remove": {"skill": "...", "params": {"id": "{id}"}}}
+                                        // an action may instead be a command to a device agent (POST /agent/<agent>/send):
+                                        // {"agent": "<name>", "send": {"cmd": "...", "body": "{id}", "x": "{x}", "y": "{y}"}}
 }
 ```
 

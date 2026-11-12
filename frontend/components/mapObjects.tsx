@@ -47,8 +47,8 @@ export function useMapObjects({ cfg, robot, places, setStatus, running }: {
     if (running) { setStatus('A plan is running — stop it first.'); return }
     setBusy(true); setStatus(`${what}…`)
     try {
-      const r = await api.runSkill(tpl.skill, fillCall(tpl, vars))
-      setStatus(r.isdone === false ? `${what} failed: ${String(r.msg ?? '')}` : `${what}: done`)
+      const r = 'skill' in tpl ? await api.runSkill(tpl.skill, fillCall(tpl, vars)) : await api.agentSend(tpl.agent, fillCall(tpl, vars))
+      setStatus(r.isdone === false || r.ok === false ? `${what} failed: ${String(r.msg ?? r.error ?? '')}` : `${what}: done`)
     } catch (e) { setStatus(`${what} failed: ${e instanceof Error ? e.message : e}`) }
     finally { setBusy(false) }
   }, [oc, running, setStatus])

@@ -224,6 +224,8 @@ export interface MapSkillCall {
   params: Record<string, string>
 }
 
+export type ObjectActionCall = { skill: string; params: Record<string, string> } | { agent: string; send: Record<string, string> }
+
 // Objects layer (MAP.objects): what the backend declares so the Map tab can draw and edit objects (docs/features/map-tab.md)
 export interface MapObjectsConfig {
   agent: string                                        // device agent read through GET /agent/<agent>/get or POST /agent/<agent>/send
@@ -231,8 +233,9 @@ export interface MapObjectsConfig {
   path?: string                                        // where the dict id -> {x, y, ...} sits in the reply ("" = the reply itself)
   poll_s?: number
   fields?: { x?: string; y?: string; label?: string; kind?: string; place?: string; held?: string; id?: string }
-  // skill call templates with {id} {x} {y} {place} {cls}; an action the backend cannot do is absent
-  actions?: { spawn?: MapSkillCall; move?: MapSkillCall; remove?: MapSkillCall }
+  // call templates with {id} {x} {y} {place} {cls}; an action the backend cannot do is absent. Either a skill call
+  // ({skill, params}) or a command to a device agent ({agent, send}: POST /agent/<agent>/send)
+  actions?: { spawn?: ObjectActionCall; move?: ObjectActionCall; remove?: ObjectActionCall }
 }
 
 export interface MapConfig {

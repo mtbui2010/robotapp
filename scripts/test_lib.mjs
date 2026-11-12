@@ -346,6 +346,13 @@ test('mapObjects actions: Move / Remove / Add exist only when the backend declar
                    { id: 'o1', x: 1.235, y: 2, where: 'at desk' })
   assert.equal(MO.fillCall({ skill: 's', params: { p: '{place}' } }, {}).p, '{place}')     // not given: left as written
 })
+
+test('mapObjects actions: a device-agent command template ({agent, send}) counts as declared and is filled like a skill call', () => {
+  const cfg = { agent: 'a', actions: { move: { agent: 'sim', send: { cmd: 'move_object', body: '{id}', x: '{x}' } }, spawn: { agent: '', send: {} } } }
+  assert.equal(MO.hasAction(cfg, 'move'), true)
+  assert.equal(MO.hasAction(cfg, 'spawn'), false)                      // no agent: not usable
+  assert.deepEqual(MO.fillCall(cfg.actions.move, { id: 'cup', x: 0.5 }), { cmd: 'move_object', body: 'cup', x: 0.5 })
+})
 test('mapObjects read / poll / colour / pick: send body, minimum period, same kind same colour, nearest marker', () => {
   assert.deepEqual(MO.readRequest(OBJ_CFG), { agent: 'a', send: null })
   assert.deepEqual(MO.readRequest({ agent: 's', read: { method: 'send', body: { cmd: 'state' } } }), { agent: 's', send: { cmd: 'state' } })

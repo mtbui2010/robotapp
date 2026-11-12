@@ -3,7 +3,7 @@
 // The backend declares the layer in the MAP config (`MAP.objects`, see MapObjectsConfig in types.ts and
 // docs/features/map-tab.md "Objects layer"). Nothing about objects is known here: where they are read from, which
 // fields hold x / y / label / kind, and which actions (spawn / move / remove) exist all come from that declaration.
-import type { MapObjectsConfig, MapSkillCall } from './types'
+import type { MapObjectsConfig, ObjectActionCall } from './types'
 import { getPath } from './robotPose'
 
 export interface MapObject { id: string; x: number; y: number; label: string; kind: string; place: string; held: boolean }
@@ -16,7 +16,7 @@ const DEFAULT_FIELDS = { x: 'x', y: 'y', label: 'name', kind: 'cls', place: 'at'
 export const pollMs = (c: MapObjectsConfig): number => Math.max(0.2, Number(c.poll_s) || 1) * 1000
 
 /** Whether the backend declared this action (the buttons exist only then). */
-export const hasAction = (c: MapObjectsConfig | undefined | null, a: ObjectAction): boolean => !!c?.actions?.[a]?.skill
+export const hasAction = (c: MapObjectsConfig | undefined | null, a: ObjectAction): boolean => (() => { const t = c?.actions?.[a]; return !!t && ('skill' in t ? !!t.skill : !!t.agent && !!t.send) })()
 
 /** Objects out of a reply of the `read` call: a dict id -> entry, or a list of entries, found under `path`. Entries
  *  without a finite x and y are dropped (nothing to draw); a held object keeps its entry but the caller places it. */
@@ -75,13 +75,13 @@ export const readRequest = (c: MapObjectsConfig): { agent: string; send: Record<
 
 /** Fill an action template. A lone "{x}" keeps its type (number / string); "{a}-{b}" is a string; unknown
  *  placeholders and values the caller did not give stay as written. */
-export function fillCall(call: MapSkillCall, vars: CallVars): Record<string, unknown> {
+export function fillCall(call: ObjectActionCall, vars: CallVars): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   const val = (n: string): string | number | undefined => {
     const v = (vars as Record<string, string | number | undefined>)[n]
     return typeof v === 'number' ? Number(v.toFixed(3)) : v
   }
-  for (const [k, t] of Object.entries(call.params ?? {})) {
+  for (const [k, t] of Object.entries(('skill' in call ? call.params : call.send) ?? {})) {
     const lone = /^\{(\w+)\}$/.exec(t)
     out[k] = lone && val(lone[1]) !== undefined ? val(lone[1])
       : String(t).replace(/\{(\w+)\}/g, (m, n: string) => (val(n) === undefined ? m : String(val(n))))
