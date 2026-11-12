@@ -10,6 +10,7 @@ add the dated line to [../CHANGELOG.md](../CHANGELOG.md).
 | [Location names and aliases (ENV)](location-aliases.md) |
 | [Plan skills (a skill defined as a plan)](plan-skills.md) |
 | [Skill aliases](skill-aliases.md) |
+| [Screen recording and its sound](screen-recording.md) |
 | [Spoken names in plans: `said->real` (2026-10-08)](spoken-names.md) |
 | [Robot State (persistent world state)](robot-state.md) |
 | [HRI voice (dashboard mic)](hri-voice.md) |

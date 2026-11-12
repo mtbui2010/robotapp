@@ -8,6 +8,9 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-12
 
+- Screen recordings have sound: the tab's audio (default) and, if ticked, the microphone, mixed into one track; an
+  **audio test** says whether the robot's spoken lines (`speechSynthesis`) reach the recording.
+  [features/screen-recording.md](features/screen-recording.md)
 - [Map tab](features/map-tab.md): object action templates leave out entries whose placeholders were not filled (click-move no longer sends `place: "{place}"`); the place select shows only if `move` uses `{place}`.
 - Chat: the 404 note on a late audio answer comes from `noteForListenReply` (tested); stop label and action are tested as a pair.
 - [Map tab](features/map-tab.md): objects layer. `MAP.objects` (declared by the backend) makes the Map tab draw labelled object markers, polled

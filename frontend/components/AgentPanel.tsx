@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ExpandEditor } from './ExpandEditor'
 import type { Lang } from '../lib/types'
 import type { PlannerMethod } from '../lib/planner'
+import RecordAudioToggles from './RecordAudioToggles'
 
 const LS_CELLS   = 'robotapp_cells'
 const LS_LOG_DATA = 'robotapp_log_data'
@@ -294,6 +295,7 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
             onChange={e => onToggleRecord(e.target.checked)} className="accent-blue-600" />
           record screen
         </label>
+        <RecordAudioToggles />
         <button type="button" onClick={onToggleManualRecord}
           title={manualRecording ? 'Stop recording and save the .webm' : 'Start a manual screen recording (click again to stop & save)'}
           className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${
