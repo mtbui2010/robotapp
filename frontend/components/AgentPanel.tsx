@@ -368,8 +368,8 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
       {/* Input area */}
       {(
         <div className="flex flex-col gap-1">
-          {/* 3 lines of the 11px mono text: 3 x 16.5 + padding + border = 60px */}
-          <div className="grid grid-cols-[3fr_2fr] grid-rows-1 gap-2" style={{ height: '60px' }}>
+          {/* 2 lines of the 11px mono text: 40px (2/3 of the 60px of 3 lines, 2026-11-13); a longer plan scrolls, ⤢ opens the whole cell */}
+          <div className="grid grid-cols-[3fr_2fr] grid-rows-1 gap-2" style={{ height: '40px' }}>
             <div className="relative h-full min-h-0">
               <textarea
                 rows={1}

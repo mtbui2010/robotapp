@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- The two plan input cells are 40 px high (was 60 px: 2 lines of text instead of 3); a longer plan scrolls, ⤢ opens the whole cell.
 - One row instead of two in both toolbars. Agent panel: *Presets* (select + a `⋯` menu with Save as / Rename / Delete / Export /
   Import / Guide), `log ▾` (where, which runs), rec screen, 🔊, ⏺, `×N` (repeat), voice and Run share one line (the Guide dialog is
   opened from the menu, `GuidePanel` is controllable). Cameras: ONE drop list `📷 3/5 ▾` (a view per row: radio in Tab, checkbox in Grid, drag to reorder, webcam / observe at the bottom) next to
