@@ -67,14 +67,23 @@ export async function buildRecordingStream(display: MediaStream, prefs: AudioPre
   const sources: [string, MediaStreamTrack][] = [
     ...tabTracks.map(t => ['tab', t] as [string, MediaStreamTrack]),
     ...(micStream ? micStream.getAudioTracks().map(t => ['mic', t] as [string, MediaStreamTrack]) : [])]
-  if (notes.length) noteRecordingAudio(notes.join(' '))
-  if (!sources.length) return { stream: new MediaStream(video), dispose: () => {}, audio: [] }
+  if (!sources.length) {
+    noteRecordingAudio([...notes, 'This recording has NO sound.'].join(' '))
+    return { stream: new MediaStream(video), dispose: () => {}, audio: [] }
+  }
+  // Tab audio alone: record the shared stream as it is (video + its own audio track). A WebAudio mixer in between is
+  // only needed to join two sources, and it is one more thing that can stay silent (a suspended AudioContext).
+  if (!micStream) {
+    noteRecordingAudio([...notes, 'Recording with sound: tab audio.'].join(' '))
+    return { stream: new MediaStream([...video, ...tabTracks]), dispose: () => {}, audio: ['tab'] }
+  }
 
   const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
   const ctx = new AC()
   const dest = ctx.createMediaStreamDestination()
   for (const [, t] of sources) ctx.createMediaStreamSource(new MediaStream([t])).connect(dest)   // not to ctx.destination: no echo
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+  if (ctx.state !== 'running') await ctx.resume().catch(() => {})
+  noteRecordingAudio([...notes, `Recording with sound: ${[...new Set(sources.map(s => s[0]))].join(' + ')} (mixer ${ctx.state}).`].join(' '))
   return {
     stream: new MediaStream([...video, ...dest.stream.getAudioTracks()]),
     audio: [...new Set(sources.map(s => s[0]))],
