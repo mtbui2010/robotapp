@@ -512,12 +512,13 @@ test('reorderBefore / reorderGroupIds: the moved item takes the target\'s place;
 
 
 // ── lib/targetBadge.ts: the robot / site badges ─────────────────────────────────────────────────────────────
-test('targetBadges: a site named like the robot (any case) is not shown twice', () => {
-  assert.deepEqual(TB.targetBadges('Kcare_bucheon', 'kcare_bucheon'), { robot: 'Kcare_bucheon', location: null })
-  assert.deepEqual(TB.targetBadges('Kcare_bucheon', ' KCARE_BUCHEON '), { robot: 'Kcare_bucheon', location: null })
-  assert.deepEqual(TB.targetBadges('kaair', 'clobot_bucheon'), { robot: 'kaair', location: 'clobot_bucheon' })
-  assert.deepEqual(TB.targetBadges('kaair', ''), { robot: 'kaair', location: null })
-  assert.deepEqual(TB.targetBadges('kaair', undefined), { robot: 'kaair', location: null })
+test('targetBadges: a site named like the robot (any case) is no mismatch; a different name is flagged, not written out', () => {
+  assert.deepEqual(TB.targetBadges('Kcare_bucheon', 'kcare_bucheon'), { robot: 'Kcare_bucheon', location: 'kcare_bucheon', mismatch: false })
+  assert.equal(TB.targetBadges('Kcare_bucheon', ' KCARE_BUCHEON ').mismatch, false)
+  assert.deepEqual(TB.targetBadges('kaair', 'clobot_bucheon'), { robot: 'kaair', location: 'clobot_bucheon', mismatch: true })
+  assert.deepEqual(TB.targetBadges('kaair', ''), { robot: 'kaair', location: null, mismatch: false })      // no site reported: nothing to warn about
+  assert.deepEqual(TB.targetBadges('kaair', undefined), { robot: 'kaair', location: null, mismatch: false })
+  assert.match(TB.mismatchTitle('kaair', 'clobot_bucheon'), /clobot_bucheon.*kaair/)
 })
 
 test('targetTitle: both names (even when one badge) and where the backend is', () => {

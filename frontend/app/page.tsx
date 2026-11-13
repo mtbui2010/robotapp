@@ -24,7 +24,7 @@ import type { Outcome } from '../lib/datasetLog'
 import { pinTabPref, readTabPref, writeTabPref } from '../lib/tabPref'
 import type { ClientEntry, AgentEvent, Lang } from '../lib/types'
 import { useRobotLanguages } from '../lib/useRobotLanguages'
-import { targetBadges, targetTitle } from '../lib/targetBadge'
+import { mismatchTitle, targetBadges, targetTitle } from '../lib/targetBadge'
 import { resolveLanguage, languageLabel, languageOptions } from '../lib/robotLanguages'
 import type { Step } from '../components/PlanPanel'
 
@@ -893,8 +893,9 @@ export default function Home() {
                   <span className="self-center ml-2 flex items-center gap-1 text-xs text-gray-600 min-w-0"
                     title={targetTitle(target.robot, target.location, target.url, target.host)}>
                     <span className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium truncate max-w-[9rem]">🤖 {badges.robot}</span>
-                    {badges.location && (
-                      <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 truncate max-w-[6rem]">📍 {badges.location}</span>
+                    {badges.mismatch && badges.location && (
+                      <span className="px-1 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-600 leading-none"
+                        title={mismatchTitle(badges.robot, badges.location)}>⚠</span>
                     )}
                   </span>
                 )

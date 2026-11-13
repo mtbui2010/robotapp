@@ -8,9 +8,10 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
-- The robot / site badges: when the site is named like the robot (any case: "Kcare_bucheon" / "kcare_bucheon") one badge `🤖 Kcare_bucheon`
-  is shown (118 px, was about 330 px); different names show both, each cut at 9 / 6 rem. The tooltip always names both and the backend
-  (`robot @ site`, URL, host). `lib/targetBadge.ts`, unit-tested.
+- The robot / site badges: when the site is named like the robot (any case: "Kcare_bucheon" / "kcare_bucheon") one badge `🤖 Kcare_bucheon` is
+  shown (118 px, was about 330 px); when the names **differ** the site is not written out, a `⚠` after the robot badge warns instead (its tooltip
+  names both: a tab driving a site that is not the robot's own is easy to miss). The badge tooltip always has `robot @ site`, URL, host.
+  `lib/targetBadge.ts`, unit-tested.
 - `Cameras | Map` is a two-icon switch (📷 / 🗺️, `role=tablist`, tooltips and aria-labels keep the names): 68 px, was about 125 px. The
   camera views menu icon is 👁 so it is not confused with the switch. [features/camera-streaming.md](features/camera-streaming.md)
 - The hint line under the plan cells ("Run → cell 1 (blue border) · click a cell to select · Ctrl+Enter = run active") is gone; the same
