@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { NOTE_EVENT, getAudioPrefs, setAudioPrefs, testRecordingAudio } from '../lib/recordAudio'
+import { NOTE_EVENT, getAudioPrefs, setAudioPrefs, testRecordingAudio, type AudioSource } from '../lib/recordAudio'
 
 // Sound options for the screen recordings, shown next to the record controls: the tab's audio, the microphone, and a
 // 5 s self-test that says whether the robot's spoken lines reach the recording on this machine. Takes effect at the
@@ -8,18 +8,19 @@ import { NOTE_EVENT, getAudioPrefs, setAudioPrefs, testRecordingAudio } from '..
 export default function RecordAudioToggles() {
   const [tab, setTab] = useState(true)
   const [mic, setMic] = useState(false)
+  const [src, setSrc] = useState<AudioSource>('tab')
   const [note, setNote] = useState('')
   const [testing, setTesting] = useState(false)
 
   useEffect(() => {                         // localStorage is read after mount (static export: no window while building)
-    const p = getAudioPrefs(); setTab(p.tab); setMic(p.mic)
+    const p = getAudioPrefs(); setTab(p.tab); setMic(p.mic); setSrc(p.src ?? 'tab')
     const on = (e: Event) => setNote(String((e as CustomEvent).detail || ''))
     window.addEventListener(NOTE_EVENT, on)
     return () => window.removeEventListener(NOTE_EVENT, on)
   }, [])
 
   const runTest = async () => {
-    setTesting(true); setNote('Testing: in the share dialog choose "This tab" and tick "Also share tab audio" (5 s)…')
+    setTesting(true); setNote(src === 'system' ? 'Testing (about 9 s): choose "Entire screen" and tick "Also share system audio"…' : 'Testing (about 9 s): choose "This tab" and tick "Also share tab audio"…')
     try { setNote((await testRecordingAudio()).text) } catch (e) { setNote(`Test failed: ${(e as Error).message}`) }
     setTesting(false)
   }
@@ -30,8 +31,14 @@ export default function RecordAudioToggles() {
         title="Record the page's sound (earcons, alarm). In the share dialog tick 'Also share tab audio'.">
         <input type="checkbox" checked={tab} className="accent-blue-600"
           onChange={e => { setTab(e.target.checked); setAudioPrefs({ tab: e.target.checked }) }} />
-        🔊 tab audio
+        🔊 sound
       </label>
+      <select value={src} onChange={e => { setSrc(e.target.value as AudioSource); setAudioPrefs({ src: e.target.value as AudioSource }) }}
+        title="tab: this tab only (the robot's spoken lines are NOT included when the browser leaves them out of tab audio). whole system: share the entire screen with system audio (Windows / ChromeOS) — includes the robot's spoken lines."
+        className="bg-white border border-gray-300 rounded px-1 py-0.5">
+        <option value="tab">tab</option>
+        <option value="system">whole system</option>
+      </select>
       <label className="flex items-center gap-1 cursor-pointer"
         title="Also record the microphone (your voice), mixed into the same audio track.">
         <input type="checkbox" checked={mic} className="accent-blue-600"

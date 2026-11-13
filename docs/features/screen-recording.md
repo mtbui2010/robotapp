@@ -21,12 +21,16 @@ from the next recording. Notes (no audio track, mic refused) reach the toggles t
 window event; at every start the toggles also say what the recording carries ("Recording with sound: tab audio." /
 "This recording has NO sound.").
 
-**The robot's spoken lines are the open question.** They come from `speechSynthesis`, whose output Chrome often leaves
-out of tab audio (the robot's own speaker, `source='robot'`, is outside the browser and is never recorded). The
-**audio test** button measures it on the machine in use (5 s: shares the tab with its audio, plays a beep through
-WebAudio and says a sentence, reports the level of each). If the spoken line is *not recorded*, the lines have to be
-played from an `<audio>` / WebAudio source (backend text-to-speech endpoint + `useVoiceOutput` / `speakAndWait`
-change): not done yet, only needed if the test says so.
+**The robot's spoken lines are not in tab audio on every machine.** They come from `speechSynthesis`, which Chrome may leave
+out of tab audio: on the 2026-11-13 test machine an English test sentence was recorded (-19 dB) but a real run's Korean
+`announce` was silent for its whole 20 s (only the earcon, a WebAudio sound, was in the clip). The voice differs per
+language, so the **audio test** now says an English and a Korean sentence and reports both. Two ways out:
+
+- **Sound source = whole system** (the select next to 🔊 sound): the share dialog is for a screen — choose "Entire screen"
+  and tick "Also share system audio" (Windows / ChromeOS only); everything the computer plays, the robot's lines included,
+  is recorded, and so is the whole screen.
+- Play the lines from an `<audio>` / WebAudio source (backend text-to-speech endpoint + `useVoiceOutput` / `speakAndWait`
+  change): not done; the robot's own speaker (`source='robot'`) is outside the browser and is never recorded.
 
 Test by hand: tick **record screen**, share "This tab" with tab audio, run `announce::안녕하세요` with 🔊 voice on, stop,
 play the `.webm`. Repeat with 🎤 mic ticked and say something.
