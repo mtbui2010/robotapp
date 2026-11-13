@@ -8,6 +8,10 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- Two toolbar rows are one line each: the capture row (labels `log` / `rec screen`, the sound options folded into one 🔊 button
+  with a popover and a status dot, the manual record button icon-only) and the camera row (in Grid layout every view is a chip that
+  shows / hides it instead of a checkbox + label; `observe (webcam)` is `webcam`, its device picker narrower).
+  [features/screen-recording.md](features/screen-recording.md), [features/camera-streaming.md](features/camera-streaming.md)
 - Screen recording keeps the robot's voice: what the user hears is always the browser's voice. New default source **system**
   (Windows / ChromeOS: the file has that same voice); **direct** still works everywhere but the file gets the backend's
   voice of the lines, played into the recording only. 🎤 taps the listen stream in every source. [features/screen-recording.md](features/screen-recording.md)

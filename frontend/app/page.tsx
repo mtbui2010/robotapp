@@ -856,7 +856,7 @@ export default function Home() {
             <AgentPanel toolbarExtra={<>
           <label
             title={voiceSupported ? 'Sound in this browser: milestones, the robot\'s lines (announce / ask / qa), earcons, alarm. Off = silent (the lines still show in the chat)' : 'Browser does not support speech synthesis'}
-            className={`flex items-center gap-1.5 text-xs cursor-pointer ${voiceSupported ? 'text-gray-600' : 'text-gray-300 cursor-not-allowed'}`}>
+            className={`flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap ${voiceSupported ? 'text-gray-600' : 'text-gray-300 cursor-not-allowed'}`}>
             <input type="checkbox" checked={voiceOut} disabled={!voiceSupported}
               onChange={e => setVoiceOut(e.target.checked)} className="accent-blue-600" />
             🔊 voice

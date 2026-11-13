@@ -243,12 +243,12 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
     <div className="flex flex-col gap-1">
 
       {/* Capture row — logging + screen recording, and Run / Stop at its end (free-text commands go through the 💬 Chat card) */}
-      <div className="flex items-center gap-3 text-[11px] text-gray-600">
+      <div className="flex items-center gap-2 text-[11px] text-gray-600 whitespace-nowrap min-w-0">
         <label className="flex items-center gap-1 cursor-pointer"
           title="Save rgb / depth / detection results of this run">
           <input type="checkbox" checked={logData}
             onChange={e => updateLogData(e.target.checked)} className="accent-blue-600" />
-          log data
+          log
         </label>
         {logData && (
           <div className="inline-flex rounded border border-gray-300 overflow-hidden">
@@ -293,7 +293,7 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
           title="Record the screen for the working session — downloads a .webm when the plan ends">
           <input type="checkbox" checked={recordEnabled}
             onChange={e => onToggleRecord(e.target.checked)} className="accent-blue-600" />
-          record screen
+          rec screen
         </label>
         <RecordAudioToggles />
         <button type="button" onClick={onToggleManualRecord}
@@ -304,9 +304,9 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
               : 'border-gray-300 text-gray-600 hover:bg-gray-50'
           }`}>
           <span className={manualRecording ? 'animate-pulse' : ''}>{manualRecording ? '⏹' : '⏺'}</span>
-          {manualRecording ? 'stop' : 'record'}
+          {manualRecording && 'stop'}
         </button>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           {toolbarExtra}
           {running
             ? <button onClick={onStop}

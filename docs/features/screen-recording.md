@@ -7,7 +7,8 @@ run (`<run>_succeed.webm`). `getDisplayMedia` needs a click and a share dialog, 
 ## Sound
 
 Until 2026-11-12 the recorder asked for video only (`audio: false`), so every file was silent. `lib/recordAudio.ts` has three
-**sound sources**, picked next to 🔊 sound (`robotapp_record_audio_source_v2`; the default is **system** on Windows / ChromeOS,
+**sound sources**, picked in the popover of the one **🔊 button** next to *rec screen* (it also holds *record sound*, 🎤 *your
+answers* and the *audio test*, and shows a dot: green = the last recording carries sound, amber = it does not; `robotapp_record_audio_source_v2`; the default is **system** on Windows / ChromeOS,
 else **direct**). **What the user hears never changes:** the robot speaks with the browser's own voice, with or without a
 recording.
 

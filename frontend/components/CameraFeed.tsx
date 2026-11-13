@@ -697,6 +697,10 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
     })
   }
 
+  // Grid layout: every view is a chip that shows / hides it in the grid (was a checkbox + label); Tab layout keeps the tabs.
+  const chipCls = (on: boolean) => `px-2 py-0.5 text-[11px] rounded-full border whitespace-nowrap transition-colors ${
+    on ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100'}`
+
   const onGridDragEnd = () => {
     setGridDragId(null)
     setGridDragOverId(null)
@@ -704,7 +708,7 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1 border-b border-gray-200">
+      <div className="flex items-center gap-1 border-b border-gray-200 whitespace-nowrap overflow-x-auto">
         {/* Layout toggle (Tab | Grid) */}
         <div className="flex bg-gray-100 rounded overflow-hidden text-[11px] mr-1 self-center">
           <button
@@ -726,15 +730,6 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
                 : 'border-transparent'
             } ${dragOverId === c.id ? 'bg-blue-50' : ''}`}
           >
-            {layout === 'grid' && (
-              <input
-                type="checkbox"
-                checked={gridIds.includes(c.id)}
-                onChange={() => toggleGridId(c.id)}
-                title="Show in grid"
-                className="ml-1.5"
-              />
-            )}
             <button
               draggable
               onDragStart={(e) => onTabDragStart(e, c.id)}
@@ -742,13 +737,12 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
               onDragLeave={() => onTabDragLeave(c.id)}
               onDrop={(e) => onTabDrop(e, c.id)}
               onDragEnd={onTabDragEnd}
-              onClick={() => setSelectedId(c.id)}
-              title="Drag to reorder"
-              className={`px-3 py-1 text-xs transition-colors cursor-grab active:cursor-grabbing ${
-                selectedId === c.id && layout === 'tab'
-                  ? 'text-blue-600 font-medium'
-                  : 'text-gray-500 hover:text-gray-700'
-              } ${dragId === c.id ? 'opacity-40' : ''}`}
+              onClick={() => (layout === 'grid' ? toggleGridId(c.id) : setSelectedId(c.id))}
+              title={layout === 'grid' ? 'Show / hide in the grid · drag to reorder' : 'Drag to reorder'}
+              className={`${layout === 'grid'
+                ? chipCls(gridIds.includes(c.id))
+                : `px-3 py-1 text-xs transition-colors ${selectedId === c.id ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`
+              } cursor-grab active:cursor-grabbing ${dragId === c.id ? 'opacity-40' : ''}`}
             >
               {c.name || c.id}
             </button>
@@ -761,22 +755,12 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
             isLogTab && layout === 'tab' ? 'border-blue-500' : 'border-transparent'
           }`}
         >
-          {layout === 'grid' && (
-            <input
-              type="checkbox"
-              checked={gridIds.includes(LOG_TAB)}
-              onChange={() => toggleGridId(LOG_TAB)}
-              title="Show in grid"
-              className="ml-1.5"
-            />
-          )}
           <button
-            onClick={() => setSelectedId(LOG_TAB)}
-            className={`px-3 py-1 text-xs transition-colors ${
-              isLogTab && layout === 'tab'
-                ? 'text-blue-600 font-medium'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            onClick={() => (layout === 'grid' ? toggleGridId(LOG_TAB) : setSelectedId(LOG_TAB))}
+            title={layout === 'grid' ? 'Show / hide in the grid' : undefined}
+            className={layout === 'grid'
+              ? chipCls(gridIds.includes(LOG_TAB))
+              : `px-3 py-1 text-xs transition-colors ${isLogTab ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
           >
             log_image
           </button>
@@ -789,22 +773,12 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
               selectedId === OBSERVE_TAB && layout === 'tab' ? 'border-blue-500' : 'border-transparent'
             }`}
           >
-            {layout === 'grid' && (
-              <input
-                type="checkbox"
-                checked={gridIds.includes(OBSERVE_TAB)}
-                onChange={() => toggleGridId(OBSERVE_TAB)}
-                title="Show in grid"
-                className="ml-1.5"
-              />
-            )}
             <button
-              onClick={() => setSelectedId(OBSERVE_TAB)}
-              className={`px-3 py-1 text-xs transition-colors ${
-                selectedId === OBSERVE_TAB && layout === 'tab'
-                  ? 'text-blue-600 font-medium'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              onClick={() => (layout === 'grid' ? toggleGridId(OBSERVE_TAB) : setSelectedId(OBSERVE_TAB))}
+              title={layout === 'grid' ? 'Show / hide in the grid' : undefined}
+              className={layout === 'grid'
+                ? chipCls(gridIds.includes(OBSERVE_TAB))
+                : `px-3 py-1 text-xs transition-colors ${selectedId === OBSERVE_TAB ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
             >
               observe
             </button>
@@ -813,20 +787,21 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
 
         {/* observe activation checkbox + device picker — same row, right-aligned */}
         <div className="ml-auto mr-1 flex items-center gap-1.5 self-center">
-          <label className="flex items-center gap-1 text-[11px] text-gray-500 cursor-pointer">
+          <label className="flex items-center gap-1 text-[11px] text-gray-500 cursor-pointer whitespace-nowrap"
+            title="Use a webcam of this computer (a phone through DroidCam / Iriun too) as the 'observe' view">
             <input
               type="checkbox"
               checked={observeOn}
               onChange={e => { if (e.target.checked) enableObserve(); else disableObserve() }}
             />
-            observe (webcam)
+            webcam
           </label>
           {observeOn && (
             <select
               value={webcamDeviceId}
               onChange={e => switchWebcam(e.target.value)}
               title="Choose which webcam feeds the observe tab"
-              className="text-[11px] text-gray-600 bg-gray-100 border border-gray-200 rounded px-1 py-0.5 max-w-[10rem]"
+              className="text-[11px] text-gray-600 bg-gray-100 border border-gray-200 rounded px-1 py-0.5 max-w-[7rem]"
             >
               {/* Empty option only when no device is selected yet */}
               {!webcamDeviceId && <option value="">Default camera</option>}

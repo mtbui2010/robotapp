@@ -39,3 +39,10 @@ arriving mid-probe is served the previous result instead of queueing behind it.
 One cost from the same investigation is still **not** addressed: `kcare_robot`'s
 `make run` passes `--reload` to uvicorn, which watches the whole (sshfs-mounted)
 tree.
+
+## Grid layout: chips (2026-11-13)
+
+In the Cameras tab, with the **Grid** layout every view (each camera, `log_image`, `observe`) is a small chip that shows / hides it in the
+grid (blue = shown); it was a checkbox plus a label. Chips can still be dragged to reorder. The **Tab** layout keeps the tabs.
+The webcam used as the `observe` view is switched on with the `webcam` checkbox (a phone through DroidCam / Iriun works too); its
+device picker is at most 7 rem wide. The row stays one line (it scrolls sideways when the window is narrower than its content).
