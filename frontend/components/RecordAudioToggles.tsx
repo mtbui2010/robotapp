@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { NOTE_EVENT, getAudioPrefs, setAudioPrefs, testRecordingAudio, type AudioSource } from '../lib/recordAudio'
+import { NOTE_EVENT, defaultSource, getAudioPrefs, setAudioPrefs, testRecordingAudio, type AudioSource } from '../lib/recordAudio'
 
 // Sound options for the screen recordings, shown next to the record controls: the tab's audio, the microphone, and a
 // 5 s self-test that says whether the robot's spoken lines reach the recording on this machine. Takes effect at the
@@ -8,19 +8,19 @@ import { NOTE_EVENT, getAudioPrefs, setAudioPrefs, testRecordingAudio, type Audi
 export default function RecordAudioToggles() {
   const [tab, setTab] = useState(true)
   const [mic, setMic] = useState(false)
-  const [src, setSrc] = useState<AudioSource>('direct')
+  const [src, setSrc] = useState<AudioSource>('system')
   const [note, setNote] = useState('')
   const [testing, setTesting] = useState(false)
 
   useEffect(() => {                         // localStorage is read after mount (static export: no window while building)
-    const p = getAudioPrefs(); setTab(p.tab); setMic(p.mic); setSrc(p.src ?? 'direct')
+    const p = getAudioPrefs(); setTab(p.tab); setMic(p.mic); setSrc(p.src ?? defaultSource())
     const on = (e: Event) => setNote(String((e as CustomEvent).detail || ''))
     window.addEventListener(NOTE_EVENT, on)
     return () => window.removeEventListener(NOTE_EVENT, on)
   }, [])
 
   const runTest = async () => {
-    setTesting(true); setNote(src === 'direct' ? 'Testing (about 12 s): the backend says a Korean and an English sentence into the recording graph…' : src === 'system' ? 'Testing (about 9 s): choose "Entire screen" and tick "Also share system audio"…' : 'Testing (about 9 s): choose "This tab" and tick "Also share tab audio"…')
+    setTesting(true); setNote(src === 'direct' ? 'Testing (about 12 s): the backend says a Korean and an English sentence into the recording…' : src === 'system' ? 'Testing (about 9 s): choose "Entire screen" and tick "Also share system audio"…' : 'Testing (about 9 s): choose "This tab" and tick "Also share tab audio"…')
     try { setNote((await testRecordingAudio()).text) } catch (e) { setNote(`Test failed: ${(e as Error).message}`) }
     setTesting(false)
   }
@@ -34,14 +34,14 @@ export default function RecordAudioToggles() {
         🔊 sound
       </label>
       <select value={src} onChange={e => { setSrc(e.target.value as AudioSource); setAudioPrefs({ src: e.target.value as AudioSource }) }}
-        title="direct: the app puts the robot's voice (from the backend, GET /tts), the beeps and the mic into the recording itself — works on every OS and browser, no 'share audio' tick. tab: this tab's audio (the browser's own voice may be left out). whole system: share the entire screen with system audio (Windows / ChromeOS)."
+        title="system: share the entire screen with system audio (Windows / ChromeOS) — the robot's voice is the same browser voice you hear. direct: works everywhere, you hear the browser's voice and the file has the backend's voice of the same lines (GET /tts). tab: this tab's audio (Chrome often leaves the browser's voice out)."
         className="bg-white border border-gray-300 rounded px-1 py-0.5">
-        <option value="direct">direct</option>
+        <option value="system">system (same voice)</option>
+        <option value="direct">direct (backend voice)</option>
         <option value="tab">tab</option>
-        <option value="system">whole system</option>
       </select>
       <label className="flex items-center gap-1 cursor-pointer"
-        title="Also record your voice. Direct: your answers, taken from the dashboard's own listening (exactly what the robot hears). Tab / whole system: the microphone, mixed into the same track.">
+        title="Also record your voice: your answers, taken from the dashboard's own listening (exactly what the robot hears) while it listens.">
         <input type="checkbox" checked={mic} className="accent-blue-600"
           onChange={e => { setMic(e.target.checked); setAudioPrefs({ mic: e.target.checked }) }} />
         🎤 mic

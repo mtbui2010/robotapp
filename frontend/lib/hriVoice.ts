@@ -105,10 +105,10 @@ export function playAlarm(volume = 0.6, cycles = 3): Promise<void> {
 // unavailable), so a following listen does not transcribe the robot's own voice.
 // `rate`: SpeechSynthesisUtterance.rate (1 = normal; HRI_CONFIGS.speech_rate, sent with the event).
 export function speakAndWait(text: string, lang?: string | null, rate?: number | null): Promise<void> {
-  // While a direct recording runs (lib/recordVoice.ts) the line is played through the recorder's audio graph, so the
-  // recording has it; without one, or when the backend cannot make the audio, the browser's own voice.
+  // Always the browser's voice, what the user hears with or without a recording. While a direct recording runs, the backend's
+  // voice of the same line is also played into the recording (lib/recordVoice.ts): the listen waits for both to end.
   if (getVoiceSink() && (text || '').trim()) {
-    return speakViaSink(text, lang, rate).then(ok => (ok ? undefined : speakNative(text, lang, rate)))
+    return Promise.all([speakNative(text, lang, rate), speakViaSink(text, lang, rate)]).then(() => undefined)
   }
   return speakNative(text, lang, rate)
 }

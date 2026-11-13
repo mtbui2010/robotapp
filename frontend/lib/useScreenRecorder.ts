@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useRef, useState } from 'react'
-import { buildRecordingStream, displayOptions, getAudioPrefs, makeRecorderContext, type RecordingStream } from './recordAudio'
+import { buildRecordingStream, displayOptions, getAudioPrefs, makeRecorderContext, needsRecorderContext, type RecordingStream } from './recordAudio'
 
 // Screen recorder for a working session. On enabling the checkbox the user (1)
 // grants a target folder ONCE (File System Access API — they pick/create
@@ -103,9 +103,9 @@ export function useScreenRecorder() {
 
   const toggleRecord = useCallback(async (on: boolean): Promise<void> => {
     if (on) {
-      // The direct source's audio context is made HERE, in the click, before anything is awaited (autoplay policy).
+      // The recorder's audio context (direct source, or a tapped microphone) is made HERE, in the click, before anything is awaited (autoplay policy).
       const prefs = getAudioPrefs()
-      const ctx = (prefs.src ?? 'direct') === 'direct' && prefs.tab ? makeRecorderContext() : undefined
+      const ctx = needsRecorderContext(prefs) ? makeRecorderContext() : undefined
       // 1) Reuse an already-granted folder silently (no picker, no permission
       //    re-prompt); otherwise recordings go to Downloads. Never asks where to save.
       try { dirRef.current = await loadDirSilent() } catch { dirRef.current = null }
@@ -181,7 +181,7 @@ export function useScreenRecorder() {
       return
     }
     const prefs = getAudioPrefs()
-    const ctx = (prefs.src ?? 'direct') === 'direct' && prefs.tab ? makeRecorderContext() : undefined   // in the click, before any await
+    const ctx = needsRecorderContext(prefs) ? makeRecorderContext() : undefined   // in the click, before any await
     // Start path — reuse an already-granted folder silently (no picker, no
     // permission re-prompt); otherwise the recording saves to Downloads. The
     // folder is only ever chosen the first time via the "record screen" checkbox.

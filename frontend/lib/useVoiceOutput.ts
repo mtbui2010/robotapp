@@ -123,12 +123,9 @@ export function useVoiceOutput(opts: UseVoiceOutputOptions): UseVoiceOutputResul
       if (r && r > 0) utterance.rate = r
       window.speechSynthesis.speak(utterance)
     }
-    // While a direct recording runs the line goes through the recorder's audio graph (lib/recordVoice.ts), else the browser's voice.
-    if (getVoiceSink()) {
-      void speakViaSink(trimmed, own ?? langRef.current, r, true).then(ok => { if (!ok) native() })
-      return
-    }
-    native()
+    native()                                   // what the user hears: the browser's voice, with or without a recording
+    // While a direct recording runs the backend's voice of the line also goes into the recording (lib/recordVoice.ts).
+    if (getVoiceSink()) void speakViaSink(trimmed, own ?? langRef.current, r, true)
   }
 
   // Stable identity so consumers can list it in effect deps without re-firing.

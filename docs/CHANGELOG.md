@@ -8,6 +8,9 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- Screen recording keeps the robot's voice: what the user hears is always the browser's voice. New default source **system**
+  (Windows / ChromeOS: the file has that same voice); **direct** still works everywhere but the file gets the backend's
+  voice of the lines, played into the recording only. 🎤 taps the listen stream in every source. [features/screen-recording.md](features/screen-recording.md)
 - Screen recording sound: new **direct** source (the default). The app puts the robot's lines (backend `GET /tts`, gTTS), the
   beeps and the microphone into the recording itself, so it works on every OS and browser; the tab source missed the
   browser's Korean voice. [features/screen-recording.md](features/screen-recording.md)

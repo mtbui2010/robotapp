@@ -2,19 +2,23 @@
 import { api } from './api'
 import { noteRecordingAudio } from './recordNote'
 
-// "Direct" recording: the browser's own speech synthesis cannot be recorded on every machine (a Korean line was silent in a
-// tab-audio clip), so while a recording runs with the direct source, the robot's lines are fetched as audio from the backend
-// (GET /tts) and played through a WebAudio graph the recorder owns: they reach the speakers AND the recording.
-// The earcons (hriVoice.playEarcon) use the same graph. Without a recording (no sink) nothing changes: speechSynthesis.
+// The recorder's audio graph (the "sink"), installed while a recording runs:
+//  • voice: true  ("direct" source) — the browser's own speech synthesis cannot be recorded on every machine (a Korean line was
+//    silent in a tab-audio clip), so each robot line is ALSO fetched as audio from the backend (GET /tts) and played into the
+//    graph, which only the recording hears. What the user hears does not change: the browser's voice, exactly as without a
+//    recording. The earcons are made in the graph (heard and recorded).
+//  • mic: true — the stream recordPhrase listens with is tapped into the recording (the user's answers), in any source.
+// Without a sink nothing changes: speechSynthesis.
 
-export interface VoiceSink { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; mic: boolean }   // mic: record the user's answers
+export interface VoiceSink { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; mic: boolean; voice: boolean }   // mic: the user's answers; voice: the backend's copy of the robot's lines + the earcons
 
 let sink: VoiceSink | null = null
 let current: { stop: () => void } | null = null
 let lastError = ''
 let noted = false
 
-export const getVoiceSink = (): VoiceSink | null => sink
+/** The sink the robot's voice and the earcons go through (null when no recording, or a source that records the real output). */
+export const getVoiceSink = (): VoiceSink | null => (sink && sink.voice ? sink : null)
 export const lastVoiceError = (): string => lastError
 
 /** The recorder installs its graph when a direct recording starts and removes it (null) when it ends. */
@@ -41,13 +45,13 @@ export function stopVoice(): void {
   current = null
 }
 
-/** Say `text` through the recording graph. Resolves true when it was played (at its end), false when the caller must use
- *  speechSynthesis instead (no sink, or the backend could not make the audio: said once in the toggles' note).
+/** Play the backend's voice of `text` into the recording graph (the recording only). Resolves true when it was played (at its
+ *  end), false when it could not be (no sink, or the backend could not make the audio: said once in the toggles' note).
  *  `interrupt`: cut the line still playing (milestones supersede each other). */
 export async function speakViaSink(text: string, lang?: string | null, rate?: number | null, interrupt = false): Promise<boolean> {
   const s = sink
   const t = (text || '').trim()
-  if (!s || !t) return false
+  if (!s || !s.voice || !t) return false
   try {
     const data = await api.ttsAudio(t, (lang || '').slice(0, 2).toLowerCase() || undefined)
     if (sink !== s) return false                                   // the recording ended meanwhile
@@ -63,8 +67,7 @@ export async function speakViaSink(text: string, lang?: string | null, rate?: nu
     const r = rate && rate > 0 ? Math.min(2, Math.max(0.5, rate)) : 1
     el.playbackRate = r
     const node = s.ctx.createMediaElementSource(el)
-    node.connect(s.dest)                                           // the recording
-    node.connect(s.ctx.destination)                                // and the speakers
+    node.connect(s.dest)                                           // the recording only: the user hears the browser's voice
     const me = { stop: () => el.pause() }
     try {
       await new Promise<void>((resolve, reject) => {
@@ -85,7 +88,7 @@ export async function speakViaSink(text: string, lang?: string | null, rate?: nu
     lastError = (e as Error)?.message || String(e)
     if (!noted) {
       noted = true
-      noteRecordingAudio(`Robot voice NOT recorded: ${lastError} (the backend needs GET /tts: restart it, and it needs the internet for gTTS). The browser voice is used.`)
+      noteRecordingAudio(`Robot voice NOT recorded: ${lastError} (the backend needs GET /tts: restart it, and it needs the internet for gTTS). You still hear the browser's voice.`)
     }
     return false
   }

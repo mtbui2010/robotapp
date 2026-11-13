@@ -6,39 +6,42 @@ run (`<run>_succeed.webm`). `getDisplayMedia` needs a click and a share dialog, 
 
 ## Sound
 
-Until 2026-11-12 the recorder asked for video only (`audio: false`), so every file was silent. `lib/recordAudio.ts` now has
-three **sound sources**, picked next to 🔊 sound (`robotapp_record_audio_source`):
+Until 2026-11-12 the recorder asked for video only (`audio: false`), so every file was silent. `lib/recordAudio.ts` has three
+**sound sources**, picked next to 🔊 sound (`robotapp_record_audio_source_v2`; the default is **system** on Windows / ChromeOS,
+else **direct**). **What the user hears never changes:** the robot speaks with the browser's own voice, with or without a
+recording.
 
-| Source | What is recorded | Notes |
+| Source | What the file gets | Notes |
 |---|---|---|
-| **direct** (default) | the robot's spoken lines, the earcons / alarm, and your spoken answers when 🎤 is ticked | Works on every OS and browser, no "share audio" tick. The app makes the sound itself (below). The lines come from the backend, `GET /tts` (gTTS: the backend machine needs the internet), so their voice is gTTS's, not the browser's. |
-| tab | this tab's audio | The share dialog needs **Also share tab audio**. Chrome often leaves `speechSynthesis` out of tab audio (a real run's Korean `announce` was silent for 20 s; only the earcon was in the clip). Tab audio alone is recorded as the shared stream, no mixer. |
-| whole system | everything the computer plays | "Entire screen" + "Also share system audio" (Windows / ChromeOS); records the whole screen. |
+| **system** | everything the computer plays: the robot's voice is the SAME browser voice | The share dialog is for a screen: choose "Entire screen" and tick "Also share system audio" (Windows / ChromeOS only); the whole screen is recorded. Without the tick the toggles say "No system audio". |
+| **direct** | the backend's voice of the same lines (`GET /tts`, gTTS), and the earcons | Works on every OS and browser, no "share audio" tick. The file's voice differs from the one heard: gTTS, not the browser's. The backend machine needs the internet. |
+| tab | this tab's audio | Needs **Also share tab audio**. Chrome often leaves `speechSynthesis` out of tab audio (a real run's Korean `announce` was silent for 20 s; only the earcon was in the clip). |
+
+With a source that shares audio (system / tab) and no 🎤, the shared stream is recorded as it is (no mixer to stay silent).
+
+### Your answers (🎤)
+
+In every source, with 🎤 ticked, the stream `recordPhrase` opens for each listen (the one Whisper hears) is tapped into the
+recording for the length of the listen (`recordVoice.tapMic`, not routed to the speakers): the clip has exactly your answers,
+without room noise or the robot's voice from the speakers (an always-open second microphone was silent on a real machine). The
+shared sound and the answers are mixed into one track (`ctx` made in the click: autoplay policy; a silent `ConstantSourceNode`
+keeps samples flowing — a track with none made the recorder write an empty file). A browser-recognition listen
+(`capture: 'browser'`) is not tapped; an answer clicked on the screen has no voice.
 
 ### How direct works
 
-`useScreenRecorder` creates an `AudioContext` **in the click** (autoplay policy), shares video only (`getDisplayMedia`
-`audio: false`), and `buildRecordingStream` makes a `MediaStreamAudioDestinationNode` whose track is the recording's only
-audio (a silent `ConstantSourceNode` keeps samples flowing: with nothing connected the recorder wrote an empty file). It installs the context as the **voice sink** (`lib/recordVoice.ts`):
+`useScreenRecorder` creates an `AudioContext` **in the click**, shares video only (`audio: false`), and installs it as the
+**voice sink** (`lib/recordVoice.ts`): `speakAndWait` and `useVoiceOutput.speak` say the line with the browser's voice as
+always and ALSO fetch the backend's voice of it (`api.ttsAudio`) and play it with a media element wired into the recording
+only (speed: `playbackRate` with `preservesPitch`; a buffer source's rate raised the pitch and made it distorted). The listen
+waits for both to end. `playEarcon` / `playAlarm` make their tones in the sink's context (heard and recorded). If the fetch
+fails the toggles say once "Robot voice NOT recorded: …" (old backend without `/tts`, no internet for gTTS) and the line is
+simply not in the file.
 
-- `speakAndWait` (the HRI `speak` lines) and `useVoiceOutput.speak` (narration) fetch the sentence as audio
-  (`api.ttsAudio`), play it with a media element wired into the destination (recorded) and `ctx.destination` (heard). The line's speed
-  (`HRI_CONFIGS.speech_rate`) is the element's `playbackRate` with `preservesPitch`: an `AudioBufferSourceNode`'s rate raises the
-  pitch (rate 1.3 made the Korean voice sound distorted, 2026-11-13); measured in a recording: rate 1.5 -> 1.07 s instead of 1.6 s, still 500 Hz. Narration
-  supersedes the line still playing, as with the browser voice. If the fetch fails the browser's voice is used and the
-  toggles say once "Robot voice NOT recorded: …" (old backend without `/tts`, no internet for gTTS).
-- `playEarcon` / `playAlarm` make their tones in the sink's context.
-- **Your voice** (🎤 ticked): not a second always-open microphone (that one was silent on a real machine, and would add the room's
-  noise and the robot's voice from the speakers). The stream `recordPhrase` already opens for each listen, the one Whisper
-  hears, is tapped into the destination for the length of the listen (`recordVoice.tapMic`, not routed to the speakers). The
-  clip therefore has exactly your answers. Measured with a fake microphone: nothing in the listen window with 🎤 off, the
-  signal in it with 🎤 on, and the answer still posted to the backend. A browser-recognition listen (`capture: 'browser'`) is not tapped.
-- With no recording running there is no sink and nothing changes: `speechSynthesis`.
+The **audio test** (direct: no share dialog) has the backend say a Korean and an English sentence into the graph and reports the
+level on the recording's track, or why it failed. For system / tab it shares the screen / tab, plays a beep and says one
+sentence per language through the browser's voice: it tells whether the browser's voice reaches the file in that source.
 
-The **audio test** (direct: no share dialog) has the backend say a Korean and an English sentence into the graph and
-reports the level on the recording's track, or why it failed. For tab / system it shares the tab / screen, plays a beep
-and says one sentence per language.
-
-Test by hand: restart the backend (it needs `GET /tts`), tick **record screen**, run `announce::안녕하세요`, stop, play the
-`.webm`; again with 🎤 mic ticked, saying something while `ask::` listens. The robot's own speaker (`source='robot'`) is
-outside the browser and is never recorded.
+Test by hand: restart the backend (direct needs `GET /tts`), tick **record screen**, run `announce::안녕하세요`, stop, play the
+`.webm`; again with 🎤 ticked, answering an `ask::`. The robot's own speaker (`source='robot'`) is outside the browser and is
+never recorded.

@@ -1,20 +1,17 @@
 'use client'
 // Sound for the screen recordings (useScreenRecorder).
 //
-//  • tab audio  — getDisplayMedia({audio}) : the page's own sound (earcons, the 119 alarm, any <audio>). The user must
-//                 tick "Share tab audio" in the browser's share dialog.
-//  • direct     — (default) the app puts the sound into the recording itself, so it works on every OS and browser: the robot's
-//                 lines are fetched as audio from the backend (GET /tts) and played through a WebAudio graph the recorder owns,
-//                 the earcons and alarm are made in the same graph, and the microphone is added to it. No tab audio is shared.
-//  • system     — the same checkbox, source 'system': "Entire screen" + "Share system audio" (Windows / ChromeOS): everything the
-//                 computer plays, which includes the robot's spoken lines (see below). The whole screen is recorded then.
-//  • microphone — getUserMedia: the user's voice (qa / ask), with echo cancellation, because the tab's sound comes out
-//                 of the speakers and into the mic again.
-// Both are mixed into ONE audio track with WebAudio, so the .webm always has a single, ordinary audio track.
-//
-// What it cannot do: capture the browser's speechSynthesis (the robot's spoken lines) on every platform — Chrome often
-// leaves it out of the tab audio. `testRecordingAudio` measures that on this machine; if it is silent, the lines have
-// to be played from an <audio> / WebAudio source instead (needs a TTS endpoint on the backend).
+//  • system — "Entire screen" + "Share system audio" (Windows / ChromeOS): everything the computer plays, so the robot's voice is
+//              the SAME browser voice the user hears without a recording. The default there. The whole screen is recorded.
+//  • direct — works on every OS and browser: the app puts the sound into the recording itself. The user still hears the
+//              browser's voice; the recording gets the backend's voice of the same lines (GET /tts, a different voice) and
+//              the earcons, made in a WebAudio graph the recorder owns. No audio is shared.
+//  • tab    — getDisplayMedia({audio}) of this tab: needs "Also share tab audio", and Chrome often leaves the browser's own
+//              voice (speechSynthesis) out of it.
+// The user's answers (🎤): in every source the stream the dashboard listens with (recordPhrase, what Whisper hears) is tapped
+// into the recording for the length of each listen (recordVoice.tapMic): exactly the answers, no room noise, no second microphone.
+// With a tapped microphone the sounds are mixed with WebAudio into ONE audio track; without one the shared stream is recorded
+// as it is (system / tab) so a suspended mixer cannot silence it.
 
 import { NOTE_EVENT, noteRecordingAudio } from './recordNote'
 import { lastVoiceError, setVoiceSink, speakViaSink } from './recordVoice'
@@ -23,16 +20,21 @@ export { NOTE_EVENT, noteRecordingAudio }
 
 const LS_TAB = 'robotapp_record_tab_audio'      // '1' (default) | '0'
 const LS_MIC = 'robotapp_record_mic'            // '1' | '0' (default)
-const LS_SRC = 'robotapp_record_audio_source'   // 'tab' (default) | 'system'
+const LS_SRC = 'robotapp_record_audio_source_v2'   // 'system' | 'direct' | 'tab'; default: system on Windows / ChromeOS, else direct
 
-export type AudioSource = 'direct' | 'tab' | 'system'
+export type AudioSource = 'system' | 'direct' | 'tab'
+
+/** system audio can be shared on Windows and ChromeOS only; elsewhere the direct source is the one that works. */
+export function defaultSource(): AudioSource {
+  return typeof navigator !== 'undefined' && /Windows|CrOS/.test(navigator.userAgent) ? 'system' : 'direct'
+}
 export interface AudioPrefs { tab: boolean; mic: boolean; src?: AudioSource }   // tab = "record sound", src = from where
 
 export function getAudioPrefs(): AudioPrefs {
   try {
     return { tab: localStorage.getItem(LS_TAB) !== '0', mic: localStorage.getItem(LS_MIC) === '1',
-             src: ((v: string | null) => (v === 'tab' || v === 'system' ? v : 'direct'))(localStorage.getItem(LS_SRC)) }
-  } catch { return { tab: true, mic: false, src: 'direct' } }
+             src: ((v: string | null) => (v === 'tab' || v === 'system' || v === 'direct' ? v : defaultSource()))(localStorage.getItem(LS_SRC)) }
+  } catch { return { tab: true, mic: false, src: defaultSource() } }
 }
 export function setAudioPrefs(p: Partial<AudioPrefs>): void {
   try {
@@ -44,7 +46,7 @@ export function setAudioPrefs(p: Partial<AudioPrefs>): void {
 
 /** getDisplayMedia options: the current tab, with its sound when `tab` (the page itself stays audible). */
 export function displayOptions(prefs: AudioPrefs): DisplayMediaStreamOptions {
-  if ((prefs.src ?? 'direct') === 'direct') {     // video only: the sound is made by the app (buildRecordingStream)
+  if ((prefs.src ?? defaultSource()) === 'direct') {     // video only: the sound is made by the app (buildRecordingStream)
     return { video: true, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include' } as unknown as DisplayMediaStreamOptions
   }
   if (prefs.src === 'system') {     // the dialog is for a screen: pick "Entire screen" and tick "Share system audio"
@@ -74,6 +76,11 @@ export function makeRecorderContext(): AudioContext | undefined {
   } catch { return undefined }
 }
 
+/** Does this recording need the recorder's audio context? (create it in the click: see makeRecorderContext) */
+export function needsRecorderContext(prefs: AudioPrefs): boolean {
+  return prefs.tab && ((prefs.src ?? defaultSource()) === 'direct' || prefs.mic)
+}
+
 /** Direct source: the sound is made by the app. The robot's lines (recordVoice) and the earcons play through `ctx`
  *  into `dest`, which is the recording's only audio track; the microphone joins it when ticked. */
 async function buildDirectStream(display: MediaStream, prefs: AudioPrefs, ctx?: AudioContext): Promise<RecordingStream> {
@@ -94,9 +101,9 @@ async function buildDirectStream(display: MediaStream, prefs: AudioPrefs, ctx?: 
   // The user's voice is not captured by a second microphone stream: recordPhrase's own stream (what the robot hears) is tapped
   // into the recording while it listens (recordVoice.tapMic), so the clip has exactly the answers and no room noise.
   if (ac.state !== 'running') await ac.resume().catch(() => {})
-  setVoiceSink({ ctx: ac, dest, mic: prefs.mic })
-  const audio = ['robot voice', 'beeps', ...(prefs.mic ? ['your answers (while the robot listens)'] : [])]
-  noteRecordingAudio(`Recording with sound: ${audio.join(' + ')} (direct; context ${ac.state}). The robot's lines come from the backend's GET /tts.`)
+  setVoiceSink({ ctx: ac, dest, mic: prefs.mic, voice: true })
+  const audio = ['robot voice (the backend\'s)', 'beeps', ...(prefs.mic ? ['your answers (while the robot listens)'] : [])]
+  noteRecordingAudio(`Recording with sound: ${audio.join(' + ')} (direct; context ${ac.state}). You still hear the browser's voice; the file has the backend's voice of the same lines (GET /tts).`)
   return {
     stream: new MediaStream([...video, ...dest.stream.getAudioTracks()]),
     audio,
@@ -108,51 +115,39 @@ async function buildDirectStream(display: MediaStream, prefs: AudioPrefs, ctx?: 
   }
 }
 
-export async function buildRecordingStream(display: MediaStream, prefs: AudioPrefs, directCtx?: AudioContext): Promise<RecordingStream> {
-  if ((prefs.src ?? 'direct') === 'direct') return buildDirectStream(display, prefs, directCtx)
-  directCtx?.close().catch(() => {})                 // made for a direct recording, not used by the other sources
+export async function buildRecordingStream(display: MediaStream, prefs: AudioPrefs, ctx?: AudioContext): Promise<RecordingStream> {
+  const src = prefs.src ?? defaultSource()
+  if (src === 'direct') return buildDirectStream(display, prefs, ctx)
   const video = display.getVideoTracks()
-  const tabTracks = prefs.tab ? display.getAudioTracks() : []
-  const notes: string[] = []
-  if (prefs.tab && !tabTracks.length) {
-    notes.push(prefs.src === 'system'
-      ? 'No system audio: choose "Entire screen" and tick "Also share system audio" (Windows / ChromeOS only).'
-      : 'No tab audio: tick "Share tab audio" in the share dialog (Chrome: choose "This tab" → "Also share tab audio").')
+  const shared = prefs.tab ? display.getAudioTracks() : []
+  const missing = prefs.tab && !shared.length
+    ? (src === 'system'
+        ? 'No system audio: choose "Entire screen" and tick "Also share system audio" (Windows / ChromeOS only).'
+        : 'No tab audio: tick "Share tab audio" in the share dialog (Chrome: choose "This tab" → "Also share tab audio").')
+    : ''
+  // No microphone tap: record the shared stream as it is (video + its own audio track), no mixer to stay silent.
+  if (!prefs.mic || !prefs.tab || !ctx) {
+    ctx?.close().catch(() => {})
+    noteRecordingAudio(shared.length ? `Recording with sound: ${src} audio.` : `${missing} This recording has NO sound.`.trim())
+    return { stream: new MediaStream([...video, ...shared]), dispose: () => {}, audio: shared.length ? [src] : [] }
   }
-  let micStream: MediaStream | null = null
-  if (prefs.mic) {
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
-    } catch (e) {
-      notes.push(`Microphone not recorded: ${(e as Error)?.name || 'refused'}.`)
-    }
-  }
-  const sources: [string, MediaStreamTrack][] = [
-    ...tabTracks.map(t => ['tab', t] as [string, MediaStreamTrack]),
-    ...(micStream ? micStream.getAudioTracks().map(t => ['mic', t] as [string, MediaStreamTrack]) : [])]
-  if (!sources.length) {
-    noteRecordingAudio([...notes, 'This recording has NO sound.'].join(' '))
-    return { stream: new MediaStream(video), dispose: () => {}, audio: [] }
-  }
-  // Tab audio alone: record the shared stream as it is (video + its own audio track). A WebAudio mixer in between is
-  // only needed to join two sources, and it is one more thing that can stay silent (a suspended AudioContext).
-  if (!micStream) {
-    noteRecordingAudio([...notes, 'Recording with sound: tab audio.'].join(' '))
-    return { stream: new MediaStream([...video, ...tabTracks]), dispose: () => {}, audio: ['tab'] }
-  }
-
-  const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-  const ctx = new AC()
+  // With the microphone: the shared sound and the user's answers (tapped from the listen stream) are mixed into one track.
   const dest = ctx.createMediaStreamDestination()
-  for (const [, t] of sources) ctx.createMediaStreamSource(new MediaStream([t])).connect(dest)   // not to ctx.destination: no echo
+  const keep = ctx.createConstantSource()                           // samples keep flowing while nobody speaks
+  keep.offset.value = 0
+  keep.connect(dest)
+  keep.start()
+  for (const t of shared) ctx.createMediaStreamSource(new MediaStream([t])).connect(dest)   // not to ctx.destination: no echo
   if (ctx.state !== 'running') await ctx.resume().catch(() => {})
-  noteRecordingAudio([...notes, `Recording with sound: ${[...new Set(sources.map(s => s[0]))].join(' + ')} (mixer ${ctx.state}).`].join(' '))
+  setVoiceSink({ ctx, dest, mic: true, voice: false })
+  const audio = [...(shared.length ? [src] : []), 'your answers (while the robot listens)']
+  noteRecordingAudio(`${missing} Recording with sound: ${audio.join(' + ')} (mixer ${ctx.state}).`.trim())
   return {
     stream: new MediaStream([...video, ...dest.stream.getAudioTracks()]),
-    audio: [...new Set(sources.map(s => s[0]))],
+    audio,
     dispose: () => {
-      micStream?.getTracks().forEach(t => t.stop())
+      setVoiceSink(null)
+      try { keep.stop() } catch { /* already stopped */ }
       ctx.close().catch(() => {})
     },
   }
@@ -172,7 +167,7 @@ async function testDirect(): Promise<AudioTestResult> {
   const ctx = makeRecorderContext()
   if (!ctx) { out.text = 'No audio context in this browser.'; return out }
   const dest = ctx.createMediaStreamDestination()
-  setVoiceSink({ ctx, dest, mic: false })
+  setVoiceSink({ ctx, dest, mic: false, voice: true })
   try {
     const an = ctx.createAnalyser(); an.fftSize = 2048
     ctx.createMediaStreamSource(dest.stream).connect(an)
@@ -195,7 +190,7 @@ async function testDirect(): Promise<AudioTestResult> {
     }
     out.speechKo = ko; out.speechEn = en ?? -120; out.speechDb = Math.min(ko, out.speechEn)
     const heard = (db: number) => db > -50
-    out.text = `Direct recording: robot voice from the backend — Korean ${heard(ko) ? 'recorded' : 'silent'} (${ko} dB), English ${heard(out.speechEn) ? 'recorded' : 'silent'} (${out.speechEn} dB).`
+    out.text = `Direct recording: the backend's voice goes into the file (you still hear the browser's) — Korean ${heard(ko) ? 'recorded' : 'silent'} (${ko} dB), English ${heard(out.speechEn) ? 'recorded' : 'silent'} (${out.speechEn} dB).`
     return out
   } finally {
     setVoiceSink(null)
@@ -204,7 +199,7 @@ async function testDirect(): Promise<AudioTestResult> {
 }
 
 export async function testRecordingAudio(): Promise<AudioTestResult> {
-  if ((getAudioPrefs().src ?? 'direct') === 'direct') return testDirect()
+  if ((getAudioPrefs().src ?? defaultSource()) === 'direct') return testDirect()
   const out: AudioTestResult = { tab: false, beepDb: null, speechDb: null, text: '' }
   let display: MediaStream | null = null
   try {
