@@ -359,7 +359,7 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
           {running
             ? <button onClick={onStop}
                 className="px-4 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded">{stopText ?? 'Stop'}</button>
-            : <button onClick={run}
+            : <button onClick={run} title={`Run cell ${activeCell + 1} (the one with the blue border) · click a cell to select · Ctrl+Enter = run`}
                 className="px-4 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded">Run</button>
           }
         </div>
@@ -407,7 +407,6 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
               />
             </div>
           </div>
-          <p className="text-[11px] text-gray-400">Run → <span className="text-blue-600 font-medium">cell {activeCell + 1}</span> (blue border) · click a cell to select · Ctrl+Enter = run active</p>
         </div>
       )}
 

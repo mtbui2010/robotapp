@@ -8,6 +8,8 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- The hint line under the plan cells ("Run → cell 1 (blue border) · click a cell to select · Ctrl+Enter = run active") is gone; the same
+  text is the Run button's tooltip.
 - The 🔊 sound button of the capture row is just `⋯` (23 px; was `🔊 system 🎤 ● ▾`): the popover is unchanged, a small dot on it shows
   green / amber once a recording or the audio test has reported, and the tooltip says what is set.
 - The "Presets" label and the "— saved —" box are one control: a 72 px select that reads *Presets* when nothing is chosen (the
