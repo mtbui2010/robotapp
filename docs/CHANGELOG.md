@@ -6,6 +6,12 @@ in `CLAUDE.md`, mixed with the specs. The full text of each entry is still in th
 line, link. Undated features (Cancel / Stop, camera streaming, Robot State, plan skills, skill and location
 aliases, planner guides) predate the dated notes; see their docs.
 
+## 2026-11-13 (later)
+
+- Screen recording sound: new **direct** source (the default). The app puts the robot's lines (backend `GET /tts`, gTTS), the
+  beeps and the microphone into the recording itself, so it works on every OS and browser; the tab source missed the
+  browser's Korean voice. [features/screen-recording.md](features/screen-recording.md)
+
 ## 2026-11-13
 
 - The language picker (control bar and chat) and its default come from the robot's manifest (`GET /robot/languages`,

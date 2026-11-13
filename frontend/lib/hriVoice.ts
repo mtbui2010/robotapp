@@ -1,4 +1,5 @@
 'use client'
+import { getVoiceSink, speakViaSink } from './recordVoice'
 
 // Browser side of the HRI skills' source='dashboard' mode (kcare hri.reply /
 // hri.ask). The robot sends `speak` and `listen` events over the agent
@@ -28,14 +29,17 @@ const EARCON = {
 export function playEarcon(kind: keyof typeof EARCON, volume = 0.3): Promise<void> {
   if (typeof window === 'undefined' || !(volume > 0)) return Promise.resolve()
   return new Promise(resolve => {
+    // While a direct recording runs the tones are made in its graph (heard AND recorded); else in a context of their own.
+    const sink = getVoiceSink()
     let ctx: AudioContext
-    try { ctx = new AudioContext() } catch { resolve(); return }
+    try { ctx = sink ? sink.ctx : new AudioContext() } catch { resolve(); return }
     const { notes, sec } = EARCON[kind]
     const gain = ctx.createGain()
     const osc = ctx.createOscillator()
     osc.type = 'sine'
     osc.connect(gain)
     gain.connect(ctx.destination)
+    if (sink) gain.connect(sink.dest)
     const t0 = ctx.currentTime + 0.03
     gain.gain.setValueAtTime(0, ctx.currentTime)
     notes.forEach((f, i) => {               // 10 ms fades: no clicks
@@ -48,7 +52,7 @@ export function playEarcon(kind: keyof typeof EARCON, volume = 0.3): Promise<voi
     })
     const end = t0 + notes.length * sec
     let done = false
-    const finish = () => { if (!done) { done = true; ctx.close().catch(() => {}); resolve() } }
+    const finish = () => { if (!done) { done = true; if (!sink) ctx.close().catch(() => {}); resolve() } }
     osc.onended = finish
     // A context created outside a click may start suspended; it never plays then — do not hang on it.
     setTimeout(finish, (end - ctx.currentTime + 0.5) * 1000)
@@ -64,14 +68,17 @@ export function playEarcon(kind: keyof typeof EARCON, volume = 0.3): Promise<voi
 export function playAlarm(volume = 0.6, cycles = 3): Promise<void> {
   if (typeof window === 'undefined' || !(volume > 0)) return Promise.resolve()
   return new Promise(resolve => {
+    // While a direct recording runs the tones are made in its graph (heard AND recorded); else in a context of their own.
+    const sink = getVoiceSink()
     let ctx: AudioContext
-    try { ctx = new AudioContext() } catch { resolve(); return }
+    try { ctx = sink ? sink.ctx : new AudioContext() } catch { resolve(); return }
     const notes = [880, 660], sec = 0.35
     const gain = ctx.createGain()
     const osc = ctx.createOscillator()
     osc.type = 'sine'
     osc.connect(gain)
     gain.connect(ctx.destination)
+    if (sink) gain.connect(sink.dest)
     const t0 = ctx.currentTime + 0.05
     gain.gain.setValueAtTime(0, ctx.currentTime)
     const n = Math.max(1, Math.round(cycles)) * notes.length
@@ -85,7 +92,7 @@ export function playAlarm(volume = 0.6, cycles = 3): Promise<void> {
     }
     const end = t0 + n * sec
     let done = false
-    const finish = () => { if (!done) { done = true; ctx.close().catch(() => {}); resolve() } }
+    const finish = () => { if (!done) { done = true; if (!sink) ctx.close().catch(() => {}); resolve() } }
     osc.onended = finish
     setTimeout(finish, (end - ctx.currentTime + 0.5) * 1000)
     ctx.resume().catch(() => {})
@@ -98,6 +105,15 @@ export function playAlarm(volume = 0.6, cycles = 3): Promise<void> {
 // unavailable), so a following listen does not transcribe the robot's own voice.
 // `rate`: SpeechSynthesisUtterance.rate (1 = normal; HRI_CONFIGS.speech_rate, sent with the event).
 export function speakAndWait(text: string, lang?: string | null, rate?: number | null): Promise<void> {
+  // While a direct recording runs (lib/recordVoice.ts) the line is played through the recorder's audio graph, so the
+  // recording has it; without one, or when the backend cannot make the audio, the browser's own voice.
+  if (getVoiceSink() && (text || '').trim()) {
+    return speakViaSink(text, lang, rate).then(ok => (ok ? undefined : speakNative(text, lang, rate)))
+  }
+  return speakNative(text, lang, rate)
+}
+
+function speakNative(text: string, lang?: string | null, rate?: number | null): Promise<void> {
   return new Promise(resolve => {
     const t = (text || '').trim()
     if (!t || typeof window === 'undefined' || !('speechSynthesis' in window)) {

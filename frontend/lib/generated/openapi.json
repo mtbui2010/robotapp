@@ -3666,6 +3666,63 @@
     },
     "summary": "Update Skill"
    }
+  },
+  "/tts": {
+   "get": {
+    "operationId": "tts_tts_get",
+    "parameters": [
+     {
+      "description": "what to say",
+      "in": "query",
+      "name": "text",
+      "required": true,
+      "schema": {
+       "description": "what to say",
+       "title": "Text",
+       "type": "string"
+      }
+     },
+     {
+      "description": "language code ('ko', 'en'); default: the manifest's",
+      "in": "query",
+      "name": "lang",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "language code ('ko', 'en'); default: the manifest's",
+       "title": "Lang"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Tts"
+   }
   }
  }
 }

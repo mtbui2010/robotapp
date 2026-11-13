@@ -463,6 +463,18 @@ export const api = {
     return r.json()
   },
 
+  // ── The robot's voice as audio (gTTS on the backend): the screen recording plays it through its own audio graph ──
+  async ttsAudio(text: string, lang?: string): Promise<ArrayBuffer> {
+    const q = new URLSearchParams({ text })
+    if (lang) q.set('lang', lang)
+    const r = await fetch(`${getAgentUrl()}/tts?${q.toString()}`)
+    if (!r.ok) {
+      const b = await r.json().catch(() => ({}))
+      throw new Error((b as { detail?: string }).detail || `GET /tts: HTTP ${r.status}`)
+    }
+    return r.arrayBuffer()
+  },
+
   // ── The robot's languages (manifest `language` / `languages`): the language picker and its default ──
   async getRobotLanguages(): Promise<RobotLanguages> {
     const r = await fetch(`${getAgentUrl()}/robot/languages`)

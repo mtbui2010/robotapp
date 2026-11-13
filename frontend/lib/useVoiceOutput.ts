@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { getVoiceSink, speakViaSink } from './recordVoice'
 
 // Map the UI lang selector to a BCP-47 tag for speech synthesis.
 // Local mirror of AgentPanel's langToBcp47 (kept self-contained).
@@ -108,18 +109,26 @@ export function useVoiceOutput(opts: UseVoiceOutputOptions): UseVoiceOutputResul
     // Milestones supersede each other: a step can finish while the previous
     // phrase is still playing, and queueing would drift further behind the
     // robot with every step. Speak the newest one instead.
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(trimmed)
     const own = sayLang && sayLang !== langRef.current ? langToBcp47(sayLang) : null
-    utterance.lang = own ?? langToBcp47(langRef.current)
-    const v = own
-      ? voicesRef.current.find(x => x.lang.replace('_', '-') === own)
-        ?? voicesRef.current.find(x => x.lang.replace('_', '-').split('-')[0] === own.split('-')[0])
-      : voiceRef.current
-    if (v) utterance.voice = v
     const r = rate ?? rateRef.current            // a line's own rate (its language's) wins
-    if (r && r > 0) utterance.rate = r
-    window.speechSynthesis.speak(utterance)
+    const native = () => {
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(trimmed)
+      utterance.lang = own ?? langToBcp47(langRef.current)
+      const v = own
+        ? voicesRef.current.find(x => x.lang.replace('_', '-') === own)
+          ?? voicesRef.current.find(x => x.lang.replace('_', '-').split('-')[0] === own.split('-')[0])
+        : voiceRef.current
+      if (v) utterance.voice = v
+      if (r && r > 0) utterance.rate = r
+      window.speechSynthesis.speak(utterance)
+    }
+    // While a direct recording runs the line goes through the recorder's audio graph (lib/recordVoice.ts), else the browser's voice.
+    if (getVoiceSink()) {
+      void speakViaSink(trimmed, own ?? langRef.current, r, true).then(ok => { if (!ok) native() })
+      return
+    }
+    native()
   }
 
   // Stable identity so consumers can list it in effect deps without re-firing.

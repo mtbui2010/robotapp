@@ -8,19 +8,19 @@ import { NOTE_EVENT, getAudioPrefs, setAudioPrefs, testRecordingAudio, type Audi
 export default function RecordAudioToggles() {
   const [tab, setTab] = useState(true)
   const [mic, setMic] = useState(false)
-  const [src, setSrc] = useState<AudioSource>('tab')
+  const [src, setSrc] = useState<AudioSource>('direct')
   const [note, setNote] = useState('')
   const [testing, setTesting] = useState(false)
 
   useEffect(() => {                         // localStorage is read after mount (static export: no window while building)
-    const p = getAudioPrefs(); setTab(p.tab); setMic(p.mic); setSrc(p.src ?? 'tab')
+    const p = getAudioPrefs(); setTab(p.tab); setMic(p.mic); setSrc(p.src ?? 'direct')
     const on = (e: Event) => setNote(String((e as CustomEvent).detail || ''))
     window.addEventListener(NOTE_EVENT, on)
     return () => window.removeEventListener(NOTE_EVENT, on)
   }, [])
 
   const runTest = async () => {
-    setTesting(true); setNote(src === 'system' ? 'Testing (about 9 s): choose "Entire screen" and tick "Also share system audio"…' : 'Testing (about 9 s): choose "This tab" and tick "Also share tab audio"…')
+    setTesting(true); setNote(src === 'direct' ? 'Testing (about 12 s): the backend says a Korean and an English sentence into the recording graph…' : src === 'system' ? 'Testing (about 9 s): choose "Entire screen" and tick "Also share system audio"…' : 'Testing (about 9 s): choose "This tab" and tick "Also share tab audio"…')
     try { setNote((await testRecordingAudio()).text) } catch (e) { setNote(`Test failed: ${(e as Error).message}`) }
     setTesting(false)
   }
@@ -34,8 +34,9 @@ export default function RecordAudioToggles() {
         🔊 sound
       </label>
       <select value={src} onChange={e => { setSrc(e.target.value as AudioSource); setAudioPrefs({ src: e.target.value as AudioSource }) }}
-        title="tab: this tab only (the robot's spoken lines are NOT included when the browser leaves them out of tab audio). whole system: share the entire screen with system audio (Windows / ChromeOS) — includes the robot's spoken lines."
+        title="direct: the app puts the robot's voice (from the backend, GET /tts), the beeps and the mic into the recording itself — works on every OS and browser, no 'share audio' tick. tab: this tab's audio (the browser's own voice may be left out). whole system: share the entire screen with system audio (Windows / ChromeOS)."
         className="bg-white border border-gray-300 rounded px-1 py-0.5">
+        <option value="direct">direct</option>
         <option value="tab">tab</option>
         <option value="system">whole system</option>
       </select>
