@@ -8,6 +8,8 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- Plan progress no longer repeats the running step in a blue "NOW …" box above the list (it is the highlighted row of the list; the list still
+  scrolls to it). `components/PlanList.tsx`.
 - The robot / site badges: when the site is named like the robot (any case: "Kcare_bucheon" / "kcare_bucheon") one badge `🤖 Kcare_bucheon` is
   shown (118 px, was about 330 px); when the names **differ** the site is not written out, a `⚠` after the robot badge warns instead (its tooltip
   names both: a tab driving a site that is not the robot's own is easy to miss). The badge tooltip always has `robot @ site`, URL, host.

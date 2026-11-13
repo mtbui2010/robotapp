@@ -98,11 +98,6 @@ export default function PlanList({ events, running, onPick }: { events: AgentEve
         <p className="text-[11px] text-gray-400 uppercase">Plan progress</p>
         {steps.length > 0 && <span className="text-[10px] text-gray-400">{nDone}/{steps.length} done</span>}
       </div>
-      {nowLabel && (
-        <p data-testid="plan-now" className="text-[11px] text-blue-800 font-mono bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 [overflow-wrap:anywhere]">
-          <span className="text-blue-500 uppercase text-[9px] mr-1">now</span>{nowLabel}
-        </p>
-      )}
       {v.goals.length > 0 && (
         <p className="text-[10px] text-gray-500" data-testid="plan-goals">
           <span className="uppercase text-gray-400">goals </span>{v.goals.map(goalText).join(' · ')}
