@@ -8,6 +8,12 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- One row instead of two in both toolbars. Agent panel: *Presets* (select + a `⋯` menu with Save as / Rename / Delete / Export /
+  Import / Guide), `log ▾` (where, which runs), rec screen, 🔊, ⏺, `×N` (repeat), voice and Run share one line (the Guide dialog is
+  opened from the menu, `GuidePanel` is controllable). Cameras: ONE drop list `📷 3/5 ▾` (a view per row: radio in Tab, checkbox in Grid, drag to reorder, webcam / observe at the bottom) next to
+  Tab | Grid on the `Cameras | Map` row before **Cancel**, about 140 px instead of 500.
+  New `components/PopoverButton.tsx` (fixed popover: closes on outside click / Escape / scroll / resize).
+  [features/camera-streaming.md](features/camera-streaming.md)
 - Two toolbar rows are one line each: the capture row (labels `log` / `rec screen`, the sound options folded into one 🔊 button
   with a popover and a status dot, the manual record button icon-only) and the camera row (in Grid layout every view is a chip that
   shows / hides it instead of a checkbox + label; `observe (webcam)` is `webcam`, its device picker narrower).

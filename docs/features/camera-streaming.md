@@ -40,7 +40,17 @@ One cost from the same investigation is still **not** addressed: `kcare_robot`'s
 `make run` passes `--reload` to uvicorn, which watches the whole (sshfs-mounted)
 tree.
 
-## Grid layout: chips (2026-11-13)
+## Camera chips on the Cameras / Map row (2026-11-13)
+
+The camera chips are drawn ON the page's `Cameras | Map` tab row (between the robot / site badges and **Cancel**), not on a row of their
+own: `page.tsx` leaves an empty slot there and `CameraFeed` portals its toolbar into it (`toolbarSlot`); on the Map tab the
+chips are gone. With no slot the toolbar is drawn under the tabs as before. The slot scrolls sideways when the window is narrower
+than its content. The views are ONE drop list (`📷 3/5 ▾`, `components/PopoverButton.tsx`) next to the Tab | Grid switch, not a chip each (about 140 px instead
+of 500): **Tab** layout picks the one shown (radio, closes on pick), **Grid** layout ticks the ones shown (`3/5` = shown / all).
+Camera rows can be dragged to reorder; the `webcam → observe` checkbox and its device picker are at the bottom of the list, and
+`observe` is a row once the webcam is on.
+
+### Grid layout (before: chips, a checkbox before that)
 
 In the Cameras tab, with the **Grid** layout every view (each camera, `log_image`, `observe`) is a small chip that shows / hides it in the
 grid (blue = shown); it was a checkbox plus a label. Chips can still be dragged to reorder. The **Tab** layout keeps the tabs.

@@ -85,8 +85,14 @@ const CONNECTION_CONFIGS: { type: string; label: string; example: string }[] = [
   { type: 'LLM-Gemini',  label: 'LLM — Gemini',  example: '{"name": "gemini", "model": "gemini-2.0-flash"}' },
 ]
 
-export default function GuidePanel() {
-  const [open, setOpen] = useState(false)
+export default function GuidePanel({ open: openProp, onOpenChange, hideTrigger }: {
+  open?: boolean                      // controlled: the page keeps the state (the ⋯ menu opens it)
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean               // no button of its own
+} = {}) {
+  const [openOwn, setOpenOwn] = useState(false)
+  const open = openProp ?? openOwn
+  const setOpen = (o: boolean) => { setOpenOwn(o); onOpenChange?.(o) }
   const [tab, setTab] = useState<'steps' | 'examples' | 'configs'>('steps')
   const [copied, setCopied] = useState<string | null>(null)
 
@@ -99,13 +105,13 @@ export default function GuidePanel() {
   return (
     <>
       {/* Trigger button */}
-      <button
+      {!hideTrigger && <button
         onClick={() => setOpen(true)}
         className="px-3 py-1.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md flex items-center gap-1.5"
       >
         <span className="text-base leading-none">?</span>
         Guide
-      </button>
+      </button>}
 
       {/* Modal overlay */}
       {open && (

@@ -4,6 +4,7 @@ import { ExpandEditor } from './ExpandEditor'
 import type { Lang } from '../lib/types'
 import type { PlannerMethod } from '../lib/planner'
 import RecordAudioToggles from './RecordAudioToggles'
+import PopoverButton from './PopoverButton'
 
 const LS_CELLS   = 'robotapp_cells'
 const LS_LOG_DATA = 'robotapp_log_data'
@@ -25,7 +26,7 @@ function loadPresets(key: string): Preset[] {
 
 // Reusable "saved presets" bar: pick / save / rename / delete a named snippet.
 function PresetBar({
-  label, presets, setPresets, lsKey, selected, setSelected, current, onLoad,
+  label, presets, setPresets, lsKey, selected, setSelected, current, onLoad, onOpenGuide,
 }: {
   label: string
   presets: Preset[]
@@ -35,6 +36,7 @@ function PresetBar({
   setSelected: (s: string) => void
   current: () => string
   onLoad: (text: string) => void
+  onOpenGuide?: () => void           // an item of the ⋯ menu
 }) {
   const persist = (next: Preset[]) => {
     setPresets(next)
@@ -107,27 +109,34 @@ function PresetBar({
     })
   }
 
+  const item = 'text-left px-2 py-1 rounded hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent whitespace-nowrap'
   return (
-    <div className="flex items-center gap-1.5 text-[11px]">
+    <div className="flex items-center gap-1 text-[11px] shrink-0">
       <span className="text-gray-500 shrink-0">{label}</span>
       <select value={selected} onChange={e => onSelect(e.target.value)}
         title="Load a saved preset into the input"
-        className="bg-white border border-gray-300 text-gray-800 rounded px-1.5 py-0.5 min-w-[130px]">
+        className="bg-white border border-gray-300 text-gray-800 rounded px-1 py-0.5 min-w-[100px] max-w-[150px]">
         <option value="">— saved —</option>
         {[...presets]
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
           .map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
       </select>
-      <button type="button" onClick={save} title="Save current input as a preset"
-        className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded">Save</button>
-      <button type="button" onClick={rename} disabled={!selected} title="Rename the selected preset"
-        className="px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded disabled:opacity-40">✎</button>
-      <button type="button" onClick={del} disabled={!selected} title="Delete selected preset and clear the input"
-        className="px-1.5 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded disabled:opacity-40">Del</button>
-      <button type="button" onClick={exportPresets} title="Export all presets to a JSON file"
-        className="px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded">⤓</button>
-      <button type="button" onClick={() => fileRef.current?.click()} title="Import presets from a JSON file (merge, overwrite on name clash)"
-        className="px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded">⤒</button>
+      <PopoverButton label="⋯" title="Save, rename, delete, export or import presets · Guide" testId="presets-menu"
+        buttonClass="px-1.5 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 font-bold leading-none">
+        {close => (
+          <div className="flex flex-col">
+            <button type="button" className={item} title="Save the current input as a preset" onClick={() => { close(); save() }}>💾 Save as…</button>
+            <button type="button" className={item} disabled={!selected} title="Rename the selected preset" onClick={() => { close(); rename() }}>✎ Rename</button>
+            <button type="button" className={`${item} text-red-600`} disabled={!selected} title="Delete the selected preset and clear the input" onClick={() => { close(); del() }}>🗑 Delete</button>
+            <button type="button" className={item} title="Export all presets to a JSON file" onClick={() => { close(); exportPresets() }}>⤓ Export</button>
+            <button type="button" className={item} title="Import presets from a JSON file (merge, overwrite on name clash)" onClick={() => { close(); fileRef.current?.click() }}>⤒ Import</button>
+            {onOpenGuide && <>
+              <div className="my-1 border-t border-gray-200" />
+              <button type="button" className={item} onClick={() => { close(); onOpenGuide() }}>? Guide</button>
+            </>}
+          </div>
+        )}
+      </PopoverButton>
       <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} className="hidden" />
     </div>
   )
@@ -151,9 +160,10 @@ interface Props {
   onToggleManualRecord: () => void
   backendLogDir: string
   trial: number
+  onOpenGuide?: () => void           // the ⋯ menu's Guide item (the page owns the Guide dialog)
 }
 
-export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop, stopText, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial }: Props) {
+export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop, stopText, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial, onOpenGuide }: Props) {
   const [cells,      setCells]      = useState<string[]>(['', '', '', ''])
   const [activeCell, setActiveCell] = useState(0)
   const [logData,    setLogData]    = useState(true)
@@ -244,6 +254,15 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
 
       {/* Capture row — logging + screen recording, and Run / Stop at its end (free-text commands go through the 💬 Chat card) */}
       <div className="flex items-center gap-2 text-[11px] text-gray-600 whitespace-nowrap min-w-0">
+        <PresetBar
+              label="Presets"
+              presets={structPresets} setPresets={setStructPresets} lsKey={LS_PRESETS_S}
+              selected={structSel} setSelected={setStructSel}
+              current={() => cells[activeCell]}
+              onLoad={t => updateCell(activeCell, t)}
+              onOpenGuide={onOpenGuide}
+            />
+        <span className="w-px h-4 bg-gray-200 shrink-0" />
         <label className="flex items-center gap-1 cursor-pointer"
           title="Save rgb / depth / detection results of this run">
           <input type="checkbox" checked={logData}
@@ -251,43 +270,40 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
           log
         </label>
         {logData && (
-          <div className="inline-flex rounded border border-gray-300 overflow-hidden">
-            {(['backend', 'frontend'] as const).map(t => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => updateLogTarget(t)}
-                title={t === 'backend'
-                  ? 'Save on the backend server (files written under ~/.kcare_robot/vision_logs)'
-                  : 'Save each capture to this browser’s download folder, one folder per run'}
-                className={`px-1.5 py-0.5 ${
-                  logTarget === t ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'
-                }`}
-              >{t}</button>
-            ))}
-          </div>
-        )}
-        {logData && (
-          <div className="inline-flex rounded border border-gray-300 overflow-hidden">
-            {([['all', true], ['failed only', false]] as const).map(([label, v]) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => updateLogAll(v)}
-                title={v
-                  ? 'Log every run'
-                  : 'Keep only runs that failed — a step returning isdone False, an error, or a GRACE symbolic violation'}
-                className={`px-1.5 py-0.5 ${
-                  logAll === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'
-                }`}
-              >{label}</button>
-            ))}
-          </div>
-        )}
-        {logData && logTarget === 'backend' && backendLogDir && (
-          <span className="text-[10px] text-gray-400 font-mono truncate max-w-[16rem]" title={backendLogDir}>
-            → {backendLogDir}
-          </span>
+          <PopoverButton label="▾" title="Log options: where it is saved, which runs" testId="log-options"
+            buttonClass="px-1 py-0.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-50 leading-none" panelClass="w-64">
+            {() => (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 w-10">save in</span>
+                  <div className="inline-flex rounded border border-gray-300 overflow-hidden">
+                    {(['backend', 'frontend'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => updateLogTarget(t)}
+                        title={t === 'backend'
+                          ? 'Save on the backend server (files written under ~/.kcare_robot/vision_logs)'
+                          : 'Save each capture to this browser’s download folder, one folder per run'}
+                        className={`px-1.5 py-0.5 ${logTarget === t ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'}`}
+                      >{t}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 w-10">runs</span>
+                  <div className="inline-flex rounded border border-gray-300 overflow-hidden">
+                    {([['all', true], ['failed only', false]] as const).map(([label, v]) => (
+                      <button key={label} type="button" onClick={() => updateLogAll(v)}
+                        title={v ? 'Log every run' : 'Keep only runs that failed — a step returning isdone False, an error, or a GRACE symbolic violation'}
+                        className={`px-1.5 py-0.5 ${logAll === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'}`}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {logTarget === 'backend' && backendLogDir && (
+                  <span className="text-[10px] text-gray-400 font-mono break-all" title={backendLogDir}>→ {backendLogDir}</span>
+                )}
+              </div>
+            )}
+          </PopoverButton>
         )}
         <label className="flex items-center gap-1 cursor-pointer"
           title="Record the screen for the working session — downloads a .webm when the plan ends">
@@ -306,6 +322,38 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
           <span className={manualRecording ? 'animate-pulse' : ''}>{manualRecording ? '⏹' : '⏺'}</span>
           {manualRecording && 'stop'}
         </button>
+        {/* Repeat execution: ×1 / ×N / ∞ */}
+        <div className="flex items-center gap-1 text-[11px] text-gray-600 shrink-0">
+          {running && repeatMode !== 'once' && (
+            <span className="text-blue-600 font-mono tabular-nums" title="Current trial / total">
+              {trial}{repeatMode === 'n' ? `/${Math.max(1, repeatN)}` : ''}
+            </span>
+          )}
+          <select
+            value={repeatMode}
+            onChange={e => updateRepeatMode(e.target.value as 'once' | 'n' | 'forever')}
+            title="Repeat execution: how many times to run the plan (×1 / ×N / ∞)"
+            className="bg-white border border-gray-300 text-gray-800 rounded px-1 py-0.5"
+          >
+            <option value="once">×1</option>
+            <option value="n">×N</option>
+            <option value="forever">∞</option>
+          </select>
+          {repeatMode === 'n' && (
+            <input
+              type="number" min={1} value={repeatN}
+              onChange={e => { const n = parseInt(e.target.value, 10); if (Number.isFinite(n)) updateRepeatN(Math.max(1, n)) }}
+              title="Number of executions"
+              className="w-12 bg-white border border-gray-300 text-gray-800 rounded px-1 py-0.5"
+            />
+          )}
+          {repeatMode !== 'once' && (
+            <label className="flex items-center gap-1 cursor-pointer" title="Keep looping even if a run fails; default stops on the first failure">
+              <input type="checkbox" checked={repeatCOE} onChange={e => updateRepeatCOE(e.target.checked)} className="accent-blue-600" />
+              keep on error
+            </label>
+          )}
+        </div>
         <div className="ml-auto flex items-center gap-2">
           {toolbarExtra}
           {running
@@ -320,48 +368,6 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
       {/* Input area */}
       {(
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <PresetBar
-              label="Plan presets"
-              presets={structPresets} setPresets={setStructPresets} lsKey={LS_PRESETS_S}
-              selected={structSel} setSelected={setStructSel}
-              current={() => cells[activeCell]}
-              onLoad={t => updateCell(activeCell, t)}
-            />
-            {/* Repeat execution: ×1 / ×N / ∞ — right-aligned on the Plan-presets row */}
-            <div className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-600 shrink-0">
-              <span className="text-gray-500">exec</span>
-              {running && repeatMode !== 'once' && (
-                <span className="text-blue-600 font-mono tabular-nums" title="Current trial / total">
-                  {trial}{repeatMode === 'n' ? `/${Math.max(1, repeatN)}` : ''}
-                </span>
-              )}
-              <select
-                value={repeatMode}
-                onChange={e => updateRepeatMode(e.target.value as 'once' | 'n' | 'forever')}
-                title="How many times to execute the plan"
-                className="bg-white border border-gray-300 text-gray-800 rounded px-1 py-0.5"
-              >
-                <option value="once">×1</option>
-                <option value="n">×N</option>
-                <option value="forever">∞</option>
-              </select>
-              {repeatMode === 'n' && (
-                <input
-                  type="number" min={1} value={repeatN}
-                  onChange={e => { const n = parseInt(e.target.value, 10); if (Number.isFinite(n)) updateRepeatN(Math.max(1, n)) }}
-                  title="Number of executions"
-                  className="w-12 bg-white border border-gray-300 text-gray-800 rounded px-1 py-0.5"
-                />
-              )}
-              {repeatMode !== 'once' && (
-                <label className="flex items-center gap-1 cursor-pointer" title="Keep looping even if a run fails; default stops on the first failure">
-                  <input type="checkbox" checked={repeatCOE} onChange={e => updateRepeatCOE(e.target.checked)} className="accent-blue-600" />
-                  keep on error
-                </label>
-              )}
-            </div>
-          </div>
           {/* 3 lines of the 11px mono text: 3 x 16.5 + padding + border = 60px */}
           <div className="grid grid-cols-[3fr_2fr] grid-rows-1 gap-2" style={{ height: '60px' }}>
             <div className="relative h-full min-h-0">

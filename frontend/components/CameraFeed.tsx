@@ -1,5 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
+import PopoverButton from './PopoverButton'
 import { api } from '../lib/api'
 import type { ClientEntry } from '../lib/types'
 import CameraCell from './CameraCell'
@@ -51,7 +53,10 @@ function jet(t: number): [number, number, number] {
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)]
 }
 
-export default function CameraFeed({ clients, logImage, onClearLog }: { clients: ClientEntry[]; logImage?: string | null; onClearLog?: () => void }) {
+export default function CameraFeed({ clients, logImage, onClearLog, toolbarSlot }: {
+  clients: ClientEntry[]; logImage?: string | null; onClearLog?: () => void
+  toolbarSlot?: HTMLElement | null     // when given, the chip row is drawn there (the page's Cameras / Map tab row) instead of under it
+}) {
   const cameras = clients.filter(c => c.is_camera)
   const [selectedId, setSelectedId] = useState<string>('')
 
@@ -593,14 +598,14 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
   }
 
   // ── Tab drag-and-drop handlers ────────────────────────────────────────────
-  const onTabDragStart = (e: React.DragEvent<HTMLButtonElement>, id: string) => {
+  const onTabDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
     setDragId(id)
     e.dataTransfer.effectAllowed = 'move'
     // Firefox requires data to be set for drag to initiate
     e.dataTransfer.setData('text/plain', id)
   }
 
-  const onTabDragOver = (e: React.DragEvent<HTMLButtonElement>, id: string) => {
+  const onTabDragOver = (e: React.DragEvent<HTMLElement>, id: string) => {
     if (!dragId || dragId === id) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
@@ -611,7 +616,7 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
     setDragOverId(prev => (prev === id ? null : prev))
   }
 
-  const onTabDrop = (e: React.DragEvent<HTMLButtonElement>, targetId: string) => {
+  const onTabDrop = (e: React.DragEvent<HTMLElement>, targetId: string) => {
     e.preventDefault()
     const src = dragId
     setDragId(null)
@@ -708,7 +713,7 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1 border-b border-gray-200 whitespace-nowrap overflow-x-auto">
+      {(() => { const toolbar = (<>
         {/* Layout toggle (Tab | Grid) */}
         <div className="flex bg-gray-100 rounded overflow-hidden text-[11px] mr-1 self-center">
           <button
@@ -721,99 +726,66 @@ export default function CameraFeed({ clients, logImage, onClearLog }: { clients:
           >Grid</button>
         </div>
 
-        {orderedCameras.map(c => (
-          <div
-            key={c.id}
-            className={`flex items-center rounded-t border-b-2 transition-colors ${
-              selectedId === c.id && layout === 'tab'
-                ? 'border-blue-500'
-                : 'border-transparent'
-            } ${dragOverId === c.id ? 'bg-blue-50' : ''}`}
-          >
-            <button
-              draggable
-              onDragStart={(e) => onTabDragStart(e, c.id)}
-              onDragOver={(e) => onTabDragOver(e, c.id)}
-              onDragLeave={() => onTabDragLeave(c.id)}
-              onDrop={(e) => onTabDrop(e, c.id)}
-              onDragEnd={onTabDragEnd}
-              onClick={() => (layout === 'grid' ? toggleGridId(c.id) : setSelectedId(c.id))}
-              title={layout === 'grid' ? 'Show / hide in the grid · drag to reorder' : 'Drag to reorder'}
-              className={`${layout === 'grid'
-                ? chipCls(gridIds.includes(c.id))
-                : `px-3 py-1 text-xs transition-colors ${selectedId === c.id ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`
-              } cursor-grab active:cursor-grabbing ${dragId === c.id ? 'opacity-40' : ''}`}
-            >
-              {c.name || c.id}
-            </button>
-          </div>
-        ))}
-
-        {/* log_image tab */}
-        <div
-          className={`flex items-center rounded-t border-b-2 transition-colors ${
-            isLogTab && layout === 'tab' ? 'border-blue-500' : 'border-transparent'
-          }`}
-        >
-          <button
-            onClick={() => (layout === 'grid' ? toggleGridId(LOG_TAB) : setSelectedId(LOG_TAB))}
-            title={layout === 'grid' ? 'Show / hide in the grid' : undefined}
-            className={layout === 'grid'
-              ? chipCls(gridIds.includes(LOG_TAB))
-              : `px-3 py-1 text-xs transition-colors ${isLogTab ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            log_image
-          </button>
-        </div>
-
-        {/* observe (webcam) tab — only present when activated */}
-        {observeOn && (
-          <div
-            className={`flex items-center rounded-t border-b-2 transition-colors ${
-              selectedId === OBSERVE_TAB && layout === 'tab' ? 'border-blue-500' : 'border-transparent'
-            }`}
-          >
-            <button
-              onClick={() => (layout === 'grid' ? toggleGridId(OBSERVE_TAB) : setSelectedId(OBSERVE_TAB))}
-              title={layout === 'grid' ? 'Show / hide in the grid' : undefined}
-              className={layout === 'grid'
-                ? chipCls(gridIds.includes(OBSERVE_TAB))
-                : `px-3 py-1 text-xs transition-colors ${selectedId === OBSERVE_TAB ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              observe
-            </button>
-          </div>
-        )}
-
-        {/* observe activation checkbox + device picker — same row, right-aligned */}
-        <div className="ml-auto mr-1 flex items-center gap-1.5 self-center">
-          <label className="flex items-center gap-1 text-[11px] text-gray-500 cursor-pointer whitespace-nowrap"
-            title="Use a webcam of this computer (a phone through DroidCam / Iriun too) as the 'observe' view">
-            <input
-              type="checkbox"
-              checked={observeOn}
-              onChange={e => { if (e.target.checked) enableObserve(); else disableObserve() }}
-            />
-            webcam
-          </label>
-          {observeOn && (
-            <select
-              value={webcamDeviceId}
-              onChange={e => switchWebcam(e.target.value)}
-              title="Choose which webcam feeds the observe tab"
-              className="text-[11px] text-gray-600 bg-gray-100 border border-gray-200 rounded px-1 py-0.5 max-w-[7rem]"
-            >
-              {/* Empty option only when no device is selected yet */}
-              {!webcamDeviceId && <option value="">Default camera</option>}
-              {videoDevices.map((d, i) => (
-                <option key={d.deviceId || i} value={d.deviceId}>
-                  {d.label || `Camera ${i + 1}`}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      </div>
+        {/* ONE drop list for every view (was a chip per camera): Tab layout picks the one shown, Grid layout ticks the ones shown;
+            the webcam used as 'observe' is switched on here too. Rows of cameras can be dragged to reorder. */}
+        {(() => {
+          const rows: { id: string; label: string; camera: boolean }[] = [
+            ...orderedCameras.map(c => ({ id: c.id, label: c.name || c.id, camera: true })),
+            { id: LOG_TAB, label: 'log_image', camera: false },
+            ...(observeOn ? [{ id: OBSERVE_TAB, label: 'observe', camera: false }] : []),
+          ]
+          const on = (id: string) => (layout === 'grid' ? gridIds.includes(id) : selectedId === id)
+          const summary = layout === 'grid'
+            ? `${rows.filter(r => gridIds.includes(r.id)).length}/${rows.length}`
+            : (rows.find(r => r.id === selectedId)?.label ?? '—')
+          return (
+            <PopoverButton label={<><span>📷</span> <span className="max-w-[7rem] truncate inline-block align-bottom">{summary}</span> <span className="text-[9px] text-gray-400">▾</span></>}
+              title={layout === 'grid' ? 'Views shown in the grid' : 'View shown'} testId="views-menu" panelClass="w-56"
+              buttonClass="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border border-gray-300 text-gray-600 hover:bg-gray-50 whitespace-nowrap self-center">
+              {close => (
+                <div className="flex flex-col">
+                  <div className="px-1.5 pb-1 text-[10px] text-gray-400">{layout === 'grid' ? 'Show in the grid' : 'Show'}</div>
+                  {rows.map(r => (
+                    <label key={r.id}
+                      draggable={r.camera}
+                      onDragStart={r.camera ? (e) => onTabDragStart(e, r.id) : undefined}
+                      onDragOver={r.camera ? (e) => onTabDragOver(e, r.id) : undefined}
+                      onDragLeave={r.camera ? () => onTabDragLeave(r.id) : undefined}
+                      onDrop={r.camera ? (e) => onTabDrop(e, r.id) : undefined}
+                      onDragEnd={r.camera ? onTabDragEnd : undefined}
+                      title={r.camera ? 'Drag to reorder' : undefined}
+                      className={`flex items-center gap-1.5 px-1.5 py-1 rounded cursor-pointer hover:bg-gray-100 ${dragOverId === r.id ? 'bg-blue-50' : ''} ${dragId === r.id ? 'opacity-40' : ''}`}>
+                      <input type={layout === 'grid' ? 'checkbox' : 'radio'} name="camera-view" checked={on(r.id)} className="accent-blue-600"
+                        onChange={() => { if (layout === 'grid') toggleGridId(r.id); else { setSelectedId(r.id); close() } }} />
+                      <span className="truncate">{r.label}</span>
+                      {r.camera && <span className="ml-auto text-gray-300 cursor-grab">⋮⋮</span>}
+                    </label>
+                  ))}
+                  <div className="my-1 border-t border-gray-200" />
+                  <label className="flex items-center gap-1.5 px-1.5 py-1 cursor-pointer"
+                    title="Use a webcam of this computer (a phone through DroidCam / Iriun too) as the 'observe' view">
+                    <input type="checkbox" checked={observeOn} className="accent-blue-600"
+                      onChange={e => { if (e.target.checked) enableObserve(); else disableObserve() }} />
+                    webcam → observe
+                  </label>
+                  {observeOn && (
+                    <select value={webcamDeviceId} onChange={e => switchWebcam(e.target.value)}
+                      title="Choose which webcam feeds the observe view"
+                      className="mx-1.5 mb-1 text-[11px] text-gray-600 bg-gray-100 border border-gray-200 rounded px-1 py-0.5">
+                      {!webcamDeviceId && <option value="">Default camera</option>}
+                      {videoDevices.map((d, i) => <option key={d.deviceId || i} value={d.deviceId}>{d.label || `Camera ${i + 1}`}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
+            </PopoverButton>
+          )
+        })()}
+      </>)
+        return toolbarSlot
+          ? createPortal(toolbar, toolbarSlot)
+          : <div className="flex items-center gap-1 border-b border-gray-200 whitespace-nowrap overflow-x-auto">{toolbar}</div>
+      })()}
 
       {/* ── Grid mode: every selected tab live simultaneously ──────────────── */}
       {layout === 'grid' ? (

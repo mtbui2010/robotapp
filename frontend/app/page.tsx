@@ -670,6 +670,8 @@ export default function Home() {
   const robotLangs = useRobotLanguages()
   const [lang, setLang]         = useState<Lang>('en')
   const [chatOpen, setChatOpen] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)   // the Guide dialog; opened from the ⋯ menu of the presets bar
+  const [cameraSlot, setCameraSlot] = useState<HTMLElement | null>(null)   // the Cameras tab row's room for the camera chips (CameraFeed portals into it)
   // Chat settings: the planner (SAGE + assist by default) and plan-only (default ON, kept in localStorage)
   const [planner, setPlanner]   = useState<PlannerMethod>(DEFAULT_PLANNER)
   const [planOnly, setPlanOnly] = useState(true)
@@ -867,9 +869,9 @@ export default function Home() {
               ⚠ no {voiceLang} voice
             </span>
           )}
-          <GuidePanel />
-          </>} running={running} lang={lang} onRun={run} onStop={stop} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
+          </>} onOpenGuide={() => setGuideOpen(true)} running={running} lang={lang} onRun={run} onStop={stop} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
           </section>
+          <GuidePanel open={guideOpen} onOpenChange={setGuideOpen} hideTrigger />
 
           <section className="px-5 pt-1 pb-3">
             <div className="flex gap-1 mb-2 border-b border-gray-200">
@@ -883,23 +885,25 @@ export default function Home() {
               {target?.robot && (
                 <span className="self-center ml-3 flex items-center gap-1.5 text-xs text-gray-600 min-w-0"
                   title={`${target.url}${target.host ? ` · host ${target.host}` : ''}`}>
-                  <span className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium truncate">🤖 {target.robot}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium truncate max-w-[9rem]">🤖 {target.robot}</span>
                   {target.location && (
-                    <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 truncate">📍 {target.location}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 truncate max-w-[8rem]">📍 {target.location}</span>
                   )}
                 </span>
               )}
+              {/* the camera chips (CameraFeed's Tab | Grid and one chip per view) are drawn here, on this row */}
+              <div ref={setCameraSlot} className="flex-1 min-w-0 flex items-center self-center ml-3 overflow-x-auto" />
               {/* Always live, unlike the Agent panel's Stop: a skill run from the
                   CLI or another client can be moving the robot while this tab
                   shows nothing running. */}
               <button onClick={stop}
                 title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
-                className={`ml-auto self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded`}>
+                className={`ml-2 self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded shrink-0`}>
                 {stopLabel(rs, 'Cancel')}
               </button>
             </div>
             {mainTab === 'cameras'
-              ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} />
+              ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
               : <MapPanel clients={clients} running={running} />}
           </section>
 
