@@ -24,6 +24,7 @@ const CM = await load('chatMic')
 const CR = await load('chatRun')
 const RL = await load('robotLanguages')
 const BG = await load('buttonGroups')
+const TB = await load('targetBadge')
 
 const FIX = join(ROOT, 'scripts/fixtures/events')
 const fixtures = Object.fromEntries(readdirSync(FIX).filter(f => f.endsWith('.json'))
@@ -507,4 +508,19 @@ test('reorderBefore / reorderGroupIds: the moved item takes the target\'s place;
   assert.equal(BG.reorderBefore(bs, '1', 'nope'), null)
   assert.deepEqual(BG.reorderGroupIds(gs, 'arm', 'head'), ['arm', 'head'])
   assert.equal(BG.reorderGroupIds(gs, 'arm', 'arm'), null)
+})
+
+
+// ── lib/targetBadge.ts: the robot / site badges ─────────────────────────────────────────────────────────────
+test('targetBadges: a site named like the robot (any case) is not shown twice', () => {
+  assert.deepEqual(TB.targetBadges('Kcare_bucheon', 'kcare_bucheon'), { robot: 'Kcare_bucheon', location: null })
+  assert.deepEqual(TB.targetBadges('Kcare_bucheon', ' KCARE_BUCHEON '), { robot: 'Kcare_bucheon', location: null })
+  assert.deepEqual(TB.targetBadges('kaair', 'clobot_bucheon'), { robot: 'kaair', location: 'clobot_bucheon' })
+  assert.deepEqual(TB.targetBadges('kaair', ''), { robot: 'kaair', location: null })
+  assert.deepEqual(TB.targetBadges('kaair', undefined), { robot: 'kaair', location: null })
+})
+
+test('targetTitle: both names (even when one badge) and where the backend is', () => {
+  assert.equal(TB.targetTitle('Kcare_bucheon', 'kcare_bucheon', 'http://h:8001', 'HP'), 'Kcare_bucheon @ kcare_bucheon\nhttp://h:8001 · host HP')
+  assert.equal(TB.targetTitle('kaair', null, 'http://h:8001'), 'kaair\nhttp://h:8001')
 })

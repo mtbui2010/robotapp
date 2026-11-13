@@ -24,6 +24,7 @@ import type { Outcome } from '../lib/datasetLog'
 import { pinTabPref, readTabPref, writeTabPref } from '../lib/tabPref'
 import type { ClientEntry, AgentEvent, Lang } from '../lib/types'
 import { useRobotLanguages } from '../lib/useRobotLanguages'
+import { targetBadges, targetTitle } from '../lib/targetBadge'
 import { resolveLanguage, languageLabel, languageOptions } from '../lib/robotLanguages'
 import type { Step } from '../components/PlanPanel'
 
@@ -886,15 +887,18 @@ export default function Home() {
                 ))}
               </div>
               {/* which robot and site this tab drives (two tabs may drive two robots) */}
-              {target?.robot && (
-                <span className="self-center ml-2 flex items-center gap-1.5 text-xs text-gray-600 min-w-0"
-                  title={`${target.url}${target.host ? ` · host ${target.host}` : ''}`}>
-                  <span className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium truncate max-w-[9rem]">🤖 {target.robot}</span>
-                  {target.location && (
-                    <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 truncate max-w-[8rem]">📍 {target.location}</span>
-                  )}
-                </span>
-              )}
+              {target?.robot && (() => {
+                const badges = targetBadges(target.robot, target.location)
+                return (
+                  <span className="self-center ml-2 flex items-center gap-1 text-xs text-gray-600 min-w-0"
+                    title={targetTitle(target.robot, target.location, target.url, target.host)}>
+                    <span className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium truncate max-w-[9rem]">🤖 {badges.robot}</span>
+                    {badges.location && (
+                      <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 truncate max-w-[6rem]">📍 {badges.location}</span>
+                    )}
+                  </span>
+                )
+              })()}
               {/* the camera chips (CameraFeed's Tab | Grid and one chip per view) are drawn here, on this row */}
               <div ref={setCameraSlot} className="flex-1 min-w-0 flex items-center self-center ml-3 overflow-x-auto" />
               {/* Always live, unlike the Agent panel's Stop: a skill run from the
