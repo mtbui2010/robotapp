@@ -1,5 +1,5 @@
 'use client'
-import { getVoiceSink, speakViaSink } from './recordVoice'
+import { getVoiceSink, speakViaSink, tapMic } from './recordVoice'
 
 // Browser side of the HRI skills' source='dashboard' mode (kcare hri.reply /
 // hri.ask). The robot sends `speak` and `listen` events over the agent
@@ -319,6 +319,7 @@ export async function recordPhrase(maxSec = 8, silenceSec = 1.5): Promise<Record
     const name = (e as DOMException)?.name || String(e)
     return { blob: null, mime: '', error: name === 'NotAllowedError' ? 'not-allowed' : name }
   }
+  const untap = tapMic(stream)             // a screen recording with 🎤 ticked gets the answer too (lib/recordVoice.ts)
   const mime = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm']
     .find(m => MediaRecorder.isTypeSupported(m)) ?? ''
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
@@ -364,6 +365,7 @@ export async function recordPhrase(maxSec = 8, silenceSec = 1.5): Promise<Record
   const stopped = new Promise<void>(r => { rec.onstop = () => r() })
   rec.stop()
   await stopped
+  untap()
   stream.getTracks().forEach(t => t.stop())
   ctx.close().catch(() => {})
 

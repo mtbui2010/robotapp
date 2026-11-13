@@ -41,7 +41,7 @@ export default function RecordAudioToggles() {
         <option value="system">whole system</option>
       </select>
       <label className="flex items-center gap-1 cursor-pointer"
-        title="Also record the microphone (your voice), mixed into the same audio track.">
+        title="Also record your voice. Direct: your answers, taken from the dashboard's own listening (exactly what the robot hears). Tab / whole system: the microphone, mixed into the same track.">
         <input type="checkbox" checked={mic} className="accent-blue-600"
           onChange={e => { setMic(e.target.checked); setAudioPrefs({ mic: e.target.checked }) }} />
         🎤 mic

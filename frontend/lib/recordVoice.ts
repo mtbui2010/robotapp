@@ -7,10 +7,10 @@ import { noteRecordingAudio } from './recordNote'
 // (GET /tts) and played through a WebAudio graph the recorder owns: they reach the speakers AND the recording.
 // The earcons (hriVoice.playEarcon) use the same graph. Without a recording (no sink) nothing changes: speechSynthesis.
 
-export interface VoiceSink { ctx: AudioContext; dest: MediaStreamAudioDestinationNode }
+export interface VoiceSink { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; mic: boolean }   // mic: record the user's answers
 
 let sink: VoiceSink | null = null
-let current: AudioBufferSourceNode | null = null
+let current: { stop: () => void } | null = null
 let lastError = ''
 let noted = false
 
@@ -21,6 +21,19 @@ export const lastVoiceError = (): string => lastError
 export function setVoiceSink(s: VoiceSink | null): void {
   stopVoice()
   sink = s; lastError = ''; noted = false
+}
+
+/** The user's answer: the stream the dashboard itself listens with (recordPhrase, what Whisper hears) is also sent into the
+ *  recording, when 🎤 is ticked. Returns the function that ends the tap. A second microphone capture kept open for the whole
+ *  recording was silent on a real machine and would add the room's noise and the robot's own voice from the speakers. */
+export function tapMic(stream: MediaStream): () => void {
+  const s = sink
+  if (!s || !s.mic) return () => {}
+  try {
+    const node = s.ctx.createMediaStreamSource(stream)
+    node.connect(s.dest)                                           // not to the speakers: no echo of your own voice
+    return () => { try { node.disconnect() } catch { /* gone */ } }
+  } catch { return () => {} }
 }
 
 export function stopVoice(): void {
@@ -38,21 +51,35 @@ export async function speakViaSink(text: string, lang?: string | null, rate?: nu
   try {
     const data = await api.ttsAudio(t, (lang || '').slice(0, 2).toLowerCase() || undefined)
     if (sink !== s) return false                                   // the recording ended meanwhile
-    const buf = await s.ctx.decodeAudioData(data)
     if (interrupt) stopVoice()
-    const src = s.ctx.createBufferSource()
-    src.buffer = buf
+    // Played by a media element (not an AudioBufferSourceNode): its playbackRate keeps the PITCH (a buffer source's
+    // playbackRate raises it: HRI_CONFIGS.speech_rate 1.3 made the Korean voice sound like a chipmunk in the recording).
+    const url = URL.createObjectURL(new Blob([data], { type: 'audio/mpeg' }))
+    const el = new Audio(url)
+    const pitchKeeping = el as HTMLAudioElement & { webkitPreservesPitch?: boolean; mozPreservesPitch?: boolean }
+    pitchKeeping.preservesPitch = true
+    pitchKeeping.webkitPreservesPitch = true
+    pitchKeeping.mozPreservesPitch = true
     const r = rate && rate > 0 ? Math.min(2, Math.max(0.5, rate)) : 1
-    src.playbackRate.value = r
-    src.connect(s.dest)                                            // the recording
-    src.connect(s.ctx.destination)                                 // and the speakers
-    await new Promise<void>(resolve => {
-      const cap = setTimeout(resolve, (buf.duration / r) * 1000 + 2000)   // a lost `ended` must not stall the listen behind it
-      src.onended = () => { clearTimeout(cap); resolve() }
-      current = src
-      src.start()
-    })
-    if (current === src) current = null
+    el.playbackRate = r
+    const node = s.ctx.createMediaElementSource(el)
+    node.connect(s.dest)                                           // the recording
+    node.connect(s.ctx.destination)                                // and the speakers
+    const me = { stop: () => el.pause() }
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const cap = setTimeout(resolve, 60_000)                    // a lost `ended` must not stall the listen behind it
+        el.onended = () => { clearTimeout(cap); resolve() }
+        el.onpause = () => { clearTimeout(cap); resolve() }          // cut by a newer line
+        el.onerror = () => { clearTimeout(cap); reject(new Error('the audio could not be played')) }
+        current = me
+        el.play().catch(e => { clearTimeout(cap); reject(e) })
+      })
+    } finally {
+      if (current === me) current = null
+      try { node.disconnect() } catch { /* gone */ }
+      URL.revokeObjectURL(url)
+    }
     return true
   } catch (e) {
     lastError = (e as Error)?.message || String(e)

@@ -91,27 +91,18 @@ async function buildDirectStream(display: MediaStream, prefs: AudioPrefs, ctx?: 
   keep.offset.value = 0
   keep.connect(dest)
   keep.start()
-  let mic: MediaStream | null = null
-  const notes: string[] = []
-  if (prefs.mic) {
-    try {
-      mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
-      ac.createMediaStreamSource(mic).connect(dest)                 // not to ac.destination: no echo of your own voice
-    } catch (e) {
-      notes.push(`Microphone not recorded: ${(e as Error)?.name || 'refused'}.`)
-    }
-  }
+  // The user's voice is not captured by a second microphone stream: recordPhrase's own stream (what the robot hears) is tapped
+  // into the recording while it listens (recordVoice.tapMic), so the clip has exactly the answers and no room noise.
   if (ac.state !== 'running') await ac.resume().catch(() => {})
-  setVoiceSink({ ctx: ac, dest })
-  const audio = ['robot voice', 'beeps', ...(mic ? ['mic'] : [])]
-  noteRecordingAudio([...notes, `Recording with sound: ${audio.join(' + ')} (direct; context ${ac.state}). The robot's lines come from the backend's GET /tts.`].join(' '))
+  setVoiceSink({ ctx: ac, dest, mic: prefs.mic })
+  const audio = ['robot voice', 'beeps', ...(prefs.mic ? ['your answers (while the robot listens)'] : [])]
+  noteRecordingAudio(`Recording with sound: ${audio.join(' + ')} (direct; context ${ac.state}). The robot's lines come from the backend's GET /tts.`)
   return {
     stream: new MediaStream([...video, ...dest.stream.getAudioTracks()]),
     audio,
     dispose: () => {
       setVoiceSink(null)
       try { keep.stop() } catch { /* already stopped */ }
-      mic?.getTracks().forEach(t => t.stop())
       ac.close().catch(() => {})
     },
   }
@@ -181,7 +172,7 @@ async function testDirect(): Promise<AudioTestResult> {
   const ctx = makeRecorderContext()
   if (!ctx) { out.text = 'No audio context in this browser.'; return out }
   const dest = ctx.createMediaStreamDestination()
-  setVoiceSink({ ctx, dest })
+  setVoiceSink({ ctx, dest, mic: false })
   try {
     const an = ctx.createAnalyser(); an.fftSize = 2048
     ctx.createMediaStreamSource(dest.stream).connect(an)

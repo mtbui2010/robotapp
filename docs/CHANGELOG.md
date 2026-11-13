@@ -11,6 +11,9 @@ aliases, planner guides) predate the dated notes; see their docs.
 - Screen recording sound: new **direct** source (the default). The app puts the robot's lines (backend `GET /tts`, gTTS), the
   beeps and the microphone into the recording itself, so it works on every OS and browser; the tab source missed the
   browser's Korean voice. [features/screen-recording.md](features/screen-recording.md)
+- Screen recording (direct): the robot's voice keeps its pitch at `speech_rate` (a media element with `preservesPitch`; the buffer
+  source made it distorted), and 🎤 records your answers by tapping the listen stream instead of a second microphone.
+  [features/screen-recording.md](features/screen-recording.md)
 
 ## 2026-11-13
 
