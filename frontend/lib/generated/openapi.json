@@ -72,6 +72,11 @@
    },
    "BtnIn": {
     "properties": {
+     "group": {
+      "default": "",
+      "title": "Group",
+      "type": "string"
+     },
      "label": {
       "title": "Label",
       "type": "string"
@@ -90,6 +95,17 @@
    },
    "BtnUpdate": {
     "properties": {
+     "group": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Group"
+     },
      "label": {
       "anyOf": [
        {
@@ -191,6 +207,19 @@
      "name"
     ],
     "title": "CreateLocationReq",
+    "type": "object"
+   },
+   "GroupIn": {
+    "properties": {
+     "name": {
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "GroupIn",
     "type": "object"
    },
    "HTTPValidationError": {
@@ -2119,6 +2148,174 @@
      }
     },
     "summary": "Bulk Add"
+   }
+  },
+  "/buttons/groups": {
+   "get": {
+    "operationId": "list_groups_buttons_groups_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Groups"
+   },
+   "post": {
+    "operationId": "add_group_buttons_groups_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GroupIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Add Group"
+   }
+  },
+  "/buttons/groups/reorder": {
+   "post": {
+    "operationId": "reorder_groups_buttons_groups_reorder_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReorderIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reorder Groups"
+   }
+  },
+  "/buttons/groups/{gid}": {
+   "delete": {
+    "operationId": "delete_group_buttons_groups__gid__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "gid",
+      "required": true,
+      "schema": {
+       "title": "Gid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Group"
+   },
+   "put": {
+    "operationId": "rename_group_buttons_groups__gid__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "gid",
+      "required": true,
+      "schema": {
+       "title": "Gid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GroupIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rename Group"
    }
   },
   "/buttons/reorder": {

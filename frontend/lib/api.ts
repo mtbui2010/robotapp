@@ -1,5 +1,6 @@
 import type { ClientEntry, ClientType, SkillDef, WorldState, PlannerPrompt, LlmInfo, LocationsInfo, PoolStatus } from './types'
 import type { RobotLanguages } from './robotLanguages'
+import type { BtnDef, BtnGroup } from './buttonGroups'
 
 // ------------------------------------------------------------------
 // Robot registry — multiple named robots, one active at a time.
@@ -162,6 +163,16 @@ async function mapPost(body: Record<string, unknown>) {
   const b = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(typeof b?.detail === 'string' ? b.detail : `HTTP ${r.status}`)
   return b
+}
+
+/** One JSON request; a non-2xx throws the backend's `detail`. */
+async function jsonCall<T = unknown>(url: string, method: string, body?: unknown): Promise<T> {
+  const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body !== undefined && { body: JSON.stringify(body) }) })
+  if (!r.ok) {
+    const b = await r.json().catch(() => ({}))
+    throw new Error((b as { detail?: string }).detail || `HTTP ${r.status}`)
+  }
+  return r.json().catch(() => undefined) as Promise<T>
 }
 
 export const api = {
@@ -496,27 +507,27 @@ export const api = {
   },
 
   // ── Shortcut Buttons (per-robot, server-side) ───────────────
-  async listButtons(): Promise<{ id: string; label: string; plan: string }[]> {
+  async listButtons(): Promise<BtnDef[]> {
     const r = await fetch(`${getAgentUrl()}/buttons`)
     if (!r.ok) return []
     const data = await r.json()
     return Array.isArray(data) ? data : []
   },
 
-  async addButton(label: string, plan: string) {
+  async addButton(label: string, plan: string, group = '') {
     const r = await fetch(`${getAgentUrl()}/buttons`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label, plan }),
+      body: JSON.stringify({ label, plan, group }),
     })
     if (!r.ok) {
       const body = await r.json().catch(() => ({}))
       throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
     }
-    return r.json() as Promise<{ id: string; label: string; plan: string }>
+    return r.json() as Promise<BtnDef>
   },
 
-  async updateButton(id: string, fields: { label?: string; plan?: string }) {
+  async updateButton(id: string, fields: { label?: string; plan?: string; group?: string }) {
     const r = await fetch(`${getAgentUrl()}/buttons/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -527,6 +538,30 @@ export const api = {
       throw new Error((body as { detail?: string }).detail || `HTTP ${r.status}`)
     }
     return r.json()
+  },
+
+  // ── Button groups (GET/POST /buttons/groups, PUT/DELETE /buttons/groups/{id}, POST /buttons/groups/reorder) ──
+  async listButtonGroups(): Promise<BtnGroup[]> {
+    const r = await fetch(`${getAgentUrl()}/buttons/groups`)
+    if (!r.ok) return []
+    const data = await r.json()
+    return Array.isArray(data) ? data : []
+  },
+
+  async addButtonGroup(name: string): Promise<BtnGroup> {
+    return jsonCall(`${getAgentUrl()}/buttons/groups`, 'POST', { name })
+  },
+
+  async renameButtonGroup(id: string, name: string): Promise<BtnGroup> {
+    return jsonCall(`${getAgentUrl()}/buttons/groups/${encodeURIComponent(id)}`, 'PUT', { name })
+  },
+
+  async deleteButtonGroup(id: string): Promise<void> {     // its buttons move to Other
+    await jsonCall(`${getAgentUrl()}/buttons/groups/${encodeURIComponent(id)}`, 'DELETE')
+  },
+
+  async reorderButtonGroups(ids: string[]): Promise<void> {
+    await jsonCall(`${getAgentUrl()}/buttons/groups/reorder`, 'POST', { ids })
   },
 
   async deleteButton(id: string) {

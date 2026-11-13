@@ -23,6 +23,7 @@ const PV = await load('planView')
 const CM = await load('chatMic')
 const CR = await load('chatRun')
 const RL = await load('robotLanguages')
+const BG = await load('buttonGroups')
 
 const FIX = join(ROOT, 'scripts/fixtures/events')
 const fixtures = Object.fromEntries(readdirSync(FIX).filter(f => f.endsWith('.json'))
@@ -469,4 +470,41 @@ test('languageOptions / languageLabel: the robot\'s languages, never a blank sel
   assert.deepEqual(RL.languageOptions(null, 'en'), ['en'])    // robot not answered: just the one in use
   assert.deepEqual(RL.languageOptions(ja, 'ko'), ['ja', 'ko'])
   assert.equal(RL.languageLabel('ko'), 'KO')
+})
+
+
+// ── lib/buttonGroups.ts: shortcut buttons in groups ──────────────────────────────────────────────────────────
+const gs = [{ id: 'head', name: 'Head' }, { id: 'arm', name: 'Arm' }]
+const bs = [{ id: '1', label: 'head left', plan: 'p', group: 'head' }, { id: '2', label: 'fold', plan: 'p', group: 'arm' },
+            { id: '3', label: 'head right', plan: 'p', group: 'head' }, { id: '4', label: 'old', plan: 'p' }, { id: '5', label: 'lost', plan: 'p', group: 'gone' }]
+
+test('groupTabs: the groups in order, Other last and only when it has buttons (an unknown group reads as Other)', () => {
+  assert.deepEqual(BG.groupTabs(gs, bs).map(t => [t.id, t.name, t.count]), [['head', 'Head', 2], ['arm', 'Arm', 1], ['', 'Other', 2]])
+  assert.deepEqual(BG.groupTabs(gs, bs.slice(0, 3)).map(t => t.id), ['head', 'arm'])            // nothing in Other: no Other tab
+  assert.deepEqual(BG.groupTabs([], bs).map(t => [t.id, t.count]), [['', 5]])                   // no groups: everything is Other
+  assert.deepEqual(BG.groupTabs([], []).map(t => t.id), [''])                                   // nothing at all: still an Other tab to add into
+})
+
+test('buttonsOf: a group\'s buttons keep the list order', () => {
+  assert.deepEqual(BG.buttonsOf(bs, gs, 'head').map(b => b.id), ['1', '3'])
+  assert.deepEqual(BG.buttonsOf(bs, gs, BG.OTHER).map(b => b.id), ['4', '5'])
+})
+
+test('openGroup: the stored tray when it exists, the closed marker, else the first group that has buttons', () => {
+  const tabs = BG.groupTabs(gs, bs)
+  assert.equal(BG.openGroup('arm', tabs), 'arm')
+  assert.equal(BG.openGroup(BG.CLOSED, tabs), BG.CLOSED)
+  assert.equal(BG.openGroup('deleted', tabs), 'head')
+  assert.equal(BG.openGroup(null, tabs), 'head')
+  assert.equal(BG.openGroup(null, BG.groupTabs([{ id: 'e', name: 'Empty' }, { id: 'h', name: 'H' }], [{ id: '1', label: 'x', plan: '', group: 'h' }])), 'h')   // skips an empty group
+  assert.equal(BG.openGroup(null, []), BG.CLOSED)
+})
+
+test('reorderBefore / reorderGroupIds: the moved item takes the target\'s place; no change is null', () => {
+  assert.deepEqual(BG.reorderBefore(bs, '3', '1').map(b => b.id), ['3', '1', '2', '4', '5'])
+  assert.deepEqual(BG.reorderBefore(bs, '1', '3').map(b => b.id), ['2', '3', '1', '4', '5'])
+  assert.equal(BG.reorderBefore(bs, '1', '1'), null)
+  assert.equal(BG.reorderBefore(bs, '1', 'nope'), null)
+  assert.deepEqual(BG.reorderGroupIds(gs, 'arm', 'head'), ['arm', 'head'])
+  assert.equal(BG.reorderGroupIds(gs, 'arm', 'arm'), null)
 })

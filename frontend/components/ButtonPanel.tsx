@@ -1,6 +1,9 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../lib/api'
+import { CLOSED, OTHER, buttonsOf, groupTabs, openGroup, reorderBefore, reorderGroupIds, type BtnDef, type BtnGroup } from '../lib/buttonGroups'
+
+const LS_OPEN_GROUP = 'robotapp_button_group'     // the group whose tray is open ('-' = none)
 
 // Legacy key — buttons used to live entirely in localStorage. We migrate them
 // to the server on first load, then delete the key so it can never replay.
@@ -13,12 +16,6 @@ const MIGRATED_LS_KEY = 'robotapp_buttons_migrated'
 // localStorage list ends up imported twice. This in-flight flag dedupes
 // within the same JS context; the localStorage flag persists across reloads.
 let __migrationInFlight = false
-
-interface BtnDef {
-  id: string
-  label: string
-  plan: string
-}
 
 interface Props {
   onRun: (plan: string) => void
@@ -36,11 +33,15 @@ function readLegacy(): BtnDef[] {
   } catch { return [] }
 }
 
-const emptyForm = { label: '', plan: '' }
+const emptyForm = { label: '', plan: '', group: OTHER }
 
 export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
   const [buttons, setButtons]   = useState<BtnDef[]>([])
-  const [form, setForm]         = useState<{ label: string; plan: string } | null>(null)
+  const [groups, setGroups]   = useState<BtnGroup[]>([])
+  const [stored, setStored]     = useState<string | null>(null)      // the open tray as chosen (read after mount)
+  const [dragGroup, setDragGroup] = useState<string | null>(null)
+  const [overGroup, setOverGroup] = useState<string | null>(null)
+  const [form, setForm]         = useState<{ label: string; plan: string; group: string } | null>(null)
   const [editId, setEditId]     = useState<string | null>(null)
   const [dragId, setDragId]     = useState<string | null>(null)
   const [overId, setOverId]     = useState<string | null>(null)
@@ -81,9 +82,11 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
         }
       }
       setButtons(serverBtns)
+      setGroups(await api.listButtonGroups().catch(() => []))
       setUnreachable(false)
     } catch (e) {
       setButtons([])
+      setGroups([])
       setUnreachable(true)
       setError((e as Error).message || 'Could not reach robot')
     } finally {
@@ -92,9 +95,18 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
   }, [])
 
   useEffect(() => { void reload() }, [reload, refreshKey])
+  useEffect(() => { try { setStored(localStorage.getItem(LS_OPEN_GROUP)) } catch { /* no storage */ } }, [])
 
-  const openAdd  = () => { setEditId(null); setForm(emptyForm); setError(null) }
-  const openEdit = (b: BtnDef) => { setEditId(b.id); setForm({ label: b.label, plan: b.plan }); setError(null) }
+  const tabs = groupTabs(groups, buttons)
+  const open = openGroup(stored, tabs)
+  const chooseOpen = (id: string) => {
+    const next = open === id ? CLOSED : id          // a second click on the open group closes its tray
+    setStored(next)
+    try { localStorage.setItem(LS_OPEN_GROUP, next) } catch { /* no storage */ }
+  }
+
+  const openAdd  = () => { setEditId(null); setForm({ ...emptyForm, group: open === CLOSED ? OTHER : open }); setError(null) }
+  const openEdit = (b: BtnDef) => { setEditId(b.id); setForm({ label: b.label, plan: b.plan, group: b.group ?? OTHER }); setError(null) }
   const cancel   = () => { setForm(null); setEditId(null); setError(null) }
 
   const submit = async () => {
@@ -102,10 +114,10 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
     setError(null)
     try {
       if (editId) {
-        const updated = await api.updateButton(editId, { label: form.label, plan: form.plan })
+        const updated = await api.updateButton(editId, { label: form.label, plan: form.plan, group: form.group })
         setButtons(prev => prev.map(b => b.id === editId ? (updated as BtnDef) : b))
       } else {
-        const created = await api.addButton(form.label, form.plan)
+        const created = await api.addButton(form.label, form.plan, form.group)
         setButtons(prev => [...prev, created])
       }
       cancel()
@@ -140,24 +152,67 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
 
   const onDrop = async (e: React.DragEvent, targetId: string) => {
     e.preventDefault()
-    if (!dragId || dragId === targetId) { setDragId(null); setOverId(null); return }
-    const from = buttons.findIndex(b => b.id === dragId)
-    const to   = buttons.findIndex(b => b.id === targetId)
-    if (from < 0 || to < 0) { setDragId(null); setOverId(null); return }
-
-    const optimistic = buttons.slice()
-    const [moved] = optimistic.splice(from, 1)
-    optimistic.splice(to, 0, moved)
-    setButtons(optimistic)
+    const optimistic = dragId ? reorderBefore(buttons, dragId, targetId) : null
     setDragId(null)
     setOverId(null)
-
+    if (!optimistic) return
+    setButtons(optimistic)
     try {
       await api.reorderButtons(optimistic.map(b => b.id))
     } catch (e) {
       setError((e as Error).message || 'Reorder failed')
       void reload()  // revert from server
     }
+  }
+
+  // ── groups ──
+  const addGroup = async () => {
+    const name = window.prompt('New group name:')?.trim()
+    if (!name) return
+    setError(null)
+    try {
+      const g = await api.addButtonGroup(name)
+      setGroups(prev => [...prev, g])
+      setStored(g.id); try { localStorage.setItem(LS_OPEN_GROUP, g.id) } catch { /* no storage */ }
+    } catch (e) { setError((e as Error).message || 'Could not add the group') }
+  }
+  const renameGroup = async (g: BtnGroup) => {
+    const name = window.prompt(`Rename group "${g.name}" to:`, g.name)?.trim()
+    if (!name || name === g.name) return
+    setError(null)
+    try {
+      const upd = await api.renameButtonGroup(g.id, name)
+      setGroups(prev => prev.map(x => x.id === g.id ? upd : x))
+    } catch (e) { setError((e as Error).message || 'Could not rename the group') }
+  }
+  const removeGroup = async (g: BtnGroup) => {
+    const n = buttonsOf(buttons, groups, g.id).length
+    if (!window.confirm(`Delete group "${g.name}"?${n ? ` Its ${n} button${n > 1 ? 's' : ''} move to Other.` : ''}`)) return
+    setError(null)
+    try {
+      await api.deleteButtonGroup(g.id)
+      setGroups(prev => prev.filter(x => x.id !== g.id))
+      setButtons(prev => prev.map(b => b.group === g.id ? { ...b, group: OTHER } : b))
+    } catch (e) { setError((e as Error).message || 'Could not delete the group') }
+  }
+  const dropOnGroup = async (e: React.DragEvent, groupId: string) => {
+    e.preventDefault()
+    setOverGroup(null)
+    if (dragGroup) {                                  // a group dragged onto another: reorder the groups
+      const ids = reorderGroupIds(groups, dragGroup, groupId)
+      setDragGroup(null)
+      if (!ids) return
+      setGroups(ids.map(id => groups.find(g => g.id === id) as BtnGroup))
+      try { await api.reorderButtonGroups(ids) } catch (er) { setError((er as Error).message || 'Reorder failed'); void reload() }
+      return
+    }
+    if (!dragId) return                               // a button dropped on a group chip: it moves there
+    const id = dragId
+    setDragId(null); setOverId(null)
+    try {
+      const upd = await api.updateButton(id, { group: groupId })
+      setButtons(prev => prev.map(b => b.id === id ? (upd as BtnDef) : b))
+    } catch (er) { setError((er as Error).message || 'Could not move the button') }
   }
 
   const onDragEnd = () => {
@@ -168,12 +223,48 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Button grid */}
-      {buttons.length > 0 && (
-        <div className="grid gap-1.5"
-          // 2026-10-27: ~60 % of the old width (min 56 px: 5 columns of ~82 px in the control column; now 8 of ~49)
+      {/* Group bar: one chip per group (+ Other when it has buttons), a click opens that group's tray under it */}
+      {!unreachable && (
+        <div className="flex flex-wrap items-center gap-[3px]" data-testid="button-groups">
+          {tabs.map(t => {
+            const g = groups.find(x => x.id === t.id)
+            const draggable = !!g
+            return (
+              <div key={t.id} className={`relative group ${dragGroup === t.id ? 'opacity-40' : ''}`}
+                draggable={draggable}
+                onDragStart={draggable ? e => { setDragGroup(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id) } : undefined}
+                onDragOver={e => { if (dragGroup ? dragGroup !== t.id && draggable : !!dragId) { e.preventDefault(); if (overGroup !== t.id) setOverGroup(t.id) } }}
+                onDragLeave={() => setOverGroup(prev => prev === t.id ? null : prev)}
+                onDrop={e => void dropOnGroup(e, t.id)}
+                onDragEnd={() => { setDragGroup(null); setOverGroup(null) }}>
+                <button type="button" onClick={() => chooseOpen(t.id)} data-testid={`group-${t.id || 'other'}`}
+                  title={`${t.name} · ${t.count} button${t.count === 1 ? '' : 's'}${draggable ? ' · drag to reorder, drop a button here to move it' : ''}`}
+                  className={`px-1.5 py-0.5 text-[11px] rounded-full border whitespace-nowrap transition-colors ${
+                    open === t.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
+                  } ${overGroup === t.id ? 'ring-2 ring-blue-400' : ''}`}>
+                  {t.name}
+                </button>
+                {g && (
+                  <div className="absolute -top-1.5 -right-1 hidden group-hover:flex items-center bg-white/90 rounded">
+                    <button type="button" onClick={() => void renameGroup(g)} title="Rename the group"
+                      className="text-[9px] px-0.5 text-gray-400 hover:text-blue-500 leading-none">✎</button>
+                    <button type="button" onClick={() => void removeGroup(g)} title="Delete the group (its buttons move to Other)"
+                      className="text-[9px] px-0.5 text-gray-400 hover:text-red-500 leading-none">×</button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          <button type="button" onClick={() => void addGroup()} title="New group" data-testid="group-add"
+            className="px-1 py-0.5 text-[11px] rounded-full border border-dashed border-gray-300 text-gray-400 hover:text-blue-500 hover:border-blue-400">＋</button>
+        </div>
+      )}
+
+      {/* The open group's tray */}
+      {open !== CLOSED && !unreachable && (
+        <div className="grid gap-1.5" data-testid="button-tray"
           style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(46px, 1fr))' }}>
-          {buttons.map(b => (
+          {buttonsOf(buttons, groups, open).map(b => (
             <div
               key={b.id}
               className={`relative group ${dragId === b.id ? 'opacity-40' : ''} ${overId === b.id ? 'ring-2 ring-blue-400 rounded' : ''}`}
@@ -186,7 +277,7 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
               <button
                 onClick={() => onRun(b.plan)}
                 title={b.plan}
-                className="w-full h-[30px] px-0.5 py-0 bg-gray-100 hover:bg-blue-50 hover:border-blue-400 border border-gray-200 text-gray-800 text-[11px] rounded text-center leading-tight line-clamp-2 break-words"
+                className="w-full h-[30px] px-0.5 py-0 bg-gray-100 hover:bg-blue-50 hover:border-blue-400 border border-gray-200 text-gray-800 text-[11px] rounded text-center leading-tight overflow-hidden"
               >
                 {b.label}
               </button>
@@ -194,7 +285,7 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
                 <span
                   onMouseDown={() => { draggableRef.current = true }}
                   onMouseUp={() => { draggableRef.current = false }}
-                  title="Drag to reorder"
+                  title="Drag to reorder (or onto a group above to move it)"
                   className="text-[9px] px-0.5 text-gray-400 hover:text-gray-700 leading-none cursor-grab active:cursor-grabbing select-none"
                 >⋮⋮</span>
                 <button
@@ -208,11 +299,15 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
               </div>
             </div>
           ))}
+          {form === null && (
+            <button type="button" onClick={openAdd} title="Add a button to this group" data-testid="button-add"
+              className="h-[30px] text-[13px] rounded border border-dashed border-gray-300 text-gray-400 hover:text-blue-500 hover:border-blue-400">＋</button>
+          )}
         </div>
       )}
 
       {/* Empty / error state */}
-      {!loading && buttons.length === 0 && (
+      {!loading && buttons.length === 0 && groups.length === 0 && (
         <p className="text-[11px] text-gray-400">
           {unreachable
             ? 'Robot unreachable — connect a robot to load buttons.'
@@ -235,6 +330,14 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
             onChange={e => setForm(f => f && ({ ...f, label: e.target.value }))}
             className="bg-white border border-gray-200 rounded px-2 py-1 text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-500"
           />
+          <label className="flex items-center gap-1.5 text-gray-500">
+            group
+            <select value={form.group} onChange={e => setForm(f => f && ({ ...f, group: e.target.value }))}
+              className="flex-1 bg-white border border-gray-200 rounded px-1 py-0.5 text-gray-800">
+              {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              <option value={OTHER}>Other</option>
+            </select>
+          </label>
           <textarea
             placeholder={'find::apple\nnavigate::kitchen'}
             value={form.plan}
@@ -255,7 +358,7 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
               className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded">Cancel</button>
           </div>
         </div>
-      ) : (
+      ) : open === CLOSED || unreachable ? (
         <button
           onClick={openAdd}
           disabled={unreachable}
@@ -264,7 +367,7 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
         >
           + add button
         </button>
-      )}
+      ) : null}
     </div>
   )
 }

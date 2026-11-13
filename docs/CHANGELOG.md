@@ -8,6 +8,10 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- Shortcut buttons in **groups**: a row of group chips (Head, Mobile, Lift, Arm, Get ready, ＋) with the open group's tray under it, one tray at a
+  time; create / rename / delete / reorder groups (deleting one moves its buttons to Other), a button's group in its form, drag a
+  button onto a chip to move it. Backend: `/buttons/groups` endpoints and a `group` on buttons (robot_agent), kcare's buttons grouped.
+  [features/shortcut-buttons.md](features/shortcut-buttons.md)
 - The two plan input cells are 40 px high (was 60 px: 2 lines of text instead of 3); a longer plan scrolls, ⤢ opens the whole cell.
 - One row instead of two in both toolbars. Agent panel: *Presets* (select + a `⋯` menu with Save as / Rename / Delete / Export /
   Import / Guide), `log ▾` (where, which runs), rec screen, 🔊, ⏺, `×N` (repeat), voice and Run share one line (the Guide dialog is

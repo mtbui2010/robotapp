@@ -23,6 +23,7 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `GET  /agent/<name>/get` | read a device agent's latest value, read-only (Map tab robot pose) |
 | `GET  /config/locations/<site>/files/<path>` | static site files: Map layers (`_active` = active site) |
 | `GET  /config/locations` → `host`, `others` | which site the other live machines sharing the configs are on (presence) |
+| `GET/POST/PUT/DELETE /buttons[/groups][/<id>]`, `POST /buttons/groups/reorder` | the shortcut buttons and their groups ([shortcut-buttons](shortcut-buttons.md)) |
 | `GET  /tts?text=…&lang=…` | the sentence as `audio/mpeg` (gTTS on the backend, needs its internet); the screen recording plays the robot's voice through its own audio graph with it ([screen-recording](screen-recording.md)) |
 | `GET  /robot/languages` | `{robot, language, languages}`: the manifest's default language and every language the robot talks in; the language picker and its default (below) |
 | `GET  /planner/prompt?command=…&planner=…` | the Direct planner's prompt for a command, read-only ([planner-prompt](planner-prompt.md)) |
