@@ -874,16 +874,20 @@ export default function Home() {
           <GuidePanel open={guideOpen} onOpenChange={setGuideOpen} hideTrigger />
 
           <section className="px-5 pt-1 pb-3">
-            <div className="flex gap-1 mb-2 border-b border-gray-200">
-              {(['cameras', 'map'] as const).map(t => (
-                <button key={t} onClick={() => setMainTab(t)}
-                        className={`px-3 py-1.5 text-sm -mb-px border-b-2 ${mainTab === t ? 'border-blue-600 text-blue-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
-                  {t === 'cameras' ? 'Cameras' : 'Map'}
-                </button>
-              ))}
+            <div className="flex gap-1 mb-2 pb-1 border-b border-gray-200 items-center">
+              {/* Cameras | Map as a two-icon switch (was two text tabs, about 120 px; now about 56 px) */}
+              <div role="tablist" className="flex shrink-0 rounded overflow-hidden border border-gray-300 text-sm self-center">
+                {(['cameras', 'map'] as const).map(t => (
+                  <button key={t} role="tab" aria-selected={mainTab === t} onClick={() => setMainTab(t)}
+                          aria-label={t === 'cameras' ? 'Cameras' : 'Map'} title={t === 'cameras' ? 'Cameras' : 'Map'}
+                          className={`px-2 py-0.5 leading-none ${mainTab === t ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'}`}>
+                    {t === 'cameras' ? '📷' : '🗺️'}
+                  </button>
+                ))}
+              </div>
               {/* which robot and site this tab drives (two tabs may drive two robots) */}
               {target?.robot && (
-                <span className="self-center ml-3 flex items-center gap-1.5 text-xs text-gray-600 min-w-0"
+                <span className="self-center ml-2 flex items-center gap-1.5 text-xs text-gray-600 min-w-0"
                   title={`${target.url}${target.host ? ` · host ${target.host}` : ''}`}>
                   <span className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium truncate max-w-[9rem]">🤖 {target.robot}</span>
                   {target.location && (

@@ -42,7 +42,7 @@ tree.
 
 ## Camera chips on the Cameras / Map row (2026-11-13)
 
-The camera chips are drawn ON the page's `Cameras | Map` tab row (between the robot / site badges and **Cancel**), not on a row of their
+The camera chips are drawn ON the page's `Cameras | Map` row (that pair is a two-icon switch, 📷 / 🗺️) (between the robot / site badges and **Cancel**), not on a row of their
 own: `page.tsx` leaves an empty slot there and `CameraFeed` portals its toolbar into it (`toolbarSlot`); on the Map tab the
 chips are gone. With no slot the toolbar is drawn under the tabs as before. The slot scrolls sideways when the window is narrower
 than its content. The views are ONE drop list (`📷 3/5 ▾`, `components/PopoverButton.tsx`) next to the Tab | Grid switch, not a chip each (about 140 px instead

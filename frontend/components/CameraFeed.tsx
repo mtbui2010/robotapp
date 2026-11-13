@@ -739,7 +739,7 @@ export default function CameraFeed({ clients, logImage, onClearLog, toolbarSlot 
             ? `${rows.filter(r => gridIds.includes(r.id)).length}/${rows.length}`
             : (rows.find(r => r.id === selectedId)?.label ?? '—')
           return (
-            <PopoverButton label={<><span>📷</span> <span className="max-w-[7rem] truncate inline-block align-bottom">{summary}</span> <span className="text-[9px] text-gray-400">▾</span></>}
+            <PopoverButton label={<><span>👁</span> <span className="max-w-[7rem] truncate inline-block align-bottom">{summary}</span> <span className="text-[9px] text-gray-400">▾</span></>}
               title={layout === 'grid' ? 'Views shown in the grid' : 'View shown'} testId="views-menu" panelClass="w-56"
               buttonClass="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border border-gray-300 text-gray-600 hover:bg-gray-50 whitespace-nowrap self-center">
               {close => (
