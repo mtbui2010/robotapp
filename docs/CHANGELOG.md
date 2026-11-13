@@ -8,6 +8,8 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- The "Presets" label and the "— saved —" box are one control: a 72 px select that reads *Presets* when nothing is chosen (the
+  chosen preset's name otherwise; the list and the tooltip show full names). Was a label + a 123 px select.
 - Deleting a button group asks first, in a warning box under the group bar that lists the buttons and says they move to Other
   (a page box, not `window.confirm`). [features/shortcut-buttons.md](features/shortcut-buttons.md)
 - Shortcut buttons in **groups**: a row of group chips (Head, Mobile, Lift, Arm, Get ready, ＋) with the open group's tray under it, one tray at a

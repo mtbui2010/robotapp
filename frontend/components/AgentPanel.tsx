@@ -112,11 +112,11 @@ function PresetBar({
   const item = 'text-left px-2 py-1 rounded hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent whitespace-nowrap'
   return (
     <div className="flex items-center gap-1 text-[11px] shrink-0">
-      <span className="text-gray-500 shrink-0">{label}</span>
-      <select value={selected} onChange={e => onSelect(e.target.value)}
-        title="Load a saved preset into the input"
-        className="bg-white border border-gray-300 text-gray-800 rounded px-1 py-0.5 min-w-[100px] max-w-[150px]">
-        <option value="">— saved —</option>
+      {/* One control: the select says "Presets" when nothing is chosen (the label and the "— saved —" box were two); 72 px, the dropdown list and the tooltip show the full names */}
+      <select value={selected} onChange={e => onSelect(e.target.value)} aria-label={label}
+        title={selected ? `${selected} — load a saved preset into the input` : 'Load a saved preset into the input'}
+        className="bg-white border border-gray-300 text-gray-800 rounded px-1 py-0.5 w-[72px]">
+        <option value="">{label}</option>
         {[...presets]
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
           .map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
