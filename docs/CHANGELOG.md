@@ -8,6 +8,8 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- The 🔊 sound button of the capture row is just `⋯` (23 px; was `🔊 system 🎤 ● ▾`): the popover is unchanged, a small dot on it shows
+  green / amber once a recording or the audio test has reported, and the tooltip says what is set.
 - The "Presets" label and the "— saved —" box are one control: a 72 px select that reads *Presets* when nothing is chosen (the
   chosen preset's name otherwise; the list and the tooltip show full names). Was a label + a 123 px select.
 - Deleting a button group asks first, in a warning box under the group bar that lists the buttons and says they move to Other

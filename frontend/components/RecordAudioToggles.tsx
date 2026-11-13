@@ -2,9 +2,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { NOTE_EVENT, defaultSource, getAudioPrefs, setAudioPrefs, testRecordingAudio, type AudioSource } from '../lib/recordAudio'
 
-// Sound options for the screen recordings, folded into ONE button next to the record controls: "🔊 system 🎤 ● ▾". The popover has
-// the sound checkbox, the source, the microphone, the 9 s self-test and the full note. The dot says how the last recording
-// started: green = it carries sound, amber = it does not (or the test failed), grey = nothing yet. Takes effect at the next
+// Sound options for the screen recordings, folded into ONE "⋯" button next to the record controls. The popover has
+// the sound checkbox, the source, the microphone, the 9 s self-test and the full note. A small dot on the button says how the last recording
+// started (green = it carries sound, amber = it does not or the test failed; none before any); the tooltip says what is set. Takes effect at the next
 // recording (the share dialog is where the browser asks about system / tab audio).
 
 type Level = 'none' | 'ok' | 'warn'
@@ -56,13 +56,10 @@ export default function RecordAudioToggles() {
   return (
     <span className="inline-flex items-center">
       <button ref={btn} type="button" onClick={toggle} data-testid="record-audio-button"
-        title={note || 'Sound of the screen recordings: source, microphone, test'}
-        className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 whitespace-nowrap">
-        <span>{tab ? '🔊' : '🔇'}</span>
-        <span>{src}</span>
-        {tab && mic && <span title="your answers are recorded">🎤</span>}
-        <span className={`inline-block w-2 h-2 rounded-full ${DOT[level]}`} />
-        <span className="text-[9px] text-gray-400">▾</span>
+        title={`Recording sound: ${tab ? src : 'off'}${tab && mic ? ' + your answers' : ''}${note ? ` — ${note}` : ''}`}
+        className="relative px-1.5 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 font-bold leading-none">
+        ⋯
+        {level !== 'none' && <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${DOT[level]}`} />}
       </button>
       {open && (
         <div ref={pop} style={{ position: 'fixed', left: pos.left, top: pos.top }} data-testid="record-audio-popover"
