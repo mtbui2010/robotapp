@@ -40,6 +40,7 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
   const [groups, setGroups]   = useState<BtnGroup[]>([])
   const [stored, setStored]     = useState<string | null>(null)      // the open tray as chosen (read after mount)
   const [dragGroup, setDragGroup] = useState<string | null>(null)
+  const [confirmGroup, setConfirmGroup] = useState<BtnGroup | null>(null)   // the group whose deletion waits for a click on the warning
   const [overGroup, setOverGroup] = useState<string | null>(null)
   const [form, setForm]         = useState<{ label: string; plan: string; group: string } | null>(null)
   const [editId, setEditId]     = useState<string | null>(null)
@@ -185,9 +186,10 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
       setGroups(prev => prev.map(x => x.id === g.id ? upd : x))
     } catch (e) { setError((e as Error).message || 'Could not rename the group') }
   }
-  const removeGroup = async (g: BtnGroup) => {
-    const n = buttonsOf(buttons, groups, g.id).length
-    if (!window.confirm(`Delete group "${g.name}"?${n ? ` Its ${n} button${n > 1 ? 's' : ''} move to Other.` : ''}`)) return
+  // × on a group only opens the warning below the bar (a page box, not window.confirm: browsers can mute those); the click there deletes
+  const removeGroup = (g: BtnGroup) => { setError(null); setConfirmGroup(g) }
+  const doRemoveGroup = async (g: BtnGroup) => {
+    setConfirmGroup(null)
     setError(null)
     try {
       await api.deleteButtonGroup(g.id)
@@ -259,6 +261,29 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
             className="px-1 py-0.5 text-[11px] rounded-full border border-dashed border-gray-300 text-gray-400 hover:text-blue-500 hover:border-blue-400">＋</button>
         </div>
       )}
+
+      {/* Warning before a group is deleted: what happens to its buttons */}
+      {confirmGroup && (() => {
+        const labels = buttonsOf(buttons, groups, confirmGroup.id).map(b => b.label)
+        const shown = labels.slice(0, 6).join(', ') + (labels.length > 6 ? ` … +${labels.length - 6} more` : '')
+        return (
+          <div role="alert" data-testid="group-delete-warning"
+            className="flex flex-col gap-1.5 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">
+            <div>
+              <span className="font-semibold">⚠ Delete the group “{confirmGroup.name}”?</span>{' '}
+              {labels.length > 0
+                ? <>Its {labels.length} button{labels.length > 1 ? 's' : ''} (<span className="italic">{shown}</span>) will move to <b>Other</b>; the buttons themselves are kept.</>
+                : <>It has no buttons.</>}
+            </div>
+            <div className="flex gap-1.5">
+              <button type="button" onClick={() => void doRemoveGroup(confirmGroup)} data-testid="group-delete-confirm"
+                className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white">Delete group</button>
+              <button type="button" onClick={() => setConfirmGroup(null)}
+                className="px-2 py-0.5 rounded bg-white hover:bg-gray-100 border border-gray-300 text-gray-700">Cancel</button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* The open group's tray */}
       {open !== CLOSED && !unreachable && (

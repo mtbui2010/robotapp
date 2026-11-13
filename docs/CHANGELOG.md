@@ -8,6 +8,8 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
+- Deleting a button group asks first, in a warning box under the group bar that lists the buttons and says they move to Other
+  (a page box, not `window.confirm`). [features/shortcut-buttons.md](features/shortcut-buttons.md)
 - Shortcut buttons in **groups**: a row of group chips (Head, Mobile, Lift, Arm, Get ready, ＋) with the open group's tray under it, one tray at a
   time; create / rename / delete / reorder groups (deleting one moves its buttons to Other), a button's group in its form, drag a
   button onto a chip to move it. Backend: `/buttons/groups` endpoints and a `group` on buttons (robot_agent), kcare's buttons grouped.
