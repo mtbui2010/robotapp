@@ -8,7 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-13 (later)
 
-- Language picker: **Detect** (`lang: 'auto'`) is first and the default when the robot has 2+ languages (only option when the manifest names none); an explicit pick (e.g. KO) is the default of the next tab; add / delete languages per robot in the picker's popover; `Detect · EN` shows the language heard. `components/LanguagePicker.tsx`, `lib/robotLanguages.ts`, `lib/useRobotLanguages.ts`, `declared` in `GET /robot/languages`. Needs robot_agent d015ed7 + kcare_robot 489717f (restart the backend). docs/features/chat.md.
+- Language picker: **Detect** (`lang: 'auto'`) is always first and the default, whatever the number of languages in the manifest (the only option when it names none); an explicit pick (e.g. KO) is the default of the next tab; add / delete languages per robot in the picker's popover; `Detect · EN` shows the language heard. `components/LanguagePicker.tsx`, `lib/robotLanguages.ts`, `lib/useRobotLanguages.ts`, `declared` in `GET /robot/languages`. Needs robot_agent d015ed7 + kcare_robot 489717f (restart the backend). docs/features/chat.md.
 - Plan progress no longer repeats the running step in a blue "NOW …" box above the list (it is the highlighted row of the list; the list still
   scrolls to it). `components/PlanList.tsx`.
 - The robot / site badges: when the site is named like the robot (any case: "Kcare_bucheon" / "kcare_bucheon") one badge `🤖 Kcare_bucheon` is

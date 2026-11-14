@@ -463,9 +463,10 @@ test('resolveLanguage: a robot with 2+ languages starts in Detect; the tab keeps
   assert.equal(RL.resolveLanguage('xx', ko), 'auto')         // not on offer
 })
 
-test('resolveLanguage: one language: no Detect, the robot default; undeclared: only Detect', () => {
-  assert.equal(RL.resolveLanguage('en', ja), 'ja')
-  assert.equal(RL.resolveLanguage('auto', ja), 'ja')
+test('resolveLanguage: Detect whatever the number of languages; an explicit pick stays', () => {
+  assert.equal(RL.resolveLanguage('en', ja), 'auto')
+  assert.equal(RL.resolveLanguage('ja', ja), 'ja')
+  assert.equal(RL.resolveLanguage('auto', ja), 'auto')
   assert.equal(RL.resolveLanguage('ko', none), 'auto')
   assert.equal(RL.resolveLanguage(null, none), 'auto')
 })
@@ -478,7 +479,7 @@ test('resolveLanguage: before the robot answers the stored choice stands, else E
 test('languageOptions / languageLabel: Detect first when offered, never a blank select', () => {
   assert.deepEqual(RL.languageOptions(ko, 'en'), ['auto', 'ko', 'en'])
   assert.deepEqual(RL.languageOptions(null, 'en'), ['en'])    // robot not answered: just the one in use
-  assert.deepEqual(RL.languageOptions(ja, 'ko'), ['ja', 'ko'])
+  assert.deepEqual(RL.languageOptions(ja, 'ko'), ['auto', 'ja', 'ko'])
   assert.deepEqual(RL.languageOptions(none, 'auto'), ['auto'])  // no languages in the manifest: only Detect
   assert.equal(RL.languageLabel('ko'), 'KO')
   assert.equal(RL.languageLabel('auto'), 'Detect')
@@ -496,7 +497,7 @@ test('user edits: add / delete a language per robot', () => {
   assert.deepEqual(RL.languageOptions(ko, '', e), ['auto', 'ko', 'ja'])
   e = RL.removeLanguage(e, 'ja', ko)                           // an added one: just dropped
   assert.deepEqual(e.added, [])
-  assert.deepEqual(RL.languageOptions(ko, '', e), ['ko'])      // one left: no Detect
+  assert.deepEqual(RL.languageOptions(ko, '', e), ['auto', 'ko'])   // one left: Detect stays
   assert.deepEqual(RL.languageOptions(none, '', RL.addLanguage(RL.NO_EDITS, 'ko')), ['auto', 'ko'])
   assert.deepEqual(RL.addLanguage(e, 'en').removed, [])        // adding back what was removed
   assert.equal(RL.hasEdits(RL.NO_EDITS), false)

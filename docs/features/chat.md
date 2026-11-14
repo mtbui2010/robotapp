@@ -166,8 +166,8 @@ retry / relook / asked, second look) and chatMic (no listening while running / s
 guard, `answerBy`).
 
 ## Detect (language `auto`, 2026-11-14)
-The picker (`components/LanguagePicker.tsx`, in the control bar and the chat header) offers **Detect** first when the robot has 2+ languages
-(or none declared: then it is the only option). Detect is the default of a tab that has not chosen; picking KO (or any language) makes
+The picker (`components/LanguagePicker.tsx`, in the control bar and the chat header) always offers **Detect** first, however many languages the
+manifest names (none: then it is the only option). Detect is the default of a tab that has not chosen; picking KO (or any language) makes
 that the default for the next tab (`robotapp_lang`, see above). The run is sent with `lang: 'auto'`: the robot starts in its default
 language and, per turn, goes on in the language the user was heard in (backend: robot_agent `lang 'auto'`, hri `_adopt_language`; only among
 the robot's languages, only when the phrase is long enough to be sure; qa / ask / reply, not the emergency exchange, not typed chat).

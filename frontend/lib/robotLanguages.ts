@@ -4,7 +4,7 @@ export interface RobotLanguages {
   robot: string
   language: string          // the robot's default (manifest `language`)
   languages: string[]       // every language it talks in, the default first (manifest `languages`); [] when the manifest names none
-  declared?: boolean        // false: the manifest says nothing about languages (only Detect is offered, plus the user's own)
+  declared?: boolean        // false: the manifest says nothing about languages (Detect, plus the user's own)
 }
 
 /** 'auto' = Detect: the robot follows the language the user speaks (among the languages in the list). */
@@ -25,11 +25,6 @@ export function languageList(info: RobotLanguages | null, edits: LangEdits = NO_
   return out
 }
 
-/** Detect is offered when the robot has 2+ languages, or none declared (then it is the only way to know). */
-function offersAuto(info: RobotLanguages, list: string[]): boolean {
-  return info.declared === false || list.length >= 2
-}
-
 /** The language to use: the tab's own choice when it is on offer, else Detect when offered, else the robot's default.
  *  No answer from the robot yet: the stored choice, else English. */
 export function resolveLanguage(stored: string | null, info: RobotLanguages | null, edits: LangEdits = NO_EDITS): string {
@@ -48,7 +43,7 @@ export const languageLabel = (code: string): string => code === LANG_AUTO ? 'Det
  *  of them (so the select is never blank). */
 export function languageOptions(info: RobotLanguages | null, current: string, edits: LangEdits = NO_EDITS): string[] {
   const list = languageList(info, edits)
-  const opts = info && offersAuto(info, list) ? [LANG_AUTO, ...list] : list
+  const opts = info ? [LANG_AUTO, ...list] : list   // Detect is always offered, however many languages the manifest names
   return opts.includes(current) || !current ? opts : [...opts, current]
 }
 
