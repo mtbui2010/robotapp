@@ -23,9 +23,10 @@ import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
 import type { Outcome } from '../lib/datasetLog'
 import { pinTabPref, readTabPref, writeTabPref } from '../lib/tabPref'
 import type { ClientEntry, AgentEvent, Lang } from '../lib/types'
-import { useRobotLanguages } from '../lib/useRobotLanguages'
+import { useRobotLanguages, useLanguageEdits } from '../lib/useRobotLanguages'
 import { mismatchTitle, targetBadges, targetTitle } from '../lib/targetBadge'
-import { resolveLanguage, languageLabel, languageOptions } from '../lib/robotLanguages'
+import { resolveLanguage, languageOptions, speechLanguage, addLanguage, removeLanguage, hasEdits, NO_EDITS, LANG_AUTO, type RobotLanguages } from '../lib/robotLanguages'
+import LanguagePicker from '../components/LanguagePicker'
 import type { Step } from '../components/PlanPanel'
 
 // Filename-safe prefix from a task string, e.g. 'find::apple' → 'find_apple'.
@@ -124,6 +125,9 @@ export default function Home() {
     { remaining: 1, continueOnError: false, active: false }
   )
   const argsRef = useRef<{ finalPrompt: string; direct: boolean; lang: string; planner: 'grace' | 'direct' | 'sage'; planOnly: boolean; logData: boolean; logTarget: 'backend' | 'frontend'; logAll: boolean; voice: boolean } | null>(null)
+  const robotLangsRef = useRef<RobotLanguages | null>(null)   // the robot's languages, for the speech language of a Detect run
+  const heardLangRef = useRef<string | null>(null)             // the language heard last in a Detect run
+  const runLang = (l: string) => speechLanguage(l, robotLangsRef.current, heardLangRef.current)
   // "Still working" nudge: while a step runs without new milestones, repeat a
   // short phrase so a long-running task doesn't sound stalled.
   const nudgeRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -222,7 +226,9 @@ export default function Home() {
     setTrial(t => t + 1)            // count this iteration
     wsRef.current?.close()
     emit([], [])
-    setVoiceLang(a.lang)
+    heardLangRef.current = null
+    setHeardLang(null)
+    setVoiceLang(runLang(a.lang))
     runStartRef.current = Date.now()
     setRecordingPrefix('')          // reset; set from the first step's task below
     // Planner actually used: structured/explicit plans run directly; otherwise
@@ -331,10 +337,10 @@ export default function Home() {
       // BACKEND-WORKAROUND(hri-narrator-gate): no narration while an HRI speak / listen is queued
       if (ev.say && ev.event !== 'done' && ev.event !== 'error') addQaLine('robot', ev.say, 'say')
       if (a.voice && ev.say && hriBusyRef.current === 0) {
-        speak(ev.say, ev.say_lang, rateFor(ev.say_lang ?? a.lang))
+        speak(ev.say, ev.say_lang, rateFor(ev.say_lang ?? runLang(a.lang)))
         stopNudge()
         if (ev.event !== 'done' && ev.event !== 'error') {
-          const nudgeLang = ev.say_lang ?? a.lang      // "still working" in the language of the last phrase
+          const nudgeLang = ev.say_lang ?? runLang(a.lang)      // "still working" in the language of the last phrase
           nudgeRef.current = setInterval(() => speak(stillWorkingPhrase(nudgeLang), nudgeLang, rateFor(nudgeLang)), 15_000)
         }
       } else if (a.voice && ev.say && voiceOutRef.current) {
@@ -344,7 +350,7 @@ export default function Home() {
         // the queue, in order — still never while the mic is open.
         const line = ev.say
         stopNudge()
-        const lineLang = ev.say_lang ?? a.lang
+        const lineLang = ev.say_lang ?? runLang(a.lang)
         enqueueHri(async () => { if (voiceOutRef.current) await speakAndWait(line, lineLang, rateFor(lineLang)) })
       }
       if (ev.qa_state) setQaSkill(!!ev.qa_state.active)
@@ -371,7 +377,7 @@ export default function Home() {
       if (ev.speak || ev.listen || ev.alarm || ev.quiet) stopNudge()
       if (ev.speak && !aborted()) {
         const line = ev.speak
-        const lang = ev.speak_lang ?? a.lang
+        const lang = ev.speak_lang ?? runLang(a.lang)
         const rate = ev.speak_rate ?? rateFor(lang)
         addQaLine('robot', line)
         const speakId = ev.speak_id
@@ -392,7 +398,7 @@ export default function Home() {
       }
       if (ev.listen && !aborted()) {
         const req = ev.listen
-        const lang = req.lang ?? a.lang
+        const lang = req.lang ?? runLang(a.lang)
         const rate = req.rate ?? rateFor(lang)
         if (req.prompt) addQaLine('robot', req.prompt)
         textAskRef.current?.(null)          // an older question still waiting for typing is superseded, it cannot hold the queue
@@ -512,6 +518,8 @@ export default function Home() {
         )
       } else if (ev.event === 'step_log') {
         const entry = { data: ev.data ?? {}, image: ev.log_image ?? undefined, ts: ev.ts ?? Date.now() / 1000 }
+        const heard = (ev.data as { lang_detected?: { lang?: string } } | undefined)?.lang_detected?.lang   // Detect mode: the language the user was heard in
+        if (typeof heard === 'string') { heardLangRef.current = heard; setHeardLang(heard); setVoiceLang(heard) }
         newSteps = newSteps.map(s =>
           s.index === ev.step ? { ...s, logs: [...(s.logs ?? []), entry] } : s
         )
@@ -669,6 +677,9 @@ export default function Home() {
   // The languages come from the connected robot's manifest (GET /robot/languages): the picker's options, and the default
   // of a tab that has not chosen (or whose choice this robot does not talk in).
   const robotLangs = useRobotLanguages()
+  robotLangsRef.current = robotLangs
+  const [langEdits, saveLangEdits] = useLanguageEdits(robotLangs?.robot)   // languages this user added / deleted for this robot
+  const [heardLang, setHeardLang] = useState<string | null>(null)         // Detect: the language heard last in this run
   const [lang, setLang]         = useState<Lang>('en')
   const [chatOpen, setChatOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)   // the Guide dialog; opened from the ⋯ menu of the presets bar
@@ -692,14 +703,21 @@ export default function Home() {
     setMicSupported(!!(window.SpeechRecognition || window.webkitSpeechRecognition))
   }, [])
   useEffect(() => {
-    const l = resolveLanguage(readTabPref('robotapp_lang', 'robotapp_qa_lang'), robotLangs)   // this tab's own choice, else the last one chosen in any tab, else the robot's default
+    const l = resolveLanguage(readTabPref('robotapp_lang', 'robotapp_qa_lang'), robotLangs, langEdits)   // this tab's own choice, else the last one chosen in any tab, else the robot's default
     setLang(l)
-    if (robotLangs && robotLangs.languages.includes(l)) pinTabPref('robotapp_lang', l)        // this tab keeps what it started with
-  }, [robotLangs])
+    if (robotLangs && languageOptions(robotLangs, '', langEdits).includes(l)) pinTabPref('robotapp_lang', l)   // this tab keeps what it started with
+  }, [robotLangs, langEdits])
   const pickLang = (v: Lang) => {
     setLang(v)
     writeTabPref('robotapp_lang', v)
   }
+  const langPicker = (
+    <LanguagePicker value={lang} options={languageOptions(robotLangs, lang, langEdits)} detected={heardLang} edited={hasEdits(langEdits)}
+      disabled={running} buttonClass={PICK} onPick={pickLang}
+      onAdd={c => saveLangEdits(addLanguage(langEdits, c))}
+      onRemove={c => { saveLangEdits(removeLanguage(langEdits, c, robotLangs)); if (c === lang) pickLang(LANG_AUTO) }}
+      onReset={() => saveLangEdits(NO_EDITS)} />
+  )
   const pickPlanner = (v: PlannerMethod) => {
     setPlanner(v)
     writeTabPref(LS_PLANNER, v)
@@ -749,7 +767,7 @@ export default function Home() {
 
   // Hands-free: one-shot recognitions, only while idle and silent (lib/chatMic.ts, lib/useHandsFree.ts)
   useHandsFree({
-    enabled: handsFree && micSupported, lang,
+    enabled: handsFree && micSupported, lang: speechLanguage(lang, robotLangs, heardLang),
     snapshot: () => ({
       running: runningRef.current,
       waiting: listenIdRef.current !== null,
@@ -822,11 +840,7 @@ export default function Home() {
                   ⏹
                 </button>
               )}
-              <select value={lang} onChange={e => pickLang(e.target.value as Lang)} disabled={running}
-                title="Language of the robot's speech and of what it hears — chat and Structured runs"
-                className={`ml-auto ${PICK}`}>
-                {languageOptions(robotLangs, lang).map(l => <option key={l} value={l}>{languageLabel(l)}</option>)}
-              </select>
+              <span className="ml-auto">{langPicker}</span>
               <button onClick={() => setChatOpen(o => !o)}
                 title={listenId && !chatOpen ? 'The robot is waiting for your answer: open the chat to type it' : 'Chat with the robot: give it a task in words, answer when it asks (type or speak)'}
                 data-testid="chat-button" data-waiting={listenId && !chatOpen ? '1' : undefined}
@@ -940,7 +954,7 @@ export default function Home() {
         <ChatPanel
           log={qaLog}
           state={chatSt}
-          lang={lang} onLang={pickLang} languages={languageOptions(robotLangs, lang)}
+          langPicker={langPicker}
           planner={planner} onPlanner={pickPlanner}
           planOnly={planOnly} onPlanOnly={pickPlanOnly}
           handsFree={handsFree} onHandsFree={v => { void toggleHandsFree(v) }}

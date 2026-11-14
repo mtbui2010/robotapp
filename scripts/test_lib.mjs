@@ -450,15 +450,24 @@ test('tabPref: a tab that never chose keeps what it started with (pin) even when
 
 
 // ── lib/robotLanguages.ts: the picker's languages and the default come from the robot's manifest ──────────
-const ko = { robot: 'kaair', language: 'ko', languages: ['ko', 'en'] }
-const ja = { robot: 'other', language: 'ja', languages: ['ja'] }
+const ko = { robot: 'kaair', language: 'ko', languages: ['ko', 'en'], declared: true }
+const ja = { robot: 'other', language: 'ja', languages: ['ja'], declared: true }
+const none = { robot: 'bare', language: 'en', languages: [], declared: false }
 
-test('resolveLanguage: the tab keeps its choice when the robot talks in it, else the robot default', () => {
+test('resolveLanguage: a robot with 2+ languages starts in Detect; the tab keeps an explicit choice', () => {
+  assert.equal(RL.resolveLanguage(null, ko), 'auto')         // nothing chosen: Detect
+  assert.equal(RL.resolveLanguage('ko', ko), 'ko')           // chose ko: ko is the default next time
   assert.equal(RL.resolveLanguage('en', ko), 'en')
-  assert.equal(RL.resolveLanguage('ko', ko), 'ko')
-  assert.equal(RL.resolveLanguage(null, ko), 'ko')           // nothing chosen: the manifest's default
-  assert.equal(RL.resolveLanguage('en', ja), 'ja')           // another robot that does not talk in it
+  assert.equal(RL.resolveLanguage('auto', ko), 'auto')
   assert.equal(RL.resolveLanguage(' EN ', ko), 'en')
+  assert.equal(RL.resolveLanguage('xx', ko), 'auto')         // not on offer
+})
+
+test('resolveLanguage: one language: no Detect, the robot default; undeclared: only Detect', () => {
+  assert.equal(RL.resolveLanguage('en', ja), 'ja')
+  assert.equal(RL.resolveLanguage('auto', ja), 'ja')
+  assert.equal(RL.resolveLanguage('ko', none), 'auto')
+  assert.equal(RL.resolveLanguage(null, none), 'auto')
 })
 
 test('resolveLanguage: before the robot answers the stored choice stands, else English', () => {
@@ -466,11 +475,39 @@ test('resolveLanguage: before the robot answers the stored choice stands, else E
   assert.equal(RL.resolveLanguage(null, null), 'en')
 })
 
-test('languageOptions / languageLabel: the robot\'s languages, never a blank select', () => {
-  assert.deepEqual(RL.languageOptions(ko, 'en'), ['ko', 'en'])
+test('languageOptions / languageLabel: Detect first when offered, never a blank select', () => {
+  assert.deepEqual(RL.languageOptions(ko, 'en'), ['auto', 'ko', 'en'])
   assert.deepEqual(RL.languageOptions(null, 'en'), ['en'])    // robot not answered: just the one in use
   assert.deepEqual(RL.languageOptions(ja, 'ko'), ['ja', 'ko'])
+  assert.deepEqual(RL.languageOptions(none, 'auto'), ['auto'])  // no languages in the manifest: only Detect
   assert.equal(RL.languageLabel('ko'), 'KO')
+  assert.equal(RL.languageLabel('auto'), 'Detect')
+})
+
+test('user edits: add / delete a language per robot', () => {
+  let e = RL.addLanguage(RL.NO_EDITS, ' JA ')
+  assert.deepEqual(e.added, ['ja'])
+  assert.deepEqual(RL.languageOptions(ko, '', e), ['auto', 'ko', 'en', 'ja'])
+  assert.deepEqual(RL.addLanguage(e, 'ja').added, ['ja'])      // no duplicate
+  assert.deepEqual(RL.addLanguage(e, 'auto'), e)               // not a language code
+  assert.deepEqual(RL.addLanguage(e, 'korean'), e)
+  e = RL.removeLanguage(e, 'en', ko)                           // from the manifest: remembered as removed
+  assert.deepEqual(e.removed, ['en'])
+  assert.deepEqual(RL.languageOptions(ko, '', e), ['auto', 'ko', 'ja'])
+  e = RL.removeLanguage(e, 'ja', ko)                           // an added one: just dropped
+  assert.deepEqual(e.added, [])
+  assert.deepEqual(RL.languageOptions(ko, '', e), ['ko'])      // one left: no Detect
+  assert.deepEqual(RL.languageOptions(none, '', RL.addLanguage(RL.NO_EDITS, 'ko')), ['auto', 'ko'])
+  assert.deepEqual(RL.addLanguage(e, 'en').removed, [])        // adding back what was removed
+  assert.equal(RL.hasEdits(RL.NO_EDITS), false)
+  assert.equal(RL.hasEdits(e), true)
+})
+
+test('speechLanguage: Detect speaks the robot default until a language is heard', () => {
+  assert.equal(RL.speechLanguage('ko', ko), 'ko')
+  assert.equal(RL.speechLanguage('auto', ko), 'ko')
+  assert.equal(RL.speechLanguage('auto', ko, 'en'), 'en')
+  assert.equal(RL.speechLanguage('auto', null), 'en')
 })
 
 

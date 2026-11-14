@@ -164,3 +164,17 @@ step, a Structured `ask::` run leaves the card closed and pulses the button.
 prefix of 7 recorded runs (+ durations / `seq` with `_rx`) ([scripts/fixtures/events](../../scripts/fixtures/events): replan + search legs, failures,
 retry / relook / asked, second look) and chatMic (no listening while running / speaking / waiting, guard time, echo
 guard, `answerBy`).
+
+## Detect (language `auto`, 2026-11-14)
+The picker (`components/LanguagePicker.tsx`, in the control bar and the chat header) offers **Detect** first when the robot has 2+ languages
+(or none declared: then it is the only option). Detect is the default of a tab that has not chosen; picking KO (or any language) makes
+that the default for the next tab (`robotapp_lang`, see above). The run is sent with `lang: 'auto'`: the robot starts in its default
+language and, per turn, goes on in the language the user was heard in (backend: robot_agent `lang 'auto'`, hri `_adopt_language`; only among
+the robot's languages, only when the phrase is long enough to be sure; qa / ask / reply, not the emergency exchange, not typed chat).
+The picker shows `Detect · EN` once a language was heard (`step_log` `data.lang_detected`). Until then, and for the browser's own
+voice and mic, Detect means the robot's default language, then the language heard (`speechLanguage`).
+
+**Add / delete languages.** The popover lists Detect and the robot's languages: × deletes one from the list, the box adds a code (2-3
+letters: `ko`, `en`, `ja`…), "Reset to the robot's list" undoes both. The edits are per robot name and live in this browser
+(`robotapp_lang_edits:<robot>`); they change what the picker offers, not what the robot can speak (a language the skills have no phrases
+for is never taken from detection).

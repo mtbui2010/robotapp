@@ -492,6 +492,11 @@
    "RobotLanguages": {
     "additionalProperties": true,
     "properties": {
+     "declared": {
+      "default": true,
+      "title": "Declared",
+      "type": "boolean"
+     },
      "language": {
       "title": "Language",
       "type": "string"
