@@ -450,25 +450,18 @@ test('tabPref: a tab that never chose keeps what it started with (pin) even when
 
 
 // ── lib/robotLanguages.ts: the picker's languages and the default come from the robot's manifest ──────────
-const ko = { robot: 'kaair', language: 'ko', languages: ['ko', 'en'], declared: true }
-const ja = { robot: 'other', language: 'ja', languages: ['ja'], declared: true }
-const none = { robot: 'bare', language: 'en', languages: [], declared: false }
+const ko = { robot: 'kaair', language: 'ko', languages: ['ko', 'en'], supported: ['ko', 'en', 'ja'], declared: true }
+const ja = { robot: 'other', language: 'ja', languages: ['ja'], supported: ['ja'], declared: true }
+const none = { robot: 'bare', language: 'en', languages: [], supported: [], declared: false }
 
-test('resolveLanguage: a robot with 2+ languages starts in Detect; the tab keeps an explicit choice', () => {
+test('resolveLanguage: Detect unless the tab chose a language that is on', () => {
   assert.equal(RL.resolveLanguage(null, ko), 'auto')         // nothing chosen: Detect
   assert.equal(RL.resolveLanguage('ko', ko), 'ko')           // chose ko: ko is the default next time
-  assert.equal(RL.resolveLanguage('en', ko), 'en')
-  assert.equal(RL.resolveLanguage('auto', ko), 'auto')
   assert.equal(RL.resolveLanguage(' EN ', ko), 'en')
-  assert.equal(RL.resolveLanguage('xx', ko), 'auto')         // not on offer
-})
-
-test('resolveLanguage: Detect whatever the number of languages; an explicit pick stays', () => {
-  assert.equal(RL.resolveLanguage('en', ja), 'auto')
-  assert.equal(RL.resolveLanguage('ja', ja), 'ja')
-  assert.equal(RL.resolveLanguage('auto', ja), 'auto')
+  assert.equal(RL.resolveLanguage('auto', ko), 'auto')
+  assert.equal(RL.resolveLanguage('ja', ko), 'auto')         // switched off for this site
+  assert.equal(RL.resolveLanguage('en', ja), 'auto')         // one language: still Detect
   assert.equal(RL.resolveLanguage('ko', none), 'auto')
-  assert.equal(RL.resolveLanguage(null, none), 'auto')
 })
 
 test('resolveLanguage: before the robot answers the stored choice stands, else English', () => {
@@ -476,8 +469,8 @@ test('resolveLanguage: before the robot answers the stored choice stands, else E
   assert.equal(RL.resolveLanguage(null, null), 'en')
 })
 
-test('languageOptions / languageLabel: Detect first when offered, never a blank select', () => {
-  assert.deepEqual(RL.languageOptions(ko, 'en'), ['auto', 'ko', 'en'])
+test('languageOptions / languageLabel: Detect first whatever the manifest names, never a blank select', () => {
+  assert.deepEqual(RL.languageOptions(ko, 'en'), ['auto', 'ko', 'en'])   // ja is off for this site
   assert.deepEqual(RL.languageOptions(null, 'en'), ['en'])    // robot not answered: just the one in use
   assert.deepEqual(RL.languageOptions(ja, 'ko'), ['auto', 'ja', 'ko'])
   assert.deepEqual(RL.languageOptions(none, 'auto'), ['auto'])  // no languages in the manifest: only Detect
@@ -485,23 +478,14 @@ test('languageOptions / languageLabel: Detect first when offered, never a blank 
   assert.equal(RL.languageLabel('auto'), 'Detect')
 })
 
-test('user edits: add / delete a language per robot', () => {
-  let e = RL.addLanguage(RL.NO_EDITS, ' JA ')
-  assert.deepEqual(e.added, ['ja'])
-  assert.deepEqual(RL.languageOptions(ko, '', e), ['auto', 'ko', 'en', 'ja'])
-  assert.deepEqual(RL.addLanguage(e, 'ja').added, ['ja'])      // no duplicate
-  assert.deepEqual(RL.addLanguage(e, 'auto'), e)               // not a language code
-  assert.deepEqual(RL.addLanguage(e, 'korean'), e)
-  e = RL.removeLanguage(e, 'en', ko)                           // from the manifest: remembered as removed
-  assert.deepEqual(e.removed, ['en'])
-  assert.deepEqual(RL.languageOptions(ko, '', e), ['auto', 'ko', 'ja'])
-  e = RL.removeLanguage(e, 'ja', ko)                           // an added one: just dropped
-  assert.deepEqual(e.added, [])
-  assert.deepEqual(RL.languageOptions(ko, '', e), ['auto', 'ko'])   // one left: Detect stays
-  assert.deepEqual(RL.languageOptions(none, '', RL.addLanguage(RL.NO_EDITS, 'ko')), ['auto', 'ko'])
-  assert.deepEqual(RL.addLanguage(e, 'en').removed, [])        // adding back what was removed
-  assert.equal(RL.hasEdits(RL.NO_EDITS), false)
-  assert.equal(RL.hasEdits(e), true)
+test('toggleLanguage: switch a manifest language on / off, in the manifest order; never the last one, never a foreign code', () => {
+  assert.deepEqual(RL.toggleLanguage(ko, 'ja'), ['ko', 'en', 'ja'])   // on
+  assert.deepEqual(RL.toggleLanguage(ko, 'en'), ['ko'])               // off
+  assert.equal(RL.toggleLanguage(ja, 'ja'), null)                     // the last one stays
+  assert.equal(RL.toggleLanguage(ko, 'vi'), null)                     // not in the manifest
+  assert.deepEqual(RL.supportedLanguages(ko), ['ko', 'en', 'ja'])
+  assert.deepEqual(RL.supportedLanguages({ robot: 'x', language: 'ko', languages: ['ko'] }), ['ko'])   // an older backend: no `supported`
+  assert.deepEqual(RL.supportedLanguages(null), [])
 })
 
 test('speechLanguage: Detect speaks the robot default until a language is heard', () => {

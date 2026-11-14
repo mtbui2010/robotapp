@@ -492,6 +492,12 @@ export const api = {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   },
+  /** Switch the site's languages: a non-empty subset of the manifest's; the answer is the new GET /robot/languages. */
+  async setRobotLanguages(languages: string[]): Promise<RobotLanguages> {
+    const r = await fetch(`${getAgentUrl()}/robot/languages`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ languages }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
+  },
 
   // ── Planner prompt (read-only; built by the backend from the robot each time it plans) ──
   // `planner`: the dashboard's planner choice, so the answer says whether that planner uses it.

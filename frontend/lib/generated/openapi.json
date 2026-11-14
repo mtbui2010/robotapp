@@ -249,6 +249,23 @@
     "title": "LLMConfigReq",
     "type": "object"
    },
+   "LanguagesIn": {
+    "additionalProperties": true,
+    "properties": {
+     "languages": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Languages",
+      "type": "array"
+     }
+    },
+    "required": [
+     "languages"
+    ],
+    "title": "LanguagesIn",
+    "type": "object"
+   },
    "ListenAnswer": {
     "properties": {
      "error": {
@@ -511,6 +528,14 @@
      "robot": {
       "title": "Robot",
       "type": "string"
+     },
+     "supported": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Supported",
+      "type": "array"
      }
     },
     "required": [
@@ -3063,6 +3088,42 @@
      }
     },
     "summary": "Get Robot Languages"
+   },
+   "put": {
+    "operationId": "put_robot_languages_robot_languages_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LanguagesIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RobotLanguages"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Robot Languages"
    }
   },
   "/ros/scan": {

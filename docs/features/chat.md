@@ -174,7 +174,8 @@ the robot's languages, only when the phrase is long enough to be sure; qa / ask 
 The picker shows `Detect · EN` once a language was heard (`step_log` `data.lang_detected`). Until then, and for the browser's own
 voice and mic, Detect means the robot's default language, then the language heard (`speechLanguage`).
 
-**Add / delete languages.** The popover lists Detect and the robot's languages: × deletes one from the list, the box adds a code (2-3
-letters: `ko`, `en`, `ja`…), "Reset to the robot's list" undoes both. The edits are per robot name and live in this browser
-(`robotapp_lang_edits:<robot>`); they change what the picker offers, not what the robot can speak (a language the skills have no phrases
-for is never taken from detection).
+**Which languages are on.** The manifest says what the robot can talk in (`supported`); the site switches some off. The popover lists
+Detect and the languages that are on, then "Languages on (this robot)": a checkbox per manifest language (the last one cannot be
+switched off). A change is `PUT /robot/languages` and is saved on the robot (`<configs>/languages.json`), so every dashboard sees it and
+the skills (detection) only switch among the languages that are on. A language the manifest lacks cannot be added: the skills have no
+phrases for it. Switching off the language in use puts the tab back on Detect.

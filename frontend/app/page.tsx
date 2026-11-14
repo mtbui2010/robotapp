@@ -23,9 +23,9 @@ import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
 import type { Outcome } from '../lib/datasetLog'
 import { pinTabPref, readTabPref, writeTabPref } from '../lib/tabPref'
 import type { ClientEntry, AgentEvent, Lang } from '../lib/types'
-import { useRobotLanguages, useLanguageEdits } from '../lib/useRobotLanguages'
+import { useRobotLanguages } from '../lib/useRobotLanguages'
 import { mismatchTitle, targetBadges, targetTitle } from '../lib/targetBadge'
-import { resolveLanguage, languageOptions, speechLanguage, addLanguage, removeLanguage, hasEdits, NO_EDITS, LANG_AUTO, type RobotLanguages } from '../lib/robotLanguages'
+import { resolveLanguage, languageOptions, speechLanguage, supportedLanguages, toggleLanguage, LANG_AUTO, type RobotLanguages } from '../lib/robotLanguages'
 import LanguagePicker from '../components/LanguagePicker'
 import type { Step } from '../components/PlanPanel'
 
@@ -676,9 +676,8 @@ export default function Home() {
   // One language for everything (chat and Structured runs): picked in the chat header or the control bar.
   // The languages come from the connected robot's manifest (GET /robot/languages): the picker's options, and the default
   // of a tab that has not chosen (or whose choice this robot does not talk in).
-  const robotLangs = useRobotLanguages()
+  const [robotLangs, setRobotLangs] = useRobotLanguages()
   robotLangsRef.current = robotLangs
-  const [langEdits, saveLangEdits] = useLanguageEdits(robotLangs?.robot)   // languages this user added / deleted for this robot
   const [heardLang, setHeardLang] = useState<string | null>(null)         // Detect: the language heard last in this run
   const [lang, setLang]         = useState<Lang>('en')
   const [chatOpen, setChatOpen] = useState(false)
@@ -703,20 +702,25 @@ export default function Home() {
     setMicSupported(!!(window.SpeechRecognition || window.webkitSpeechRecognition))
   }, [])
   useEffect(() => {
-    const l = resolveLanguage(readTabPref('robotapp_lang', 'robotapp_qa_lang'), robotLangs, langEdits)   // this tab's own choice, else the last one chosen in any tab, else the robot's default
+    const l = resolveLanguage(readTabPref('robotapp_lang', 'robotapp_qa_lang'), robotLangs)   // this tab's own choice, else the last one chosen in any tab, else the robot's default
     setLang(l)
-    if (robotLangs && languageOptions(robotLangs, '', langEdits).includes(l)) pinTabPref('robotapp_lang', l)   // this tab keeps what it started with
-  }, [robotLangs, langEdits])
+    if (robotLangs && languageOptions(robotLangs, '').includes(l)) pinTabPref('robotapp_lang', l)   // this tab keeps what it started with
+  }, [robotLangs])
   const pickLang = (v: Lang) => {
     setLang(v)
     writeTabPref('robotapp_lang', v)
   }
   const langPicker = (
-    <LanguagePicker value={lang} options={languageOptions(robotLangs, lang, langEdits)} detected={heardLang} edited={hasEdits(langEdits)}
+    <LanguagePicker value={lang} options={languageOptions(robotLangs, lang)} detected={heardLang}
+      supported={supportedLanguages(robotLangs)} on={robotLangs?.languages ?? []}
       disabled={running} buttonClass={PICK} onPick={pickLang}
-      onAdd={c => saveLangEdits(addLanguage(langEdits, c))}
-      onRemove={c => { saveLangEdits(removeLanguage(langEdits, c, robotLangs)); if (c === lang) pickLang(LANG_AUTO) }}
-      onReset={() => saveLangEdits(NO_EDITS)} />
+      onToggle={async c => {
+        const next = robotLangs ? toggleLanguage(robotLangs, c) : null
+        if (!next) return 'at least one language must stay on'
+        const err = await setRobotLangs(next)
+        if (!err && lang === c && !next.includes(c)) pickLang(LANG_AUTO)   // the one in use was switched off
+        return err
+      }} />
   )
   const pickPlanner = (v: PlannerMethod) => {
     setPlanner(v)
