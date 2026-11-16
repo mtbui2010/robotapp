@@ -1,6 +1,7 @@
 import type { ClientEntry, ClientType, SkillDef, WorldState, PlannerPrompt, LlmInfo, LocationsInfo, PoolStatus } from './types'
 import type { RobotLanguages } from './robotLanguages'
 import type { BtnDef, BtnGroup } from './buttonGroups'
+import type { RecorderStatus } from './recorder'
 import type { TeleopFunction } from './teleop'
 
 // ------------------------------------------------------------------
@@ -506,6 +507,29 @@ export const api = {
   },
   async setTeleopSpeed(name: string, scale: number): Promise<void> {
     const r = await fetch(`${getAgentUrl()}/teleop/${encodeURIComponent(name)}/speed`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scale }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+  },
+  // ── Raw episode recording (robot_agent /recorder): null = this robot has none ──
+  async getRecorder(): Promise<RecorderStatus | null> {
+    const r = await fetch(`${getAgentUrl()}/recorder`)
+    if (r.status === 404) return null
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  },
+  /** A random sentence from the robot's templates that uses every filled field. */
+  async makeRecordPrompt(fields: Record<string, string>): Promise<string> {
+    const r = await fetch(`${getAgentUrl()}/recorder/prompt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return ((await r.json()) as { prompt: string }).prompt
+  },
+  /** Start remote control and the recording together. */
+  async startRecording(prompt: string, meta?: Record<string, unknown>): Promise<void> {
+    const r = await fetch(`${getAgentUrl()}/recorder/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, meta }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+  },
+  /** Stop remote control and save the episode (success / failure) or throw it away (discard). */
+  async stopRecording(label: 'success' | 'failure' | 'discard'): Promise<void> {
+    const r = await fetch(`${getAgentUrl()}/recorder/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) })
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
   },
   /** Switch the site's languages: a non-empty subset of the manifest's; the answer is the new GET /robot/languages. */

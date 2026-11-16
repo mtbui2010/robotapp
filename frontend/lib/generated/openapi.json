@@ -477,6 +477,144 @@
     "title": "QaEndResult",
     "type": "object"
    },
+   "RecorderPrompt": {
+    "additionalProperties": true,
+    "properties": {
+     "prompt": {
+      "title": "Prompt",
+      "type": "string"
+     }
+    },
+    "required": [
+     "prompt"
+    ],
+    "title": "RecorderPrompt",
+    "type": "object"
+   },
+   "RecorderPromptIn": {
+    "additionalProperties": true,
+    "properties": {
+     "fields": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "title": "Fields",
+      "type": "object"
+     }
+    },
+    "required": [
+     "fields"
+    ],
+    "title": "RecorderPromptIn",
+    "type": "object"
+   },
+   "RecorderStartIn": {
+    "additionalProperties": true,
+    "properties": {
+     "meta": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Meta"
+     },
+     "prompt": {
+      "title": "Prompt",
+      "type": "string"
+     }
+    },
+    "required": [
+     "prompt"
+    ],
+    "title": "RecorderStartIn",
+    "type": "object"
+   },
+   "RecorderStatus": {
+    "additionalProperties": true,
+    "properties": {
+     "age_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Age S"
+     },
+     "available": {
+      "title": "Available",
+      "type": "boolean"
+     },
+     "dir": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dir"
+     },
+     "fields": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Fields",
+      "type": "array"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "teleop": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Teleop"
+     }
+    },
+    "required": [
+     "available"
+    ],
+    "title": "RecorderStatus",
+    "type": "object"
+   },
+   "RecorderStopIn": {
+    "additionalProperties": true,
+    "properties": {
+     "label": {
+      "title": "Label",
+      "type": "string"
+     }
+    },
+    "required": [
+     "label"
+    ],
+    "title": "RecorderStopIn",
+    "type": "object"
+   },
    "RenameLocationReq": {
     "properties": {
      "new_name": {
@@ -3205,6 +3343,138 @@
      }
     },
     "summary": "Planner Prompt"
+   }
+  },
+  "/recorder": {
+   "get": {
+    "operationId": "get_recorder_recorder_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecorderStatus"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Recorder"
+   }
+  },
+  "/recorder/prompt": {
+   "post": {
+    "operationId": "make_prompt_recorder_prompt_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecorderPromptIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecorderPrompt"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Make Prompt"
+   }
+  },
+  "/recorder/start": {
+   "post": {
+    "operationId": "start_recorder_start_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecorderStartIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Start"
+   }
+  },
+  "/recorder/stop": {
+   "post": {
+    "operationId": "stop_recorder_stop_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecorderStopIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Stop"
    }
   },
   "/robot/languages": {

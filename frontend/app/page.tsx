@@ -4,6 +4,8 @@ import DevicePanel, { type ActiveTarget } from '../components/DevicePanel'
 import AgentPanel   from '../components/AgentPanel'
 import CameraFeed   from '../components/CameraFeed'
 import TeleopBar    from '../components/TeleopBar'
+import RecorderBar  from '../components/RecorderBar'
+import { useRecorder } from '../lib/useRecorder'
 import { useTeleop } from '../lib/useTeleop'
 import SkillPanel   from '../components/SkillPanel'
 import EnvPanel     from '../components/EnvPanel'
@@ -679,6 +681,7 @@ export default function Home() {
   // The languages come from the connected robot's manifest (GET /robot/languages): the picker's options, and the default
   // of a tab that has not chosen (or whose choice this robot does not talk in).
   const [robotLangs, setRobotLangs] = useRobotLanguages()
+  const [recorder, refreshRecorder] = useRecorder()   // raw VLA episode recording (none on most robots: nothing is drawn)
   const [teleopFns, refreshTeleop] = useTeleop()   // the robot's teleop functions (none on most robots: nothing is drawn)
   robotLangsRef.current = robotLangs
   const [heardLang, setHeardLang] = useState<string | null>(null)         // Detect: the language heard last in this run
@@ -933,6 +936,7 @@ export default function Home() {
               </button>
             </div>
             {mainTab === 'cameras' && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} />}
+            {mainTab === 'cameras' && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} />}
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
               : <MapPanel clients={clients} running={running} />}

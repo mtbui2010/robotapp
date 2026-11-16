@@ -26,6 +26,7 @@ const RL = await load('robotLanguages')
 const BG = await load('buttonGroups')
 const TB = await load('targetBadge')
 const TL = await load('teleop')
+const RC = await load('recorder')
 
 const FIX = join(ROOT, 'scripts/fixtures/events')
 const fixtures = Object.fromEntries(readdirSync(FIX).filter(f => f.endsWith('.json'))
@@ -620,4 +621,35 @@ test('targetBadges: a site named like the robot (any case) is no mismatch; a dif
 test('targetTitle: both names (even when one badge) and where the backend is', () => {
   assert.equal(TB.targetTitle('Kcare_bucheon', 'kcare_bucheon', 'http://h:8001', 'HP'), 'Kcare_bucheon @ kcare_bucheon\nhttp://h:8001 · host HP')
   assert.equal(TB.targetTitle('kaair', null, 'http://h:8001'), 'kaair\nhttp://h:8001')
+})
+
+
+// ── raw episode recording (lib/recorder.ts) ─────────────────────────────────
+const rec = (over = {}, state = {}) => ({ available: true, fields: ['action', 'target_object'], state: { state: 'idle', ready: true, ...state }, ...over })
+
+test('recorder: phase, labels, clock, counts', () => {
+  assert.equal(RC.recPhase(rec()), 'idle')
+  assert.equal(RC.recPhase(rec({}, { state: 'recording' })), 'recording')
+  assert.equal(RC.recPhase(rec({ available: false })), 'off')
+  assert.equal(RC.recPhase({ available: true, fields: [] }), 'off')                    // no state yet
+  assert.equal(RC.fieldLabel('destination_location'), 'destination location')
+  assert.equal(RC.clock(83.4), '1:23'); assert.equal(RC.clock(0), '0:00'); assert.equal(RC.clock(undefined), '0:00')
+  assert.equal(RC.countsText({ state: 400, action_ref: 200, head: 284, wrist: 169 }), 'head 284 · wrist 169')   // only the image streams are shown
+  assert.equal(RC.countsText(undefined), '')
+})
+
+test('recorder: why Record cannot be pressed', () => {
+  assert.equal(RC.recordBlock(rec(), false, true, false), '')                          // an action is enough: the prompt is made from the fields
+  assert.equal(RC.recordBlock(rec(), false, false, true), '')                          // or a prompt typed by hand
+  assert.match(RC.recordBlock(rec(), false, false, false), /fill the action/)
+  assert.match(RC.recordBlock(rec(), true, true, true), /run is in flight/)
+  assert.match(RC.recordBlock(rec({}, { state: 'recording' }), false, true, true), /recording/)
+  assert.match(RC.recordBlock(rec({ available: false }), false, true, true), /not running/)
+  assert.match(RC.recordBlock(rec({}, { ready: false }), false, true, true), /cannot be written/)
+})
+
+test('recorder: the line after a saved episode', () => {
+  assert.equal(RC.lastText(rec()), '')
+  assert.equal(RC.lastText(rec({}, { last: { episode: 'ep_0003', dir: '/x', label: 'success', duration_s: 24.4 } })), 'saved ep_0003 (success, 0:24)')
+  assert.equal(RC.lastText(rec({}, { last: { episode: 'ep_0004', dir: '/x', label: 'failure' } })), 'saved ep_0004 (failure)')
 })

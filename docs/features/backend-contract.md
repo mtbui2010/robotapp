@@ -28,6 +28,9 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `GET  /teleop` | `{functions: [{name, label, available, state?, age_s?, poses?: [{name, label, skill, params}]}]}`: the robot's teleop functions and their last state, and the named poses each can go to (read by the backend from the robot's config; the UI runs one with `POST /skill/<skill>`); `[]` when none (teleop strip) |
 | `POST /teleop/{name}/enable` | `{on, confirm}`: switch a function on (needs `confirm: true`, a running function, no run in flight) or off |
 | `POST /teleop/{name}/speed` | `{scale}` 0..1: fraction of the function's top speed |
+| `GET  /recorder` | the raw-episode recorder: `{available, state?, dir, teleop, fields}`; 404 when the robot has none ([recorder](recorder.md)) |
+| `POST /recorder/prompt` | `{fields}` -> `{prompt}`: a random sentence from the robot's templates |
+| `POST /recorder/start`, `/recorder/stop` | `{prompt, meta?}` starts remote control and the recording; `{label: success\|failure\|discard}` stops and saves |
 | `PUT  /robot/languages` | body `{languages}`: switch the site's languages (a non-empty subset of `supported`; 400 otherwise); answers like the GET |
 | `GET  /robot/languages` | `{robot, language, languages, supported, declared}`: the default language, the languages this site has on, every language the manifest lists (`supported`; `[]` and `declared: false` when it names none); the language picker and its default (below) |
 | `GET  /planner/prompt?command=…&planner=…` | the Direct planner's prompt for a command, read-only ([planner-prompt](planner-prompt.md)) |

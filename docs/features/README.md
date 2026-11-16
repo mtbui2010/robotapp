@@ -22,6 +22,7 @@ add the dated line to [../CHANGELOG.md](../CHANGELOG.md).
 | [Camera streaming (multiple viewers)](camera-streaming.md) |
 | [Map tab (click to move)](map-tab.md) |
 | [Teleoperation strip (SpaceMouse and other input devices on the robot; 2026-11-14)](teleop.md) |
+| [Record raw VLA episodes (prompt fields, random sentences, Record / Stop; 2026-11-16)](recorder.md) |
 | [SAGE planner + assist layer (2026-10-09)](sage-assist.md) |
 | [Planner prompt (read-only, built from the manifest; 2026-11-02)](planner-prompt.md) |
 | [Config groups in the dashboard (2026-10-26)](config-groups.md) |
