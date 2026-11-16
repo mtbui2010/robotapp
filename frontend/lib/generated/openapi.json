@@ -615,6 +615,226 @@
     "title": "RecorderStopIn",
     "type": "object"
    },
+   "RecordingDetail": {
+    "additionalProperties": true,
+    "properties": {
+     "cameras": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Cameras",
+      "type": "object"
+     },
+     "edit": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Edit"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "prompt": {
+      "default": "",
+      "title": "Prompt",
+      "type": "string"
+     },
+     "series": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Series",
+      "type": "object"
+     },
+     "summary": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Summary",
+      "type": "object"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "title": "RecordingDetail",
+    "type": "object"
+   },
+   "RecordingEdit": {
+    "additionalProperties": true,
+    "properties": {
+     "version": {
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "title": "RecordingEdit",
+    "type": "object"
+   },
+   "RecordingEditIn": {
+    "additionalProperties": true,
+    "properties": {
+     "exclude": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Exclude"
+     },
+     "label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Label"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "trim_end_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Trim End S"
+     },
+     "trim_start_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Trim Start S"
+     }
+    },
+    "title": "RecordingEditIn",
+    "type": "object"
+   },
+   "RecordingExport": {
+    "additionalProperties": true,
+    "properties": {
+     "command": {
+      "default": "",
+      "title": "Command",
+      "type": "string"
+     },
+     "episodes": {
+      "title": "Episodes",
+      "type": "integer"
+     },
+     "hours": {
+      "title": "Hours",
+      "type": "number"
+     },
+     "manifest": {
+      "title": "Manifest",
+      "type": "string"
+     }
+    },
+    "required": [
+     "manifest",
+     "episodes",
+     "hours"
+    ],
+    "title": "RecordingExport",
+    "type": "object"
+   },
+   "RecordingExportIn": {
+    "additionalProperties": true,
+    "properties": {
+     "action": {
+      "default": "future_state",
+      "title": "Action",
+      "type": "string"
+     },
+     "fps": {
+      "default": 30,
+      "title": "Fps",
+      "type": "integer"
+     },
+     "horizon_s": {
+      "default": 0.3,
+      "title": "Horizon S",
+      "type": "number"
+     },
+     "labels": {
+      "default": [
+       "success"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "title": "Labels",
+      "type": "array"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "RecordingExportIn",
+    "type": "object"
+   },
+   "RecordingList": {
+    "additionalProperties": true,
+    "properties": {
+     "dir": {
+      "title": "Dir",
+      "type": "string"
+     },
+     "episodes": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Episodes",
+      "type": "array"
+     },
+     "totals": {
+      "additionalProperties": true,
+      "title": "Totals",
+      "type": "object"
+     }
+    },
+    "required": [
+     "dir",
+     "episodes",
+     "totals"
+    ],
+    "title": "RecordingList",
+    "type": "object"
+   },
    "RenameLocationReq": {
     "properties": {
      "new_name": {
@@ -3475,6 +3695,280 @@
      }
     },
     "summary": "Stop"
+   }
+  },
+  "/recordings": {
+   "get": {
+    "operationId": "list_recordings_recordings_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingList"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Recordings"
+   }
+  },
+  "/recordings/export": {
+   "post": {
+    "operationId": "export_recordings_export_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecordingExportIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingExport"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export"
+   }
+  },
+  "/recordings/{day}/{ep}": {
+   "get": {
+    "operationId": "get_recording_recordings__day___ep__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "day",
+      "required": true,
+      "schema": {
+       "title": "Day",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "ep",
+      "required": true,
+      "schema": {
+       "title": "Ep",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingDetail"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Recording"
+   }
+  },
+  "/recordings/{day}/{ep}/edit": {
+   "delete": {
+    "operationId": "delete_edit_recordings__day___ep__edit_delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "day",
+      "required": true,
+      "schema": {
+       "title": "Day",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "ep",
+      "required": true,
+      "schema": {
+       "title": "Ep",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Edit"
+   },
+   "put": {
+    "operationId": "put_edit_recordings__day___ep__edit_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "day",
+      "required": true,
+      "schema": {
+       "title": "Day",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "ep",
+      "required": true,
+      "schema": {
+       "title": "Ep",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecordingEditIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingEdit"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Edit"
+   }
+  },
+  "/recordings/{day}/{ep}/frame": {
+   "get": {
+    "operationId": "get_frame_recordings__day___ep__frame_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "day",
+      "required": true,
+      "schema": {
+       "title": "Day",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "ep",
+      "required": true,
+      "schema": {
+       "title": "Ep",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cam",
+      "required": false,
+      "schema": {
+       "default": "head",
+       "title": "Cam",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "t",
+      "required": false,
+      "schema": {
+       "default": 0.0,
+       "title": "T",
+       "type": "number"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Frame"
    }
   },
   "/robot/languages": {

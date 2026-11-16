@@ -31,6 +31,8 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `GET  /recorder` | the raw-episode recorder: `{available, state?, dir, teleop, fields}`; 404 when the robot has none ([recorder](recorder.md)) |
 | `POST /recorder/prompt` | `{fields}` -> `{prompt}`: a random sentence from the robot's templates |
 | `POST /recorder/start`, `/recorder/stop` | `{prompt, meta?}` starts remote control and the recording; `{label: success\|failure\|discard}` stops and saves |
+| `GET  /recordings`, `GET /recordings/{day}/{ep}`, `GET .../frame?cam&t` | the raw episodes: rows with numbers and warnings, one episode with its curves, the camera frame nearest to `t` ([data-tab](data-tab.md)) |
+| `PUT\|DELETE /recordings/{day}/{ep}/edit`, `POST /recordings/export` | the edit list (trim, label, exclude, note; saved beside the raw folder) and the export manifest |
 | `PUT  /robot/languages` | body `{languages}`: switch the site's languages (a non-empty subset of `supported`; 400 otherwise); answers like the GET |
 | `GET  /robot/languages` | `{robot, language, languages, supported, declared}`: the default language, the languages this site has on, every language the manifest lists (`supported`; `[]` and `declared: false` when it names none); the language picker and its default (below) |
 | `GET  /planner/prompt?command=…&planner=…` | the Direct planner's prompt for a command, read-only ([planner-prompt](planner-prompt.md)) |

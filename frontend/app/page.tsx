@@ -5,6 +5,7 @@ import AgentPanel   from '../components/AgentPanel'
 import CameraFeed   from '../components/CameraFeed'
 import TeleopBar    from '../components/TeleopBar'
 import RecorderBar  from '../components/RecorderBar'
+import DataPanel    from '../components/DataPanel'
 import { useRecorder } from '../lib/useRecorder'
 import { useTeleop } from '../lib/useTeleop'
 import SkillPanel   from '../components/SkillPanel'
@@ -70,7 +71,7 @@ export default function Home() {
   const [skillRefreshKey, setSkillRefreshKey] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(false)   // collapsed by default (2026-10-27); ▶ opens it
   const [planOpen, setPlanOpen]       = useState(true)
-  const [mainTab, setMainTab]         = useState<'cameras' | 'map'>('cameras')
+  const [mainTab, setMainTab]         = useState<'cameras' | 'map' | 'data'>('cameras')
   const [target, setTarget]           = useState<ActiveTarget | null>(null)   // robot + site this tab drives
   const [running, setRunning]         = useState(false)
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
@@ -902,11 +903,11 @@ export default function Home() {
             <div className="flex gap-1 mb-2 pb-1 border-b border-gray-200 items-center">
               {/* Cameras | Map as a two-icon switch (was two text tabs, about 120 px; now about 56 px) */}
               <div role="tablist" className="flex shrink-0 rounded overflow-hidden border border-gray-300 text-sm self-center">
-                {(['cameras', 'map'] as const).map(t => (
+                {(recorder ? ['cameras', 'map', 'data'] as const : ['cameras', 'map'] as const).map(t => (
                   <button key={t} role="tab" aria-selected={mainTab === t} onClick={() => setMainTab(t)}
-                          aria-label={t === 'cameras' ? 'Cameras' : 'Map'} title={t === 'cameras' ? 'Cameras' : 'Map'}
+                          aria-label={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : 'Data'} title={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : 'Data: the recorded episodes'}
                           className={`px-2 py-0.5 leading-none ${mainTab === t ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'}`}>
-                    {t === 'cameras' ? '📷' : '🗺️'}
+                    {t === 'cameras' ? '📷' : t === 'map' ? '🗺️' : '🗂️'}
                   </button>
                 ))}
               </div>
@@ -939,7 +940,7 @@ export default function Home() {
             {mainTab === 'cameras' && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} />}
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
-              : <MapPanel clients={clients} running={running} />}
+              : mainTab === 'data' && recorder ? <DataPanel /> : <MapPanel clients={clients} running={running} />}
           </section>
 
         </main>

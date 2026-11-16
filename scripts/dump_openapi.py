@@ -15,7 +15,7 @@ import warnings
 from fastapi import FastAPI
 
 ROUTERS = ['devices', 'skills', 'configs', 'buttons', 'agent', 'camera',
-           'diagnostics', 'locations', 'planner', 'robot', 'tts', 'map', 'teleop', 'recorder']
+           'diagnostics', 'locations', 'planner', 'robot', 'tts', 'map', 'teleop', 'recorder', 'recordings']
 
 
 def main(out: str) -> None:

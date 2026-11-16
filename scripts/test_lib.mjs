@@ -27,6 +27,7 @@ const BG = await load('buttonGroups')
 const TB = await load('targetBadge')
 const TL = await load('teleop')
 const RC = await load('recorder')
+const RS = await load('recordings')
 
 const FIX = join(ROOT, 'scripts/fixtures/events')
 const fixtures = Object.fromEntries(readdirSync(FIX).filter(f => f.endsWith('.json'))
@@ -652,4 +653,36 @@ test('recorder: the line after a saved episode', () => {
   assert.equal(RC.lastText(rec()), '')
   assert.equal(RC.lastText(rec({}, { last: { episode: 'ep_0003', dir: '/x', label: 'success', duration_s: 24.4 } })), 'saved ep_0003 (success, 0:24)')
   assert.equal(RC.lastText(rec({}, { last: { episode: 'ep_0004', dir: '/x', label: 'failure' } })), 'saved ep_0004 (failure)')
+})
+
+
+// ── raw episodes (lib/recordings.ts) ────────────────────────────────────────
+const row = (over = {}) => ({ id: '2026-11-16/ep_0001', day: '2026-11-16', episode: 'ep_0001', prompt: 'open drawer', label: 'success', summary: { duration_s: 20, warnings: [] }, ...over })
+
+test('recordings: the label and the kept range follow the edit', () => {
+  assert.equal(RS.effectiveLabel(row()), 'success')
+  assert.equal(RS.effectiveLabel(row({ edit: { label: 'failure' } })), 'failure')
+  assert.deepEqual(RS.keptRange(row()), [0, 20])
+  assert.deepEqual(RS.keptRange(row({ edit: { trim_start_s: 3.5, trim_end_s: 16 } })), [3.5, 16])
+  assert.equal(RS.fmtSec(83.4), '1:23.4'); assert.equal(RS.fmtSec(5), '0:05.0'); assert.equal(RS.fmtSec(undefined), '0:00.0')
+})
+
+test('recordings: polyline and joint range', () => {
+  assert.equal(RS.polyline([0, 5, 10], [0, 1, 0], 10, 0, 1, 100, 50), '0.0,50.0 50.0,0.0 100.0,50.0')            // y is down
+  assert.equal(RS.polyline([], [], 10, 0, 1, 100, 50), '')
+  assert.equal(RS.polyline([0, 1], [3, 3], 1, 3, 3, 10, 10), '0.0,10.0 10.0,10.0')                                  // a flat curve does not divide by zero
+  const [lo, hi] = RS.jointRange([[0, 1], [-1, 0.5]])
+  assert.ok(lo < -1 && hi > 1)
+  assert.deepEqual(RS.jointRange([]), [-1, 1])
+  assert.equal(RS.xToTime(50, 100, 20), 10); assert.equal(RS.xToTime(-5, 100, 20), 0); assert.equal(RS.xToTime(500, 100, 20), 20)
+})
+
+test('recordings: an edit form is changed only when it differs from what is saved', () => {
+  assert.equal(RS.editChanged(null, {}, 20), false)
+  assert.equal(RS.editChanged(null, { trim_start_s: 0, trim_end_s: 20 }, 20), false)                  // the whole episode is no trim
+  assert.equal(RS.editChanged(null, { trim_start_s: 3 }, 20), true)
+  assert.equal(RS.editChanged({ trim_start_s: 3, trim_end_s: 16 }, { trim_start_s: 3, trim_end_s: 16 }, 20), false)
+  assert.equal(RS.editChanged({ label: 'failure' }, {}, 20), true)
+  assert.equal(RS.editChanged(null, { exclude: true }, 20), true)
+  assert.equal(RS.exportText({ manifest: '/d/exports/v1.json', episodes: 2, hours: 0.0123, command: 'x' }), '2 episodes, 0.01 h → /d/exports/v1.json')
 })

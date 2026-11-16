@@ -2,6 +2,7 @@ import type { ClientEntry, ClientType, SkillDef, WorldState, PlannerPrompt, LlmI
 import type { RobotLanguages } from './robotLanguages'
 import type { BtnDef, BtnGroup } from './buttonGroups'
 import type { RecorderStatus } from './recorder'
+import type { RecDetail, RecEdit, RecExport, RecList } from './recordings'
 import type { TeleopFunction } from './teleop'
 
 // ------------------------------------------------------------------
@@ -531,6 +532,40 @@ export const api = {
   async stopRecording(label: 'success' | 'failure' | 'discard'): Promise<void> {
     const r = await fetch(`${getAgentUrl()}/recorder/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) })
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+  },
+  // ── Raw episodes (robot_agent /recordings): look, clean (an edit list beside the raw folder), prepare an export ──
+  async listRecordings(): Promise<RecList | null> {
+    const r = await fetch(`${getAgentUrl()}/recordings`)
+    if (r.status === 404) return null
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  },
+  async getRecording(id: string): Promise<RecDetail> {
+    const [day, ep] = id.split('/')                                  // id = <day>/<episode>
+    const r = await fetch(`${getAgentUrl()}/recordings/${day}/${ep}`)
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
+  },
+  /** The URL of the camera frame nearest to `t` seconds (an <img src>). */
+  recordingFrameUrl(id: string, cam: string, t: number): string {
+    const [day, ep] = id.split('/')
+    return `${getAgentUrl()}/recordings/${day}/${ep}/frame?cam=${encodeURIComponent(cam)}&t=${t.toFixed(2)}`
+  },
+  async saveRecordingEdit(id: string, edit: RecEdit): Promise<RecEdit> {
+    const [day, ep] = id.split('/')
+    const r = await fetch(`${getAgentUrl()}/recordings/${day}/${ep}/edit`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(edit) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
+  },
+  async deleteRecordingEdit(id: string): Promise<void> {
+    const [day, ep] = id.split('/')
+    const r = await fetch(`${getAgentUrl()}/recordings/${day}/${ep}/edit`, { method: 'DELETE' })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+  },
+  async exportRecordings(body: { name: string; fps: number; action: string; horizon_s: number; labels: string[] }): Promise<RecExport> {
+    const r = await fetch(`${getAgentUrl()}/recordings/export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
   },
   /** Switch the site's languages: a non-empty subset of the manifest's; the answer is the new GET /robot/languages. */
   async setRobotLanguages(languages: string[]): Promise<RobotLanguages> {
