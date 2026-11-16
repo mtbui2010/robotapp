@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-16
 
+- The remote control strip and the Record row are hidden by default; a `⏺` button next to the tabs shows them (kept in this browser); they stay visible while a recording runs or the arm is driven ([teleop](features/teleop.md)).
 - Go to editor: a small popover under the drop-down (no extra row) listing only the pose names; a pose's steps show when it is edited; the speed for all poses is a gauge icon + % ([teleop](features/teleop.md)).
 - Go to: the poses are the operator's own (`/poses`): add / edit / delete all of them in `✎ Edit poses…` (name + plan of steps like a button's), one speed for every pose (slow by default); the Data tab no longer cuts a Go to move (blue on the chart, an ℹ note) ([teleop](features/teleop.md)).
 - Data tab: a 🧹 Auto-clean all button and a 🧹 cut button per row (the suggested trim; a Go to pose made during a recording is cut), the Go to move shown red on the chart, Export has a default name `vla_<date>`.

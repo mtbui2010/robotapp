@@ -1,6 +1,6 @@
 # Record raw VLA episodes
 
-A panel under the teleop strip (Cameras tab), drawn only when the robot has a recorder (`GET /recorder`, `RECORDER` config; 404 = nothing shown).
+A panel under the teleop strip (Cameras tab), drawn only when the robot has a recorder AND the `⏺` button next to the tabs is on (hidden by default; always shown while a recording runs) (`GET /recorder`, `RECORDER` config; 404 = nothing shown).
 
 1. Fill the **fields** (the robot's config names them; kcare: `action`, `target object`, `target location`, `destination object`, `destination location`). Only `action` is required.
 2. `🎲` makes a sentence from them: a **random template** that uses every filled field, with synonyms (`pick` -> `grab`, `top` -> `first`), so the same episode gets a new

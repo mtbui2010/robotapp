@@ -73,6 +73,10 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false)   // collapsed by default (2026-10-27); ▶ opens it
   const [planOpen, setPlanOpen]       = useState(true)
   const [mainTab, setMainTab]         = useState<'cameras' | 'map' | 'data'>('cameras')
+  // Remote control + Record are only used to make data: hidden until the operator asks (kept in this browser); never hidden while recording or while teleop drives the arm
+  const [dataTools, setDataTools]       = useState(false)
+  useEffect(() => { try { setDataTools(localStorage.getItem('robotapp_data_tools') === '1') } catch { /* off */ } }, [])
+  const toggleDataTools = () => setDataTools(v => { try { localStorage.setItem('robotapp_data_tools', v ? '0' : '1') } catch { /* per-viewer convenience */ } return !v })
   const [target, setTarget]           = useState<ActiveTarget | null>(null)   // robot + site this tab drives
   const [running, setRunning]         = useState(false)
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
@@ -686,6 +690,8 @@ export default function Home() {
   const [poseList, refreshPoses] = usePoses()           // the "Go to" poses the operator edits
   const [recorder, refreshRecorder] = useRecorder()   // raw VLA episode recording (none on most robots: nothing is drawn)
   const [teleopFns, refreshTeleop] = useTeleop()   // the robot's teleop functions (none on most robots: nothing is drawn)
+  const dataBusy = recorder?.state?.state === 'recording' || recorder?.state?.state === 'saving' || teleopFns.some(f => f.state?.state === 'active' || f.state?.state === 'hold')
+  const showDataTools = dataTools || dataBusy
   robotLangsRef.current = robotLangs
   const [heardLang, setHeardLang] = useState<string | null>(null)         // Detect: the language heard last in this run
   const [lang, setLang]         = useState<Lang>('en')
@@ -913,6 +919,13 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+              {(teleopFns.length > 0 || recorder) && (() => {
+                return (
+                  <button data-testid="data-tools-toggle" onClick={toggleDataTools} disabled={dataBusy} aria-pressed={showDataTools}
+                    aria-label="Make data: remote control and record" title={dataBusy ? 'In use: remote control or a recording is running' : showDataTools ? 'Hide remote control and record' : 'Make data: show remote control and record'}
+                    className={`self-center px-2 py-0.5 leading-none rounded border text-sm ${showDataTools ? 'bg-red-50 border-red-300 text-red-600' : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-100'} disabled:cursor-default`}>⏺</button>
+                )
+              })()}
               {/* which robot and site this tab drives (two tabs may drive two robots) */}
               {target?.robot && (() => {
                 const badges = targetBadges(target.robot, target.location)
@@ -938,8 +951,8 @@ export default function Home() {
                 {stopLabel(rs, 'Cancel')}
               </button>
             </div>
-            {mainTab === 'cameras' && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} poses={poseList} onPosesChanged={refreshPoses} />}
-            {mainTab === 'cameras' && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} />}
+            {mainTab === 'cameras' && showDataTools && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} poses={poseList} onPosesChanged={refreshPoses} />}
+            {mainTab === 'cameras' && showDataTools && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} />}
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
               : mainTab === 'data' && recorder ? <DataPanel /> : <MapPanel clients={clients} running={running} />}
