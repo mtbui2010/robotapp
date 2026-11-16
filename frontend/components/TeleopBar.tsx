@@ -53,9 +53,9 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
                 : on
                   ? <button data-testid={`teleop-${f.name}-off`} onClick={() => call(api.enableTeleop(f.name, false))}
                       className={`px-2 py-0.5 rounded text-white hover:bg-red-500 ${pill.tone === 'wait' ? 'bg-amber-500' : 'bg-green-600'}`}
-                      title={`${label}: click to switch teleop off${bat ? ` (input device battery ${bat.text})` : ''}`}>{label}{batChip}</button>
+                      title={`${label}: click to switch teleop off${bat ? ` (input device battery ${bat.text}${bat.heard ? `, reported ${bat.heard}` : ''})` : ''}`}>{label}{batChip}</button>
                   : <button data-testid={`teleop-${f.name}-on`} disabled={!canEnable(f, runInFlight)} onClick={() => setAsking(f.name)}
-                      title={runInFlight ? 'A run is in flight: cancel it first' : `Switch teleop on: the robot will follow the input device${bat ? ` (input device battery ${bat.text})` : ''}`}
+                      title={runInFlight ? 'A run is in flight: cancel it first' : `Switch teleop on: the robot will follow the input device${bat ? ` (input device battery ${bat.text}${bat.heard ? `, reported ${bat.heard}` : ''})` : ''}`}
                       className={`px-2 py-0.5 rounded text-white disabled:opacity-60 ${pill.tone === 'bad' ? 'bg-red-600' : 'bg-green-600 hover:bg-green-500'}`}>{label}{batChip}</button>}
             </span>
           </div>

@@ -12,6 +12,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-14
 
+- Teleop strip: the On / Off button carries the input device's battery now that the node reports it (`battery`, `battery_age_s`; the tooltip says when it was reported). Needs `make battery` on the robot.
 - Teleop strip: no text labels (icon + chips), the state pill is gone (the On button becomes `● driving`), the gripper is a read-only switch icon, the speed drop-down says only `50%`. `lib/teleop.ts` `driveLabel`.
 - Teleop strip on ONE row: no `Arm` / `Gripper` group boxes or repeated words, `device ok` hidden (only a problem is shown), speed drop-down and the On / Off button (with the device battery when reported) at the right. `components/TeleopBar.tsx`.
 - Teleop strip: blue mode chips (base / tool frame, line lock, straight, rotation) from the new keys of the teleop state. `lib/teleop.ts` `modeChips`.

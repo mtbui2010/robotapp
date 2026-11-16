@@ -15,6 +15,7 @@ export interface TeleopState {
   rotation_on?: boolean         // false: translation only (rotation needs its button)
   battery?: number | null       // 0..1 charge of the INPUT DEVICE (e.g. a wireless SpaceMouse) when the node reports it; null / absent = not reported
   charging?: boolean            // the input device is charging (only with `battery`)
+  battery_age_s?: number | null // seconds since the device last reported its battery (it reports now and then, not continuously)
 }
 export interface TeleopFunction {
   name: string
@@ -76,11 +77,13 @@ export function modeChips(f: TeleopFunction): string[] {
 
 /** The input device's battery as shown on the On / Off button: `🔋 78%` (`⚡` while charging); null when the node does not report it
  *  (the dashboard never guesses). `low` = 20 % or less and not charging. */
-export function batteryInfo(f: TeleopFunction): { text: string; low: boolean } | null {
+export function batteryInfo(f: TeleopFunction): { text: string; low: boolean; heard: string } | null {
   const b = f.state?.battery
   if (!f.available || typeof b !== 'number' || !Number.isFinite(b)) return null
   const pct = Math.round(Math.min(1, Math.max(0, b)) * 100)
-  return { text: `${f.state?.charging ? '⚡' : '🔋'} ${pct}%`, low: pct <= 20 && !f.state?.charging }
+  const age = f.state?.battery_age_s
+  const heard = typeof age !== 'number' ? '' : age < 90 ? 'just now' : age < 5400 ? `${Math.round(age / 60)} min ago` : `${Math.round(age / 3600)} h ago`
+  return { text: `${f.state?.charging ? '⚡' : '🔋'} ${pct}%`, low: pct <= 20 && !f.state?.charging, heard }
 }
 
 /** The text of the one On / Off button: it also says what the function is doing, so there is no separate state pill. */
