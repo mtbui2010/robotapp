@@ -8,7 +8,8 @@ export interface RecSummary {
   idle_head_s?: number
   idle_tail_s?: number
   trim_suggest?: [number, number]
-  auto_motion?: [number, number][]      // the arm moved with teleop off (e.g. Go to pose): not a demonstration
+  init_moves?: { start: number; end: number; name: string | null }[]   // the arm went to a pose with teleop off (Go to): kept as the init part
+  notes?: string[]
   gripper_changes?: number
   inactive_inside_s?: number
   max_speed_rad_s?: number

@@ -28,6 +28,7 @@ const TB = await load('targetBadge')
 const TL = await load('teleop')
 const RC = await load('recorder')
 const RS = await load('recordings')
+const PS = await load('poses')
 
 const FIX = join(ROOT, 'scripts/fixtures/events')
 const fixtures = Object.fromEntries(readdirSync(FIX).filter(f => f.endsWith('.json'))
@@ -697,4 +698,25 @@ test('recordings: suggestion applied, clean text, default export name', () => {
   assert.equal(RS.cleanText({ cleaned: 2, skipped: 1, rows: [{ kept_s: 18.6, was_s: 33.3 }, { kept_s: 19.1, was_s: 23.8 }] }), 'trimmed 2 episodes (19.4 s cut), 1 left as they were')
   assert.equal(RS.cleanText({ cleaned: 0, skipped: 2, rows: [] }), 'nothing to trim (2 left as they were)')
   assert.equal(RS.defaultExportName(new Date(2026, 10, 16)), 'vla_20261116')
+})
+
+
+// ── the Go to poses (lib/poses.ts) ───────────────────────────────────────────
+test('poses: steps, preview, nearest speed', () => {
+  assert.deepEqual(PS.planSteps('movej::fold\n\n# note\nlift::0.5&&movej::give  # two'), ['movej::fold', 'lift::0.5&&movej::give'])
+  assert.deepEqual(PS.planSteps('no steps here'), [])
+  assert.equal(PS.planPreview('movej::fold'), 'movej::fold')
+  assert.equal(PS.planPreview('movej::fold\nlift::0.5'), 'movej::fold … +1 step')
+  assert.equal(PS.planPreview('a::1\nb::2\nc::3'), 'a::1 … +2 steps')
+  assert.equal(PS.planPreview(''), '')
+  assert.equal(PS.nearestSpeed(0.25), 0.25); assert.equal(PS.nearestSpeed(0.27), 0.25); assert.equal(PS.nearestSpeed(0.9), 1); assert.equal(PS.nearestSpeed(0.01), 0.1)
+})
+
+test('poses: why a form cannot be saved', () => {
+  const ps = [{ id: 'a', label: 'Fold', plan: 'movej::fold' }, { id: 'b', label: 'Give', plan: 'movej::give' }]
+  assert.equal(PS.poseFormError('x', 'movej::fold', ps), '')
+  assert.match(PS.poseFormError('  ', 'movej::fold', ps), /name/)
+  assert.match(PS.poseFormError('x', 'fold', ps), /at least one step/)
+  assert.match(PS.poseFormError('FOLD', 'movej::fold', ps), /already exists/)               // names are unique, case-insensitive
+  assert.equal(PS.poseFormError('fold', 'movej::fold', ps, 'a'), '')                          // the pose being edited may keep its own name
 })

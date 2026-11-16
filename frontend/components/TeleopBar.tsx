@@ -1,7 +1,9 @@
 'use client'
 import { useState } from 'react'
 import { api } from '../lib/api'
-import { SPEED_LEVELS, batteryInfo, canEnable, deviceText, driveLabel, isOn, modeChips, nearestLevel, poseError, stateLabel, type TeleopFunction, type TeleopPose, type Tone } from '../lib/teleop'
+import PoseEditor from './PoseEditor'
+import type { Pose, PoseList } from '../lib/poses'
+import { SPEED_LEVELS, batteryInfo, canEnable, deviceText, driveLabel, isOn, modeChips, nearestLevel, poseError, stateLabel, type TeleopFunction, type Tone } from '../lib/teleop'
 
 const TONE: Record<Tone, string> = {
   off: 'bg-gray-100 text-gray-600 border-gray-300', wait: 'bg-amber-50 text-amber-700 border-amber-300',
@@ -10,13 +12,14 @@ const TONE: Record<Tone, string> = {
 
 // One row per teleop function the robot offers (robot_agent GET /teleop): state, input device, gripper, speed, On / Off. Nothing is drawn
 // when the robot has none. No confirmation is asked (a person is always next to the robot): On is sent with confirm=true, the API's own flag.
-export default function TeleopBar({ functions, runInFlight, onChanged }: { functions: TeleopFunction[]; runInFlight: boolean; onChanged: () => void }) {
+export default function TeleopBar({ functions, runInFlight, onChanged, poses, onPosesChanged }: { functions: TeleopFunction[]; runInFlight: boolean; onChanged: () => void; poses: PoseList | null; onPosesChanged: () => void }) {
+  const [editing, setEditing] = useState(false)
   const [err, setErr] = useState('')
   const [moving, setMoving] = useState<string | null>(null)                           // the function whose arm is going to a pose
   // Going to a pose: POST /skill switches teleop off by itself (the backend, begin_run). No question is asked: a person is always next to a robot that is driven remotely.
-  const goTo = (fn: string, p: TeleopPose, restore: boolean) => {
+  const goTo = (fn: string, p: Pose, restore: boolean) => {
     setMoving(fn); setErr('')
-    api.runSkill(p.skill, p.params)
+    api.runPose(p.id)
       .then(res => { const m = poseError(res); if (m) { setErr(`${p.label}: ${m}`); return }       // a failed move leaves teleop off
         return restore ? api.enableTeleop(fn, true, true) : undefined })                           // arrived: remote control starts again by itself
       .catch(e => setErr(`${p.label}: ${e instanceof Error ? e.message : String(e)}`)).finally(() => { setMoving(null); onChanged() })
@@ -45,13 +48,14 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
               </span>
             )}
             <span className="ml-auto flex items-center gap-1.5">
-              {!!f.poses?.length && (
+              {poses && f === functions[0] && (
                 <select data-testid={`teleop-${f.name}-pose`} value="" disabled={runInFlight || moving === f.name} aria-label="Go to a pose"
-                    title={runInFlight ? 'A run is in flight: cancel it first' : 'Go to a pose: the arm moves there, then remote control starts again'}
-                    onChange={e => { const p = f.poses?.find(x => x.name === e.target.value); if (p) goTo(f.name, p, f.available) }}
+                    title={runInFlight ? 'A run is in flight: cancel it first' : 'Go to a pose: the arm moves there (slowly: the speed is set in Edit poses), then remote control starts again'}
+                    onChange={e => { if (e.target.value === '__edit__') { setEditing(true); return } const p = poses.poses.find(x => x.id === e.target.value); if (p) goTo(f.name, p, f.available) }}
                     className="w-[90px] px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-40">
                     <option value="">{moving === f.name ? 'moving…' : 'Go to…'}</option>
-                    {f.poses?.map(p => <option key={p.name} value={p.name}>{p.label}</option>)}
+                    {poses.poses.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    <option value="__edit__">✎ Edit poses…</option>
                   </select>)}
               {bat && <span data-testid={`teleop-${f.name}-battery`} title={`Input device battery${bat.heard ? `, reported ${bat.heard}` : ''}`}
                 className={`px-1.5 py-0.5 rounded border ${bat.low ? 'border-amber-400 bg-amber-50 font-semibold text-amber-700' : 'border-gray-200 text-gray-600'}`}>{bat.text}</span>}
@@ -77,6 +81,7 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
           </div>
         )
       })}
+      {editing && poses && <PoseEditor list={poses} onChanged={onPosesChanged} onClose={() => setEditing(false)} />}
       {err && <div data-testid="teleop-error" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{err}</div>}
     </div>
   )

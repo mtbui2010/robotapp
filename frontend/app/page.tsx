@@ -7,6 +7,7 @@ import TeleopBar    from '../components/TeleopBar'
 import RecorderBar  from '../components/RecorderBar'
 import DataPanel    from '../components/DataPanel'
 import { useRecorder } from '../lib/useRecorder'
+import { usePoses } from '../lib/usePoses'
 import { useTeleop } from '../lib/useTeleop'
 import SkillPanel   from '../components/SkillPanel'
 import EnvPanel     from '../components/EnvPanel'
@@ -682,6 +683,7 @@ export default function Home() {
   // The languages come from the connected robot's manifest (GET /robot/languages): the picker's options, and the default
   // of a tab that has not chosen (or whose choice this robot does not talk in).
   const [robotLangs, setRobotLangs] = useRobotLanguages()
+  const [poseList, refreshPoses] = usePoses()           // the "Go to" poses the operator edits
   const [recorder, refreshRecorder] = useRecorder()   // raw VLA episode recording (none on most robots: nothing is drawn)
   const [teleopFns, refreshTeleop] = useTeleop()   // the robot's teleop functions (none on most robots: nothing is drawn)
   robotLangsRef.current = robotLangs
@@ -936,7 +938,7 @@ export default function Home() {
                 {stopLabel(rs, 'Cancel')}
               </button>
             </div>
-            {mainTab === 'cameras' && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} />}
+            {mainTab === 'cameras' && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} poses={poseList} onPosesChanged={refreshPoses} />}
             {mainTab === 'cameras' && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} />}
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />

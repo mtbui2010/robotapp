@@ -2,6 +2,7 @@ import type { ClientEntry, ClientType, SkillDef, WorldState, PlannerPrompt, LlmI
 import type { RobotLanguages } from './robotLanguages'
 import type { BtnDef, BtnGroup } from './buttonGroups'
 import type { RecorderStatus } from './recorder'
+import type { Pose, PoseList } from './poses'
 import type { RecDetail, RecEdit, RecExport, RecList } from './recordings'
 import type { TeleopFunction } from './teleop'
 
@@ -532,6 +533,43 @@ export const api = {
   async stopRecording(label: 'success' | 'failure' | 'discard'): Promise<void> {
     const r = await fetch(`${getAgentUrl()}/recorder/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) })
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+  },
+  // ── The "Go to" poses (robot_agent /poses): a label + a plan of steps; one speed for all ──
+  async listPoses(): Promise<PoseList> {
+    const r = await fetch(`${getAgentUrl()}/poses`)
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  },
+  async addPose(label: string, plan: string): Promise<Pose> {
+    const r = await fetch(`${getAgentUrl()}/poses`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, plan }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
+  },
+  async updatePose(id: string, label: string, plan: string): Promise<Pose> {
+    const r = await fetch(`${getAgentUrl()}/poses/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, plan }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
+  },
+  async deletePose(id: string): Promise<void> {
+    const r = await fetch(`${getAgentUrl()}/poses/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+  },
+  /** The one speed every pose runs at (0.05..1). */
+  async setPoseSpeed(speed: number): Promise<void> {
+    const r = await fetch(`${getAgentUrl()}/poses/speed`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ speed }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+  },
+  /** Add the robot package's starting poses that are missing; resolves with how many were added. */
+  async restorePoseDefaults(): Promise<number> {
+    const r = await fetch(`${getAgentUrl()}/poses/defaults`, { method: 'POST' })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return ((await r.json()) as { added: number }).added
+  },
+  /** Run a pose now (the backend switches teleop off first and answers when the move is done). */
+  async runPose(id: string): Promise<{ isdone: boolean; msg: string; plan: string }> {
+    const r = await fetch(`${getAgentUrl()}/poses/${encodeURIComponent(id)}/run`, { method: 'POST' })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
   },
   // ── Raw episodes (robot_agent /recordings): look, clean (an edit list beside the raw folder), prepare an export ──
   async listRecordings(): Promise<RecList | null> {

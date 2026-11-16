@@ -18,17 +18,9 @@ export interface TeleopState {
   charging?: boolean            // the input device is charging (only with `battery`)
   battery_age_s?: number | null // seconds since the device last reported its battery (it reports now and then, not continuously)
 }
-/** A named pose the function can go to; the robot's own config lists them (robot_agent GET /teleop), nothing is named here. */
-export interface TeleopPose {
-  name: string
-  label: string
-  skill: string                 // POST /skill/<skill> with `params` takes the arm there
-  params: Record<string, unknown>
-}
 export interface TeleopFunction {
   name: string
   label: string
-  poses?: TeleopPose[]          // absent / empty: no pose list
   available: boolean            // a fresh state has arrived: the function is running
   state?: TeleopState | null
   age_s?: number | null

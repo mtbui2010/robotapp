@@ -460,6 +460,157 @@
     "title": "OkValue",
     "type": "object"
    },
+   "Pose": {
+    "additionalProperties": true,
+    "properties": {
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "plan": {
+      "title": "Plan",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "label",
+     "plan"
+    ],
+    "title": "Pose",
+    "type": "object"
+   },
+   "PoseDefaults": {
+    "additionalProperties": true,
+    "properties": {
+     "added": {
+      "title": "Added",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "added"
+    ],
+    "title": "PoseDefaults",
+    "type": "object"
+   },
+   "PoseIn": {
+    "additionalProperties": true,
+    "properties": {
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "plan": {
+      "title": "Plan",
+      "type": "string"
+     }
+    },
+    "required": [
+     "label",
+     "plan"
+    ],
+    "title": "PoseIn",
+    "type": "object"
+   },
+   "PoseList": {
+    "additionalProperties": true,
+    "properties": {
+     "defaults_missing": {
+      "default": 0,
+      "title": "Defaults Missing",
+      "type": "integer"
+     },
+     "poses": {
+      "items": {
+       "$ref": "#/components/schemas/Pose"
+      },
+      "title": "Poses",
+      "type": "array"
+     },
+     "speed": {
+      "title": "Speed",
+      "type": "number"
+     }
+    },
+    "required": [
+     "speed",
+     "poses"
+    ],
+    "title": "PoseList",
+    "type": "object"
+   },
+   "PoseRun": {
+    "additionalProperties": true,
+    "properties": {
+     "isdone": {
+      "title": "Isdone",
+      "type": "boolean"
+     },
+     "msg": {
+      "default": "",
+      "title": "Msg",
+      "type": "string"
+     },
+     "plan": {
+      "default": "",
+      "title": "Plan",
+      "type": "string"
+     }
+    },
+    "required": [
+     "isdone"
+    ],
+    "title": "PoseRun",
+    "type": "object"
+   },
+   "PoseSpeed": {
+    "additionalProperties": true,
+    "properties": {
+     "speed": {
+      "title": "Speed",
+      "type": "number"
+     }
+    },
+    "required": [
+     "speed"
+    ],
+    "title": "PoseSpeed",
+    "type": "object"
+   },
+   "PoseUpdate": {
+    "additionalProperties": true,
+    "properties": {
+     "label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Label"
+     },
+     "plan": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Plan"
+     }
+    },
+    "title": "PoseUpdate",
+    "type": "object"
+   },
    "QaEndResult": {
     "additionalProperties": true,
     "properties": {
@@ -1922,14 +2073,6 @@
       "title": "Name",
       "type": "string"
      },
-     "poses": {
-      "default": [],
-      "items": {
-       "$ref": "#/components/schemas/TeleopPose"
-      },
-      "title": "Poses",
-      "type": "array"
-     },
      "state": {
       "anyOf": [
        {
@@ -1966,36 +2109,6 @@
      "functions"
     ],
     "title": "TeleopList",
-    "type": "object"
-   },
-   "TeleopPose": {
-    "additionalProperties": true,
-    "properties": {
-     "label": {
-      "title": "Label",
-      "type": "string"
-     },
-     "name": {
-      "title": "Name",
-      "type": "string"
-     },
-     "params": {
-      "additionalProperties": true,
-      "title": "Params",
-      "type": "object"
-     },
-     "skill": {
-      "title": "Skill",
-      "type": "string"
-     }
-    },
-    "required": [
-     "name",
-     "label",
-     "skill",
-     "params"
-    ],
-    "title": "TeleopPose",
     "type": "object"
    },
    "TeleopSpeedIn": {
@@ -3617,6 +3730,241 @@
      }
     },
     "summary": "Planner Prompt"
+   }
+  },
+  "/poses": {
+   "get": {
+    "operationId": "list_poses_poses_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PoseList"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Poses"
+   },
+   "post": {
+    "operationId": "add_pose_poses_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PoseIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Pose"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Add Pose"
+   }
+  },
+  "/poses/defaults": {
+   "post": {
+    "operationId": "restore_defaults_poses_defaults_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PoseDefaults"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Restore Defaults"
+   }
+  },
+  "/poses/speed": {
+   "put": {
+    "operationId": "set_speed_poses_speed_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PoseSpeed"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PoseSpeed"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Set Speed"
+   }
+  },
+  "/poses/{pid}": {
+   "delete": {
+    "operationId": "delete_pose_poses__pid__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "pid",
+      "required": true,
+      "schema": {
+       "title": "Pid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Pose"
+   },
+   "put": {
+    "operationId": "update_pose_poses__pid__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "pid",
+      "required": true,
+      "schema": {
+       "title": "Pid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PoseUpdate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Pose"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Update Pose"
+   }
+  },
+  "/poses/{pid}/run": {
+   "post": {
+    "operationId": "run_pose_poses__pid__run_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "pid",
+      "required": true,
+      "schema": {
+       "title": "Pid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PoseRun"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Run Pose"
    }
   },
   "/recorder": {

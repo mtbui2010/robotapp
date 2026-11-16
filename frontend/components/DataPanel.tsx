@@ -31,7 +31,7 @@ export default function DataPanel() {
         <span data-testid="data-totals" className="text-gray-700">{t.episodes} episodes · {t.hours} h · {t.success} success · {t.failure} failure{t.excluded ? ` · ${t.excluded} excluded` : ''}</span>
         <button onClick={load} className="px-1.5 py-0.5 rounded border border-gray-300 bg-white hover:bg-gray-100" title="Read the folder again">↻</button>
         <button data-testid="clean-all" onClick={() => clean(undefined, redo)} className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
-          title="Auto-clean: cut the idle start and end of every episode, and everything before / after a move made with teleop off (e.g. Go to pose). The raw files are not touched; each trim can be changed below.">🧹 Auto-clean all</button>
+          title="Auto-clean: cut the idle start and end of every episode (a Go to pose move is kept: it is the init part). The raw files are not touched; each trim can be changed below.">🧹 Auto-clean all</button>
         <label className="flex items-center gap-1 text-gray-500" title="Also replace trims that were already saved"><input type="checkbox" checked={redo} onChange={e => setRedo(e.target.checked)} />redo saved trims</label>
         {cleanMsg && <span data-testid="clean-msg" className="text-emerald-700">{cleanMsg}</span>}
         <span className="ml-auto flex flex-wrap items-center gap-1" title="Writes a manifest of the episodes to export (not excluded, accepted labels, with their trims); the command below turns it into a LeRobot dataset on the training server">
@@ -114,6 +114,7 @@ function Detail({ id, onSaved }: { id: string; onSaved: () => void }) {
           <div className="font-medium text-gray-800">{d.prompt}</div>
           <div className="text-gray-500">{fmtSec(d.summary.duration_s)} · max {d.summary.max_speed_rad_s ?? '–'} rad/s · gripper changes {d.summary.gripper_changes ?? 0} · {Object.entries(d.summary.rates_hz ?? {}).map(([k, v]) => `${k} ${v} Hz`).join(' · ')}</div>
           {d.summary.warnings.map(w => <div key={w} className="text-amber-700">⚠ {w}</div>)}
+          {(d.summary.notes ?? []).map(n => <div key={n} className="text-blue-700">ℹ {n}</div>)}
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -123,13 +124,13 @@ function Detail({ id, onSaved }: { id: string; onSaved: () => void }) {
       </div>
       <svg ref={svg} viewBox={`0 0 ${W} ${H}`} className="w-full h-32 bg-gray-50 border border-gray-200 rounded cursor-crosshair" role="img" aria-label="joint curves"
         onClick={e => { const r = svg.current?.getBoundingClientRect(); if (r) { setPlay(false); setT(xToTime(e.clientX - r.left, r.width, dur)) } }}>
-        {(d.summary.auto_motion ?? []).map(([x, y]) => <rect key={x} x={px(x)} y={0} width={px(y) - px(x)} height={H} fill="#fecaca" opacity={0.7} />)}
+        {(d.summary.init_moves ?? []).map(m => <rect key={m.start} x={px(m.start)} y={0} width={px(m.end) - px(m.start)} height={H} fill="#bfdbfe" opacity={0.6} />)}
         <rect x={0} y={0} width={px(a)} height={H} fill="#e5e7eb" opacity={0.8} /><rect x={px(b)} y={0} width={W - px(b)} height={H} fill="#e5e7eb" opacity={0.8} />
         {d.series.joints.map((j, i) => <polyline key={i} fill="none" stroke={COLORS[i % COLORS.length]} strokeWidth={1} points={polyline(d.series.t, j, dur, lo, hi, W, H)} />)}
         {d.series.gripper_cmd && <polyline fill="none" stroke="#111" strokeWidth={1.5} strokeDasharray="4 2" points={polyline(d.series.t, d.series.gripper_cmd, dur, 0, 0.1, W, H)} />}
         <line x1={px(t)} x2={px(t)} y1={0} y2={H} stroke="#dc2626" strokeWidth={1.5} />
       </svg>
-      <div className="text-gray-400">coloured: the 7 arm joints (rad); dashed: the gripper command; grey: trimmed away; red: the arm was moved with teleop off (Go to pose)</div>
+      <div className="text-gray-400">coloured: the 7 arm joints (rad); dashed: the gripper command; grey: trimmed away; blue: Go to pose (the init part, kept)</div>
       <div className="font-medium text-gray-700 border-t border-gray-100 pt-2">🧹 Clean this episode <span className="font-normal text-gray-400">(saved beside the raw files; Reset undoes it)</span></div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-gray-600">keep</span>
