@@ -552,11 +552,11 @@ test('teleop deviceText / gripperText / nearestLevel', () => {
 
 test('teleop batteryInfo: the input device battery as text, only when the node reports it', () => {
   assert.equal(TL.batteryInfo(fn()), null)                                                  // an older node: nothing is guessed
-  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.78 })), { text: '🔋 78%', low: false })
-  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.2 })), { text: '🔋 20%', low: true })
-  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.1, charging: true })), { text: '⚡ 10%', low: false })   // charging: not "low"
+  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.78 })), { text: '🔋 78%', low: false, heard: '' })
+  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.2 })), { text: '🔋 20%', low: true, heard: '' })
+  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.1, charging: true })), { text: '⚡ 10%', low: false, heard: '' })   // charging: not "low"
   assert.equal(TL.batteryInfo(fn({}, { battery: null })), null)
-  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 1.4 })), { text: '🔋 100%', low: false })   // clamped
+  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 1.4 })), { text: '🔋 100%', low: false, heard: '' })   // clamped
   assert.equal(TL.batteryInfo(fn({ available: false }, { battery: 0.5 })), null)               // a stale state shows nothing
 })
 
