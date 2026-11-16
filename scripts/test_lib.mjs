@@ -541,6 +541,16 @@ test('teleop deviceText / gripperText / nearestLevel', () => {
   assert.equal(TL.nearestLevel(undefined), 1)
 })
 
+test('teleop batteryInfo: the input device battery as text, only when the node reports it', () => {
+  assert.equal(TL.batteryInfo(fn()), null)                                                  // an older node: nothing is guessed
+  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.78 })), { text: '🔋 78%', low: false })
+  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.2 })), { text: '🔋 20%', low: true })
+  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 0.1, charging: true })), { text: '⚡ 10%', low: false })   // charging: not "low"
+  assert.equal(TL.batteryInfo(fn({}, { battery: null })), null)
+  assert.deepEqual(TL.batteryInfo(fn({}, { battery: 1.4 })), { text: '🔋 100%', low: false })   // clamped
+  assert.equal(TL.batteryInfo(fn({ available: false }, { battery: 0.5 })), null)               // a stale state shows nothing
+})
+
 // ── lib/buttonGroups.ts: shortcut buttons in groups ──────────────────────────────────────────────────────────
 const gs = [{ id: 'head', name: 'Head' }, { id: 'arm', name: 'Arm' }]
 const bs = [{ id: '1', label: 'head left', plan: 'p', group: 'head' }, { id: '2', label: 'fold', plan: 'p', group: 'arm' },
