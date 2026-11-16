@@ -9,15 +9,13 @@ const TONE: Record<Tone, string> = {
 }
 
 // One row per teleop function the robot offers (robot_agent GET /teleop): state, input device, gripper, speed, On / Off. Nothing is drawn
-// when the robot has none. Switching ON asks first (rule 8: a person must be next to the robot); OFF never asks.
+// when the robot has none. No confirmation is asked (a person is always next to the robot): On is sent with confirm=true, the API's own flag.
 export default function TeleopBar({ functions, runInFlight, onChanged }: { functions: TeleopFunction[]; runInFlight: boolean; onChanged: () => void }) {
-  const [asking, setAsking] = useState<string | null>(null)
   const [err, setErr] = useState('')
-  const [pose, setPose] = useState<{ fn: string; pose: TeleopPose } | null>(null)     // a pose picked, waiting for the confirmation
   const [moving, setMoving] = useState<string | null>(null)                           // the function whose arm is going to a pose
-  // Going to a pose moves the arm a long way: ask first (rule 8). POST /skill switches teleop off by itself (the backend, begin_run).
+  // Going to a pose: POST /skill switches teleop off by itself (the backend, begin_run). No question is asked: a person is always next to a robot that is driven remotely.
   const goTo = (fn: string, p: TeleopPose) => {
-    setPose(null); setMoving(fn); setErr('')
+    setMoving(fn); setErr('')
     api.runSkill(p.skill, p.params).then(res => { const m = poseError(res); if (m) setErr(`${p.label}: ${m}`) })
       .catch(e => setErr(`${p.label}: ${e instanceof Error ? e.message : String(e)}`)).finally(() => { setMoving(null); onChanged() })
   }
@@ -45,15 +43,10 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
               </span>
             )}
             <span className="ml-auto flex items-center gap-1.5">
-              {!!f.poses?.length && (pose?.fn === f.name
-                ? <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-800">
-                    A person is next to the robot? The arm goes to “{pose.pose.label}”.
-                    <button data-testid={`teleop-${f.name}-pose-yes`} onClick={() => goTo(f.name, pose.pose)} className="px-1.5 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white">Yes, go</button>
-                    <button onClick={() => setPose(null)} className="px-1.5 py-0.5 rounded border border-gray-300 bg-white text-gray-600">No</button>
-                  </span>
-                : <select data-testid={`teleop-${f.name}-pose`} value="" disabled={runInFlight || moving === f.name} aria-label="Go to pose"
+              {!!f.poses?.length && (
+                <select data-testid={`teleop-${f.name}-pose`} value="" disabled={runInFlight || moving === f.name} aria-label="Go to pose"
                     title={runInFlight ? 'A run is in flight: cancel it first' : 'Go to a pose: the arm moves there (teleop is switched off first)'}
-                    onChange={e => { const p = f.poses?.find(x => x.name === e.target.value); if (p) setPose({ fn: f.name, pose: p }) }}
+                    onChange={e => { const p = f.poses?.find(x => x.name === e.target.value); if (p) goTo(f.name, p) }}
                     className="px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-40">
                     <option value="">{moving === f.name ? 'moving…' : 'Go to pose…'}</option>
                     {f.poses?.map(p => <option key={p.name} value={p.name}>{p.label}</option>)}
@@ -71,18 +64,11 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
                 className="px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-40">
                 {SPEED_LEVELS.map(l => <option key={l} value={String(l * 100)}>{l * 100}%</option>)}
               </select>
-              {asking === f.name && !on
-                ? <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-800">
-                    A person is next to the robot?
-                    <button data-testid={`teleop-${f.name}-yes`} onClick={() => { setAsking(null); void call(api.enableTeleop(f.name, true, true)) }}
-                      className="px-1.5 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white">Yes, switch on</button>
-                    <button onClick={() => setAsking(null)} className="px-1.5 py-0.5 rounded border border-gray-300 bg-white text-gray-600">No</button>
-                  </span>
-                : on
+              {on
                   ? <button data-testid={`teleop-${f.name}-off`} onClick={() => call(api.enableTeleop(f.name, false))}
                       className={`px-2 py-0.5 rounded text-white hover:bg-red-500 ${pill.tone === 'wait' ? 'bg-amber-500' : 'bg-green-600'}`}
                       title={`${label}: click to switch teleop off${bat ? ` (input device battery ${bat.text}${bat.heard ? `, reported ${bat.heard}` : ''})` : ''}`}>{label}</button>
-                  : <button data-testid={`teleop-${f.name}-on`} disabled={!canEnable(f, runInFlight)} onClick={() => setAsking(f.name)}
+                  : <button data-testid={`teleop-${f.name}-on`} disabled={!canEnable(f, runInFlight)} onClick={() => void call(api.enableTeleop(f.name, true, true))}
                       title={runInFlight ? 'A run is in flight: cancel it first' : `Switch teleop on: the robot will follow the input device${bat ? ` (input device battery ${bat.text}${bat.heard ? `, reported ${bat.heard}` : ''})` : ''}`}
                       className={`px-2 py-0.5 rounded text-white disabled:opacity-60 ${pill.tone === 'bad' ? 'bg-red-600' : 'bg-green-600 hover:bg-green-500'}`}>{label}</button>}
             </span>
