@@ -20,7 +20,6 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
       {functions.map(f => {
         const pill = stateLabel(f), dev = deviceText(f), on = isOn(f), level = nearestLevel(f.state?.speed), bat = batteryInfo(f), chips = modeChips(f)
         const gripOpen = f.available ? f.state?.gripper_open : undefined       // true / false, or null / undefined when this function has no gripper
-        const batChip = bat ? <span data-testid={`teleop-${f.name}-battery`} className={bat.low ? 'font-semibold text-amber-200' : ''}> · {bat.text}</span> : null
         const label = driveLabel(f)
         return (
           <div key={f.name} data-testid={`teleop-${f.name}`} className="flex flex-wrap items-center gap-1.5 text-xs border border-gray-200 rounded px-2 py-1 bg-white">
@@ -38,6 +37,9 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
               </span>
             )}
             <span className="ml-auto flex items-center gap-1.5">
+              {bat && <span data-testid={`teleop-${f.name}-battery`} title={`Input device battery${bat.heard ? `, reported ${bat.heard}` : ''}`}
+                className={`px-1.5 py-0.5 rounded border ${bat.low ? 'border-amber-400 bg-amber-50 font-semibold text-amber-700' : 'border-gray-200 text-gray-600'}`}>{bat.text}</span>}
+              <span aria-hidden title="Speed">⏱</span>
               <select data-testid={`teleop-${f.name}-speed`} value={String(level * 100)} disabled={!f.available} title="Speed: a fraction of the top speed" aria-label="Speed"
                 onChange={e => call(api.setTeleopSpeed(f.name, Number(e.target.value) / 100))}
                 className="px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-40">
@@ -53,10 +55,10 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
                 : on
                   ? <button data-testid={`teleop-${f.name}-off`} onClick={() => call(api.enableTeleop(f.name, false))}
                       className={`px-2 py-0.5 rounded text-white hover:bg-red-500 ${pill.tone === 'wait' ? 'bg-amber-500' : 'bg-green-600'}`}
-                      title={`${label}: click to switch teleop off${bat ? ` (input device battery ${bat.text}${bat.heard ? `, reported ${bat.heard}` : ''})` : ''}`}>{label}{batChip}</button>
+                      title={`${label}: click to switch teleop off${bat ? ` (input device battery ${bat.text}${bat.heard ? `, reported ${bat.heard}` : ''})` : ''}`}>{label}</button>
                   : <button data-testid={`teleop-${f.name}-on`} disabled={!canEnable(f, runInFlight)} onClick={() => setAsking(f.name)}
                       title={runInFlight ? 'A run is in flight: cancel it first' : `Switch teleop on: the robot will follow the input device${bat ? ` (input device battery ${bat.text}${bat.heard ? `, reported ${bat.heard}` : ''})` : ''}`}
-                      className={`px-2 py-0.5 rounded text-white disabled:opacity-60 ${pill.tone === 'bad' ? 'bg-red-600' : 'bg-green-600 hover:bg-green-500'}`}>{label}{batChip}</button>}
+                      className={`px-2 py-0.5 rounded text-white disabled:opacity-60 ${pill.tone === 'bad' ? 'bg-red-600' : 'bg-green-600 hover:bg-green-500'}`}>{label}</button>}
             </span>
           </div>
         )
