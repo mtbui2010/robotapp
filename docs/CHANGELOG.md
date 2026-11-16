@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-16
 
+- Teleop strip: a new mode chip `heading frame` (the node's frame `hybrid`, [teleop](features/teleop.md)).
 - Teleop strip: the three speed buttons are one drop-down (25 / 50 / 100%), and the `▶ On` / `■ Off` button shows the input device's battery (`🔋 78%`, `⚡` charging, amber at 20 % or less) when the node reports `battery` in its state; nothing is shown otherwise (robot_teleop does not publish it yet). `components/TeleopBar.tsx`, `lib/teleop.ts` `batteryInfo`, [features/teleop.md](features/teleop.md).
 
 ## 2026-11-14
