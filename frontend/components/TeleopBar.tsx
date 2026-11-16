@@ -21,6 +21,7 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
         return restore ? api.enableTeleop(fn, true, true) : undefined })                           // arrived: remote control starts again by itself
       .catch(e => setErr(`${p.label}: ${e instanceof Error ? e.message : String(e)}`)).finally(() => { setMoving(null); onChanged() })
   }
+  const call = (p: Promise<void>) => p.then(() => { setErr(''); onChanged() }).catch(e => setErr(e instanceof Error ? e.message : String(e)))
   if (!functions.length) return null
   return (
     <div data-testid="teleop-bar" className="mb-2 flex flex-col gap-1">
