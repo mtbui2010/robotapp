@@ -1465,6 +1465,103 @@
     "title": "SnapshotReq",
     "type": "object"
    },
+   "TeleopEnableIn": {
+    "additionalProperties": true,
+    "properties": {
+     "confirm": {
+      "default": false,
+      "title": "Confirm",
+      "type": "boolean"
+     },
+     "on": {
+      "title": "On",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "on"
+    ],
+    "title": "TeleopEnableIn",
+    "type": "object"
+   },
+   "TeleopFunction": {
+    "additionalProperties": true,
+    "properties": {
+     "age_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Age S"
+     },
+     "available": {
+      "title": "Available",
+      "type": "boolean"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     }
+    },
+    "required": [
+     "name",
+     "label",
+     "available"
+    ],
+    "title": "TeleopFunction",
+    "type": "object"
+   },
+   "TeleopList": {
+    "additionalProperties": true,
+    "properties": {
+     "functions": {
+      "items": {
+       "$ref": "#/components/schemas/TeleopFunction"
+      },
+      "title": "Functions",
+      "type": "array"
+     }
+    },
+    "required": [
+     "functions"
+    ],
+    "title": "TeleopList",
+    "type": "object"
+   },
+   "TeleopSpeedIn": {
+    "additionalProperties": true,
+    "properties": {
+     "scale": {
+      "title": "Scale",
+      "type": "number"
+     }
+    },
+    "required": [
+     "scale"
+    ],
+    "title": "TeleopSpeedIn",
+    "type": "object"
+   },
    "UpdateConnectReq": {
     "properties": {
      "config": {
@@ -3928,6 +4025,122 @@
      }
     },
     "summary": "Update Skill"
+   }
+  },
+  "/teleop": {
+   "get": {
+    "operationId": "list_teleop_teleop_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TeleopList"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Teleop"
+   }
+  },
+  "/teleop/{name}/enable": {
+   "post": {
+    "operationId": "enable_teleop__name__enable_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TeleopEnableIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Enable"
+   }
+  },
+  "/teleop/{name}/speed": {
+   "post": {
+    "operationId": "speed_teleop__name__speed_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TeleopSpeedIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Speed"
    }
   },
   "/tts": {

@@ -25,6 +25,7 @@ const CR = await load('chatRun')
 const RL = await load('robotLanguages')
 const BG = await load('buttonGroups')
 const TB = await load('targetBadge')
+const TL = await load('teleop')
 
 const FIX = join(ROOT, 'scripts/fixtures/events')
 const fixtures = Object.fromEntries(readdirSync(FIX).filter(f => f.endsWith('.json'))
@@ -495,6 +496,42 @@ test('speechLanguage: Detect speaks the robot default until a language is heard'
   assert.equal(RL.speechLanguage('auto', null), 'en')
 })
 
+
+// ── lib/teleop.ts: the teleop strip above the cameras ───────────────────────────────────────────────────────
+const fn = (over = {}, st = {}) => ({ name: 'arm', label: 'Arm', available: true, state: { state: 'inactive', ready: true, gripper_open: false, speed: 1, input_age_s: 0.02, stalled: false, ...st }, ...over })
+
+test('teleop stateLabel: not running / not set up / blocked / starting / driving / off', () => {
+  assert.deepEqual(TL.stateLabel(fn({ available: false })), { text: 'not running', tone: 'bad' })
+  assert.deepEqual(TL.stateLabel({ name: 'a', label: 'a', available: true }), { text: 'not running', tone: 'bad' })
+  assert.equal(TL.stateLabel(fn({}, { ready: false })).text, 'not set up')
+  assert.equal(TL.stateLabel(fn({}, { state: 'active', stalled: true })).text, 'blocked')
+  assert.equal(TL.stateLabel(fn({}, { state: 'hold' })).text, 'starting…')
+  assert.deepEqual(TL.stateLabel(fn({}, { state: 'active' })), { text: 'driving', tone: 'on' })
+  assert.deepEqual(TL.stateLabel(fn()), { text: 'off', tone: 'off' })
+})
+
+test('teleop canEnable: only a running, set-up, OFF function with no run in flight; isOn for hold / active', () => {
+  assert.equal(TL.canEnable(fn(), false), true)
+  assert.equal(TL.canEnable(fn(), true), false)                       // a run is in flight
+  assert.equal(TL.canEnable(fn({ available: false }), false), false)
+  assert.equal(TL.canEnable(fn({}, { ready: false }), false), false)
+  assert.equal(TL.canEnable(fn({}, { state: 'active' }), false), false)
+  assert.equal(TL.isOn(fn({}, { state: 'hold' })), true)
+  assert.equal(TL.isOn(fn({ available: false }, { state: 'active' })), false)   // a stale state is not "on"
+  assert.equal(TL.isOn(fn()), false)
+})
+
+test('teleop deviceText / gripperText / nearestLevel', () => {
+  assert.deepEqual(TL.deviceText(fn()), { text: 'device ok', ok: true })
+  assert.deepEqual(TL.deviceText(fn({}, { input_age_s: 5 })), { text: 'device silent', ok: false })
+  assert.deepEqual(TL.deviceText(fn({}, { input_age_s: null })), { text: 'no input device', ok: false })
+  assert.equal(TL.gripperText(fn({}, { gripper_open: true })), 'gripper open')
+  assert.equal(TL.gripperText(fn()), 'gripper closed')
+  assert.equal(TL.gripperText(fn({}, { gripper_open: null })), null)  // this function has no gripper
+  assert.equal(TL.nearestLevel(0.4), 0.5)
+  assert.equal(TL.nearestLevel(0.1), 0.25)
+  assert.equal(TL.nearestLevel(undefined), 1)
+})
 
 // ── lib/buttonGroups.ts: shortcut buttons in groups ──────────────────────────────────────────────────────────
 const gs = [{ id: 'head', name: 'Head' }, { id: 'arm', name: 'Arm' }]

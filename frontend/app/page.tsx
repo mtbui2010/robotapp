@@ -3,6 +3,8 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import DevicePanel, { type ActiveTarget } from '../components/DevicePanel'
 import AgentPanel   from '../components/AgentPanel'
 import CameraFeed   from '../components/CameraFeed'
+import TeleopBar    from '../components/TeleopBar'
+import { useTeleop } from '../lib/useTeleop'
 import SkillPanel   from '../components/SkillPanel'
 import EnvPanel     from '../components/EnvPanel'
 import MapPanel     from '../components/MapPanel'
@@ -677,6 +679,7 @@ export default function Home() {
   // The languages come from the connected robot's manifest (GET /robot/languages): the picker's options, and the default
   // of a tab that has not chosen (or whose choice this robot does not talk in).
   const [robotLangs, setRobotLangs] = useRobotLanguages()
+  const [teleopFns, refreshTeleop] = useTeleop()   // the robot's teleop functions (none on most robots: nothing is drawn)
   robotLangsRef.current = robotLangs
   const [heardLang, setHeardLang] = useState<string | null>(null)         // Detect: the language heard last in this run
   const [lang, setLang]         = useState<Lang>('en')
@@ -929,6 +932,7 @@ export default function Home() {
                 {stopLabel(rs, 'Cancel')}
               </button>
             </div>
+            {mainTab === 'cameras' && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} />}
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
               : <MapPanel clients={clients} running={running} />}

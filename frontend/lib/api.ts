@@ -1,6 +1,7 @@
 import type { ClientEntry, ClientType, SkillDef, WorldState, PlannerPrompt, LlmInfo, LocationsInfo, PoolStatus } from './types'
 import type { RobotLanguages } from './robotLanguages'
 import type { BtnDef, BtnGroup } from './buttonGroups'
+import type { TeleopFunction } from './teleop'
 
 // ------------------------------------------------------------------
 // Robot registry — multiple named robots, one active at a time.
@@ -491,6 +492,21 @@ export const api = {
     const r = await fetch(`${getAgentUrl()}/robot/languages`)
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
+  },
+  // ── Teleoperation functions (GET /teleop): the strip above the cameras; empty = nothing configured on this robot ──
+  async getTeleop(): Promise<TeleopFunction[]> {
+    const r = await fetch(`${getAgentUrl()}/teleop`)
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return ((await r.json()) as { functions: TeleopFunction[] }).functions ?? []
+  },
+  /** Switch a function on (confirm: a person is next to the robot) or off. */
+  async enableTeleop(name: string, on: boolean, confirm = false): Promise<void> {
+    const r = await fetch(`${getAgentUrl()}/teleop/${encodeURIComponent(name)}/enable`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on, confirm }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+  },
+  async setTeleopSpeed(name: string, scale: number): Promise<void> {
+    const r = await fetch(`${getAgentUrl()}/teleop/${encodeURIComponent(name)}/speed`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scale }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
   },
   /** Switch the site's languages: a non-empty subset of the manifest's; the answer is the new GET /robot/languages. */
   async setRobotLanguages(languages: string[]): Promise<RobotLanguages> {

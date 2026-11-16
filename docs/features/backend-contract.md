@@ -25,6 +25,9 @@ The dashboard hits these `robot_agent` endpoints (full list in the agent's
 | `GET  /config/locations` → `host`, `others` | which site the other live machines sharing the configs are on (presence) |
 | `GET/POST/PUT/DELETE /buttons[/groups][/<id>]`, `POST /buttons/groups/reorder` | the shortcut buttons and their groups ([shortcut-buttons](shortcut-buttons.md)) |
 | `GET  /tts?text=…&lang=…` | the sentence as `audio/mpeg` (gTTS on the backend, needs its internet); the screen recording plays the robot's voice through its own audio graph with it ([screen-recording](screen-recording.md)) |
+| `GET  /teleop` | `{functions: [{name, label, available, state?, age_s?}]}`: the robot's teleop functions and their last state; `[]` when none (teleop strip) |
+| `POST /teleop/{name}/enable` | `{on, confirm}`: switch a function on (needs `confirm: true`, a running function, no run in flight) or off |
+| `POST /teleop/{name}/speed` | `{scale}` 0..1: fraction of the function's top speed |
 | `PUT  /robot/languages` | body `{languages}`: switch the site's languages (a non-empty subset of `supported`; 400 otherwise); answers like the GET |
 | `GET  /robot/languages` | `{robot, language, languages, supported, declared}`: the default language, the languages this site has on, every language the manifest lists (`supported`; `[]` and `declared: false` when it names none); the language picker and its default (below) |
 | `GET  /planner/prompt?command=…&planner=…` | the Direct planner's prompt for a command, read-only ([planner-prompt](planner-prompt.md)) |

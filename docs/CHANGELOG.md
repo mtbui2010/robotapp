@@ -6,6 +6,10 @@ in `CLAUDE.md`, mixed with the specs. The full text of each entry is still in th
 line, link. Undated features (Cancel / Stop, camera streaming, Robot State, plan skills, skill and location
 aliases, planner guides) predate the dated notes; see their docs.
 
+## 2026-11-14
+
+- Teleoperation strip above the cameras: state, input-device and gripper chips, speed 25 / 50 / 100%, `▶ On` (asks first: a person next to the robot) and `■ Off` for each teleop function the robot lists (`GET /teleop`); nothing is drawn when it lists none. `components/TeleopBar.tsx`, `lib/teleop.ts`, `lib/useTeleop.ts`, docs/features/teleop.md. Needs robot_agent 72ac182 + kcare_robot 7949f1e + the robot_teleop node on the robot.
+
 ## 2026-11-13 (later)
 
 - Language picker: **Detect** (`lang: 'auto'`) is always first and the default, whatever the number of languages in the manifest (the only option when it names none); an explicit pick (e.g. KO) is the default of the next tab; the picker's popover switches the manifest's languages on / off for the site (saved on the robot: `PUT /robot/languages`; a language the manifest lacks cannot be added); `Detect · EN` shows the language heard. `components/LanguagePicker.tsx`, `lib/robotLanguages.ts`, `lib/useRobotLanguages.ts`, `supported` + `declared` in `GET /robot/languages`. Needs robot_agent (site languages) + kcare_robot (restart the backend). docs/features/chat.md.
