@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { api } from '../lib/api'
-import { SPEED_LEVELS, batteryInfo, canEnable, deviceText, driveLabel, isOn, modeChips, nearestLevel, stateLabel, type TeleopFunction, type Tone } from '../lib/teleop'
+import { SPEED_LEVELS, batteryInfo, canEnable, deviceText, driveLabel, isOn, modeChips, nearestLevel, poseError, stateLabel, type TeleopFunction, type TeleopPose, type Tone } from '../lib/teleop'
 
 const TONE: Record<Tone, string> = {
   off: 'bg-gray-100 text-gray-600 border-gray-300', wait: 'bg-amber-50 text-amber-700 border-amber-300',
@@ -13,6 +13,14 @@ const TONE: Record<Tone, string> = {
 export default function TeleopBar({ functions, runInFlight, onChanged }: { functions: TeleopFunction[]; runInFlight: boolean; onChanged: () => void }) {
   const [asking, setAsking] = useState<string | null>(null)
   const [err, setErr] = useState('')
+  const [pose, setPose] = useState<{ fn: string; pose: TeleopPose } | null>(null)     // a pose picked, waiting for the confirmation
+  const [moving, setMoving] = useState<string | null>(null)                           // the function whose arm is going to a pose
+  // Going to a pose moves the arm a long way: ask first (rule 8). POST /skill switches teleop off by itself (the backend, begin_run).
+  const goTo = (fn: string, p: TeleopPose) => {
+    setPose(null); setMoving(fn); setErr('')
+    api.runSkill(p.skill, p.params).then(res => { const m = poseError(res); if (m) setErr(`${p.label}: ${m}`) })
+      .catch(e => setErr(`${p.label}: ${e instanceof Error ? e.message : String(e)}`)).finally(() => { setMoving(null); onChanged() })
+  }
   const call = (p: Promise<void>) => p.then(() => { setErr(''); onChanged() }).catch(e => setErr(e instanceof Error ? e.message : String(e)))
   if (!functions.length) return null
   return (
@@ -37,6 +45,19 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
               </span>
             )}
             <span className="ml-auto flex items-center gap-1.5">
+              {!!f.poses?.length && (pose?.fn === f.name
+                ? <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-800">
+                    A person is next to the robot? The arm goes to “{pose.pose.label}”.
+                    <button data-testid={`teleop-${f.name}-pose-yes`} onClick={() => goTo(f.name, pose.pose)} className="px-1.5 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white">Yes, go</button>
+                    <button onClick={() => setPose(null)} className="px-1.5 py-0.5 rounded border border-gray-300 bg-white text-gray-600">No</button>
+                  </span>
+                : <select data-testid={`teleop-${f.name}-pose`} value="" disabled={runInFlight || moving === f.name} aria-label="Go to pose"
+                    title={runInFlight ? 'A run is in flight: cancel it first' : 'Go to a pose: the arm moves there (teleop is switched off first)'}
+                    onChange={e => { const p = f.poses?.find(x => x.name === e.target.value); if (p) setPose({ fn: f.name, pose: p }) }}
+                    className="px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-40">
+                    <option value="">{moving === f.name ? 'moving…' : 'Go to pose…'}</option>
+                    {f.poses?.map(p => <option key={p.name} value={p.name}>{p.label}</option>)}
+                  </select>)}
               {bat && <span data-testid={`teleop-${f.name}-battery`} title={`Input device battery${bat.heard ? `, reported ${bat.heard}` : ''}`}
                 className={`px-1.5 py-0.5 rounded border ${bat.low ? 'border-amber-400 bg-amber-50 font-semibold text-amber-700' : 'border-gray-200 text-gray-600'}`}>{bat.text}</span>}
               <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-gray-500">

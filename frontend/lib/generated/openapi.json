@@ -1510,6 +1510,14 @@
       "title": "Name",
       "type": "string"
      },
+     "poses": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/TeleopPose"
+      },
+      "title": "Poses",
+      "type": "array"
+     },
      "state": {
       "anyOf": [
        {
@@ -1546,6 +1554,36 @@
      "functions"
     ],
     "title": "TeleopList",
+    "type": "object"
+   },
+   "TeleopPose": {
+    "additionalProperties": true,
+    "properties": {
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "params": {
+      "additionalProperties": true,
+      "title": "Params",
+      "type": "object"
+     },
+     "skill": {
+      "title": "Skill",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "label",
+     "skill",
+     "params"
+    ],
+    "title": "TeleopPose",
     "type": "object"
    },
    "TeleopSpeedIn": {

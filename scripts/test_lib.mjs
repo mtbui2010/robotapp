@@ -530,6 +530,14 @@ test('teleop driveLabel: the one button says what the function is doing', () => 
   assert.equal(TL.driveLabel(fn({}, { ready: false })), 'not set up')
 })
 
+test('teleop poseError: a finished skill call is an error only when it says isdone false', () => {
+  assert.equal(TL.poseError({ isdone: true }), '')
+  assert.equal(TL.poseError({}), '')                                           // an answer without isdone is not called a failure
+  assert.equal(TL.poseError(null), '')
+  assert.equal(TL.poseError({ isdone: false, msg: 'IK failed' }), 'IK failed')
+  assert.equal(TL.poseError({ isdone: false }), 'the pose was not reached')
+})
+
 test('teleop modeChips: only what the node reports', () => {
   assert.deepEqual(TL.modeChips(fn()), [])                                                          // an older node: no mode keys
   assert.deepEqual(TL.modeChips(fn({}, { frame: 'base', lock: null, line: false, rotation_on: false })), ['base frame', 'no rotation'])

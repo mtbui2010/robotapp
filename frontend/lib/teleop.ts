@@ -18,12 +18,26 @@ export interface TeleopState {
   charging?: boolean            // the input device is charging (only with `battery`)
   battery_age_s?: number | null // seconds since the device last reported its battery (it reports now and then, not continuously)
 }
+/** A named pose the function can go to; the robot's own config lists them (robot_agent GET /teleop), nothing is named here. */
+export interface TeleopPose {
+  name: string
+  label: string
+  skill: string                 // POST /skill/<skill> with `params` takes the arm there
+  params: Record<string, unknown>
+}
 export interface TeleopFunction {
   name: string
   label: string
+  poses?: TeleopPose[]          // absent / empty: no pose list
   available: boolean            // a fresh state has arrived: the function is running
   state?: TeleopState | null
   age_s?: number | null
+}
+
+/** The error text of a finished skill call ('' when it went well). A skill answers {isdone, msg?}: isdone false is a failure. */
+export function poseError(res: Record<string, unknown> | null | undefined): string {
+  if (!res || res.isdone !== false) return ''
+  return typeof res.msg === 'string' && res.msg ? res.msg : 'the pose was not reached'
 }
 
 export const SPEED_LEVELS = [0.25, 0.5, 1] as const
