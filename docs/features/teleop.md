@@ -1,5 +1,9 @@
 # Teleoperation strip (2026-11-14)
 
+One row per function: `🕹 label`, the state pill, the device only when something is wrong (`device silent` / `no input device`; "device ok" is not shown), the blue mode
+chips, the gripper chip, then at the right the speed drop-down and the `▶ On` / `■ Off` button, which carries the input device's battery (`· 🔋 82 %`, amber at 20 % or less)
+when the node reports `battery` (0..1) and `charging` in its state. The node does not report it yet.
+
 A thin strip above the cameras for the teleop functions a robot offers: a part of the robot (arm + gripper today) driven by an input
 device that is plugged into the **robot** (a SpaceMouse; any device works, the dashboard does not know which). The control loop (50 Hz)
 stays on the robot (repo `robot_teleop`); the dashboard only shows state and gives three controls. The knob is never sent through the browser.
