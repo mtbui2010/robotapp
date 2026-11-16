@@ -615,6 +615,60 @@
     "title": "RecorderStopIn",
     "type": "object"
    },
+   "RecordingAutoClean": {
+    "additionalProperties": true,
+    "properties": {
+     "cleaned": {
+      "title": "Cleaned",
+      "type": "integer"
+     },
+     "rows": {
+      "default": [],
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Rows",
+      "type": "array"
+     },
+     "skipped": {
+      "title": "Skipped",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "cleaned",
+     "skipped"
+    ],
+    "title": "RecordingAutoClean",
+    "type": "object"
+   },
+   "RecordingAutoCleanIn": {
+    "additionalProperties": true,
+    "properties": {
+     "ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ids"
+     },
+     "overwrite": {
+      "default": false,
+      "title": "Overwrite",
+      "type": "boolean"
+     }
+    },
+    "title": "RecordingAutoCleanIn",
+    "type": "object"
+   },
    "RecordingDetail": {
     "additionalProperties": true,
     "properties": {
@@ -3713,6 +3767,44 @@
      }
     },
     "summary": "List Recordings"
+   }
+  },
+  "/recordings/auto-clean": {
+   "post": {
+    "operationId": "auto_clean_recordings_auto_clean_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecordingAutoCleanIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingAutoClean"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Auto Clean"
    }
   },
   "/recordings/export": {

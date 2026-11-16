@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import { editChanged, effectiveLabel, exportText, fmtSec, jointRange, keptRange, polyline, xToTime, type RecDetail, type RecEdit, type RecExport, type RecList, type RecRow } from '../lib/recordings'
+import { cleanText, defaultExportName, editChanged, effectiveLabel, exportText, fmtSec, jointRange, keptRange, polyline, suggestApplied, xToTime, type RecDetail, type RecEdit, type RecExport, type RecList, type RecRow } from '../lib/recordings'
 
 const W = 640, H = 120
 const COLORS = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#db2777', '#65a30d']
@@ -14,8 +14,13 @@ export default function DataPanel() {
   const [err, setErr] = useState('')
   const load = useCallback(() => { api.listRecordings().then(l => { setList(l); setErr('') }).catch(e => setErr(e instanceof Error ? e.message : String(e))) }, [])
   useEffect(() => { load() }, [load])
-  const [exp, setExp] = useState({ name: '', fps: 30, action: 'future_state', horizon_s: 0.3, failures: false })
+  const [exp, setExp] = useState({ name: defaultExportName(), fps: 30, action: 'future_state', horizon_s: 0.3, failures: false })
   const [expRes, setExpRes] = useState<RecExport | null>(null)
+  const [cleanMsg, setCleanMsg] = useState('')
+  const [redo, setRedo] = useState(false)
+  const clean = (ids?: string[], overwrite = false) => api.autoCleanRecordings(ids, overwrite).then(r => { setCleanMsg(cleanText(r)); setErr(''); load(); setRev(v => v + 1) })
+    .catch(e => setErr(e instanceof Error ? e.message : String(e)))
+  const [rev, setRev] = useState(0)                                     // bumped after a clean: the open detail reloads
   const doExport = () => api.exportRecordings({ name: exp.name.trim(), fps: exp.fps, action: exp.action, horizon_s: exp.horizon_s, labels: exp.failures ? ['success', 'failure'] : ['success'] })
     .then(r => { setExpRes(r); setErr('') }).catch(e => { setExpRes(null); setErr(e instanceof Error ? e.message : String(e)) })
   if (!list) return <div data-testid="data-panel" className="text-sm text-gray-500 p-3">{err || 'Reading the recordings…'}</div>
@@ -25,6 +30,10 @@ export default function DataPanel() {
       <div className="flex flex-wrap items-center gap-2 border border-gray-200 rounded px-2 py-1 bg-white">
         <span data-testid="data-totals" className="text-gray-700">{t.episodes} episodes · {t.hours} h · {t.success} success · {t.failure} failure{t.excluded ? ` · ${t.excluded} excluded` : ''}</span>
         <button onClick={load} className="px-1.5 py-0.5 rounded border border-gray-300 bg-white hover:bg-gray-100" title="Read the folder again">↻</button>
+        <button data-testid="clean-all" onClick={() => clean(undefined, redo)} className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+          title="Auto-clean: cut the idle start and end of every episode, and everything before / after a move made with teleop off (e.g. Go to pose). The raw files are not touched; each trim can be changed below.">🧹 Auto-clean all</button>
+        <label className="flex items-center gap-1 text-gray-500" title="Also replace trims that were already saved"><input type="checkbox" checked={redo} onChange={e => setRedo(e.target.checked)} />redo saved trims</label>
+        {cleanMsg && <span data-testid="clean-msg" className="text-emerald-700">{cleanMsg}</span>}
         <span className="ml-auto flex flex-wrap items-center gap-1" title="Writes a manifest of the episodes to export (not excluded, accepted labels, with their trims); the command below turns it into a LeRobot dataset on the training server">
           <input data-testid="export-name" value={exp.name} onChange={e => setExp({ ...exp, name: e.target.value })} placeholder="export name" aria-label="export name" className="w-28 px-1.5 py-0.5 rounded border border-gray-300" />
           <select value={exp.fps} onChange={e => setExp({ ...exp, fps: Number(e.target.value) })} aria-label="fps" className="px-1 py-0.5 rounded border border-gray-300 bg-white">{[10, 15, 20, 30, 50].map(f => <option key={f} value={f}>{f} Hz</option>)}</select>
@@ -39,20 +48,20 @@ export default function DataPanel() {
       {err && <div data-testid="data-error" className="text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{err}</div>}
       <div className="overflow-x-auto border border-gray-200 rounded bg-white">
         <table className="w-full text-left">
-          <thead className="text-gray-500 border-b border-gray-200"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th></tr></thead>
+          <thead className="text-gray-500 border-b border-gray-200"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th><th>clean</th></tr></thead>
           <tbody>
-            {list.episodes.map(r => <Row key={r.id} r={r} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} />)}
-            {!list.episodes.length && <tr><td colSpan={8} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
+            {list.episodes.map(r => <Row key={r.id} r={r} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} clean={() => clean([r.id], true)} />)}
+            {!list.episodes.length && <tr><td colSpan={9} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
           </tbody>
         </table>
       </div>
-      {sel && <Detail key={sel} id={sel} onSaved={load} />}
+      {sel && <Detail key={`${sel}/${rev}`} id={sel} onSaved={load} />}
     </div>
   )
 }
 
-function Row({ r, on, pick }: { r: RecRow; on: boolean; pick: () => void }) {
-  if (r.error) return <tr className="text-red-700"><td className="px-2 py-1">{r.id}</td><td colSpan={7}>{r.error}</td></tr>
+function Row({ r, on, pick, clean }: { r: RecRow; on: boolean; pick: () => void; clean: () => void }) {
+  if (r.error) return <tr className="text-red-700"><td className="px-2 py-1">{r.id}</td><td colSpan={8}>{r.error}</td></tr>
   const s = r.summary, [a, b] = keptRange(r), lab = effectiveLabel(r)
   return (
     <tr data-testid={`row-${r.id}`} onClick={pick} className={`cursor-pointer border-b border-gray-100 ${on ? 'bg-blue-50' : 'hover:bg-gray-50'} ${r.edit?.exclude ? 'opacity-50 line-through' : ''}`}>
@@ -62,6 +71,11 @@ function Row({ r, on, pick }: { r: RecRow; on: boolean; pick: () => void }) {
       <td>{s.moving_fraction !== undefined ? `${Math.round(s.moving_fraction * 100)}%` : '–'}</td>
       <td>{r.edit?.trim_start_s !== undefined || r.edit?.trim_end_s !== undefined ? `${fmtSec(a)}–${fmtSec(b)} ✎` : 'all'}</td>
       <td title={s.warnings.join('\n')} className={s.warnings.length ? 'text-amber-600' : 'text-gray-300'}>{s.warnings.length || '·'}</td>
+      <td onClick={e => e.stopPropagation()}>
+        {suggestApplied(r) ? <span className="text-emerald-700" title="the suggested trim is saved">✓ cut</span>
+          : <button data-testid={`clean-${r.id}`} disabled={!s.trim_suggest} onClick={clean} className="px-1.5 py-0.5 rounded border border-emerald-400 text-emerald-700 hover:bg-emerald-50 disabled:opacity-30 no-underline"
+              title={s.trim_suggest ? `Cut to ${fmtSec(s.trim_suggest[0])}–${fmtSec(s.trim_suggest[1])}` : 'nothing to suggest'}>🧹 cut</button>}
+      </td>
     </tr>
   )
 }
@@ -109,13 +123,15 @@ function Detail({ id, onSaved }: { id: string; onSaved: () => void }) {
       </div>
       <svg ref={svg} viewBox={`0 0 ${W} ${H}`} className="w-full h-32 bg-gray-50 border border-gray-200 rounded cursor-crosshair" role="img" aria-label="joint curves"
         onClick={e => { const r = svg.current?.getBoundingClientRect(); if (r) { setPlay(false); setT(xToTime(e.clientX - r.left, r.width, dur)) } }}>
+        {(d.summary.auto_motion ?? []).map(([x, y]) => <rect key={x} x={px(x)} y={0} width={px(y) - px(x)} height={H} fill="#fecaca" opacity={0.7} />)}
         <rect x={0} y={0} width={px(a)} height={H} fill="#e5e7eb" opacity={0.8} /><rect x={px(b)} y={0} width={W - px(b)} height={H} fill="#e5e7eb" opacity={0.8} />
         {d.series.joints.map((j, i) => <polyline key={i} fill="none" stroke={COLORS[i % COLORS.length]} strokeWidth={1} points={polyline(d.series.t, j, dur, lo, hi, W, H)} />)}
         {d.series.gripper_cmd && <polyline fill="none" stroke="#111" strokeWidth={1.5} strokeDasharray="4 2" points={polyline(d.series.t, d.series.gripper_cmd, dur, 0, 0.1, W, H)} />}
         <line x1={px(t)} x2={px(t)} y1={0} y2={H} stroke="#dc2626" strokeWidth={1.5} />
       </svg>
-      <div className="text-gray-400">coloured: the 7 arm joints (rad); dashed: the gripper command; grey: trimmed away</div>
-      <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
+      <div className="text-gray-400">coloured: the 7 arm joints (rad); dashed: the gripper command; grey: trimmed away; red: the arm was moved with teleop off (Go to pose)</div>
+      <div className="font-medium text-gray-700 border-t border-gray-100 pt-2">🧹 Clean this episode <span className="font-normal text-gray-400">(saved beside the raw files; Reset undoes it)</span></div>
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-gray-600">keep</span>
         <input data-testid="trim-start" type="number" step="0.1" min={0} value={Number(a.toFixed(2))} onChange={e => setForm({ ...form, trim_start_s: Number(e.target.value), trim_end_s: b })} className="w-16 px-1 py-0.5 rounded border border-gray-300" aria-label="trim start" />
         <span>–</span>

@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-16
 
+- Data tab: a 🧹 Auto-clean all button and a 🧹 cut button per row (the suggested trim; a Go to pose made during a recording is cut), the Go to move shown red on the chart, Export has a default name `vla_<date>`.
 - Data tab (🗂️, only with a recorder): the raw episodes with numbers and warnings, frame / chart viewer, a non-destructive edit list (trim the ends, label, exclude), and Export (a manifest + the command for the LeRobot export) ([data-tab](features/data-tab.md)).
 - Record panel under the teleop strip: prompt fields, 🎲 a random sentence from the robot's templates, ● Record (remote control + recording), ✔ Success / ✘ Failure / 🗑 Discard ([recorder](features/recorder.md)).
 - Teleop strip: the pose drop-down is `Go to…` and 2/3 as wide; after a pose is reached remote control is switched on again by itself (when it was running; a failed move leaves it off) ([teleop](features/teleop.md)).

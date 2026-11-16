@@ -562,6 +562,12 @@ export const api = {
     const r = await fetch(`${getAgentUrl()}/recordings/${day}/${ep}/edit`, { method: 'DELETE' })
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
   },
+  /** Save the suggested trim as the edit of each episode that has none (all of them with `overwrite`, only `ids` when given). */
+  async autoCleanRecordings(ids?: string[], overwrite = false): Promise<{ cleaned: number; skipped: number; rows: { id: string; kept_s: number; was_s: number }[] }> {
+    const r = await fetch(`${getAgentUrl()}/recordings/auto-clean`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, overwrite }) })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
+  },
   async exportRecordings(body: { name: string; fps: number; action: string; horizon_s: number; labels: string[] }): Promise<RecExport> {
     const r = await fetch(`${getAgentUrl()}/recordings/export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)

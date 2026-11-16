@@ -686,3 +686,15 @@ test('recordings: an edit form is changed only when it differs from what is save
   assert.equal(RS.editChanged(null, { exclude: true }, 20), true)
   assert.equal(RS.exportText({ manifest: '/d/exports/v1.json', episodes: 2, hours: 0.0123, command: 'x' }), '2 episodes, 0.01 h → /d/exports/v1.json')
 })
+
+test('recordings: suggestion applied, clean text, default export name', () => {
+  const r = (over = {}) => row({ summary: { duration_s: 33, warnings: [], trim_suggest: [10.7, 29.3] }, ...over })
+  assert.equal(RS.suggestApplied(r()), false)
+  assert.equal(RS.suggestApplied(r({ edit: { trim_start_s: 10.7, trim_end_s: 29.3 } })), true)
+  assert.equal(RS.suggestApplied(r({ edit: { trim_start_s: 5, trim_end_s: 29.3 } })), false)
+  assert.equal(RS.suggestApplied(r({ edit: { label: 'failure' } })), false)
+  assert.equal(RS.suggestApplied(row()), false)                                                    // no suggestion
+  assert.equal(RS.cleanText({ cleaned: 2, skipped: 1, rows: [{ kept_s: 18.6, was_s: 33.3 }, { kept_s: 19.1, was_s: 23.8 }] }), 'trimmed 2 episodes (19.4 s cut), 1 left as they were')
+  assert.equal(RS.cleanText({ cleaned: 0, skipped: 2, rows: [] }), 'nothing to trim (2 left as they were)')
+  assert.equal(RS.defaultExportName(new Date(2026, 10, 16)), 'vla_20261116')
+})

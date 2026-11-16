@@ -8,6 +8,7 @@ export interface RecSummary {
   idle_head_s?: number
   idle_tail_s?: number
   trim_suggest?: [number, number]
+  auto_motion?: [number, number][]      // the arm moved with teleop off (e.g. Go to pose): not a demonstration
   gripper_changes?: number
   inactive_inside_s?: number
   max_speed_rad_s?: number
@@ -74,3 +75,18 @@ export function editChanged(saved: RecEdit | null | undefined, now: RecEdit, dur
 
 /** The one-line summary of an export result. */
 export const exportText = (x: RecExport): string => `${x.episodes} episodes, ${x.hours.toFixed(2)} h → ${x.manifest}`
+
+/** Whether the saved trim is already the suggested one (within 0.05 s). */
+export function suggestApplied(r: RecRow): boolean {
+  const s = r.summary.trim_suggest
+  return !!s && r.edit?.trim_start_s !== undefined && Math.abs(r.edit.trim_start_s - s[0]) < 0.05 && Math.abs((r.edit.trim_end_s ?? -1) - s[1]) < 0.05
+}
+
+/** The one-line answer after an auto-clean. */
+export function cleanText(x: { cleaned: number; skipped: number; rows: { kept_s: number; was_s: number }[] }): string {
+  const cut = x.rows.reduce((a, r) => a + (r.was_s - r.kept_s), 0)
+  return x.cleaned ? `trimmed ${x.cleaned} episode${x.cleaned > 1 ? 's' : ''} (${cut.toFixed(1)} s cut)${x.skipped ? `, ${x.skipped} left as they were` : ''}` : `nothing to trim (${x.skipped} left as they were)`
+}
+
+/** A default export name: `vla_20261116`. */
+export const defaultExportName = (d = new Date()): string => `vla_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
