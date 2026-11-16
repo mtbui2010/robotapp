@@ -9,8 +9,8 @@ export interface TeleopState {
   input_age_s?: number | null   // seconds since the input device last sent anything; null = never
   stalled?: boolean
   frame?: 'base' | 'tool'       // the frame of the twist right now (the tool-frame button held = 'tool')
-  lock?: 'x' | 'y' | 'z' | null // a straight-line lock
-  line?: boolean                // the straight-line button is held (only the main push axis)
+  lock?: string | null          // the selected straight line: 'tool_z' | 'base_x' | 'base_y' | 'base_z' (the knob forward / back drives it)
+  line?: boolean                // one axis at a time (only the main push axis is used)
   rotate?: boolean              // the rotation button is held
   rotation_on?: boolean         // false: translation only (rotation needs its button)
 }
@@ -65,8 +65,8 @@ export function modeChips(f: TeleopFunction): string[] {
   if (!st || !f.available) return []
   const out: string[] = []
   if (st.frame) out.push(st.frame === 'tool' ? 'tool frame' : 'base frame')
-  if (st.lock) out.push(`line ${st.lock}`)
-  if (st.line) out.push('straight')
+  if (st.lock) out.push(`line ${st.lock.replace('_', ' ')}`)
+  else if (st.line) out.push('one axis')
   if (st.rotation_on === false) out.push('no rotation')
   else if (st.rotate) out.push('rotating')
   return out

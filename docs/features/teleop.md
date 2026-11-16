@@ -10,7 +10,7 @@ stays on the robot (repo `robot_teleop`); the dashboard only shows state and giv
 | state pill | `off`, `starting…` (servo settling, about 1 s), `driving`, `blocked` (stalled: let go of the knob), `not set up` (profile lacks frame / joints), `not running` (no state from the node: start robot_teleop on the robot) |
 | device chip | `device ok` when the input device sent something in the last 2 s; `device silent` / `no input device` otherwise |
 | gripper chip | open / closed; absent for a function without a gripper |
-| mode chips (blue) | what the node reports besides on / off: `base frame` / `tool frame` (the tool-frame button is held), `line x|y|z` (an axis lock), `straight` (the straight-line button is held: only the main push axis), `no rotation` (translation only; rotation needs its button) or `rotating`. Nothing is drawn for an older node that reports none |
+| mode chips (blue) | what the node reports besides on / off: `base frame` / `tool frame` (the tool-frame button is held), `line tool z` / `line base x|y|z` (a selected straight line: the knob forward / back drives it), `one axis` (only the axis pushed most is used), `no rotation` (translation only; rotation needs its button) or `rotating`. Nothing is drawn for an older node that reports none |
 | speed 25 / 50 / 100% | a fraction of the speed set in the robot's profile (kcare: 5 cm/s and 0.15 rad/s at 100%); the default of a run is 100% of that slow profile speed |
 | `▶ On` | asks "A person is next to the robot?" (rule 8) and then switches on; disabled while a run is in flight, or when the function is not running / not set up |
 | `■ Off` | switches off at once, no question |

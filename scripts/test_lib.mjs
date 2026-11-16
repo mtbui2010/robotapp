@@ -524,7 +524,8 @@ test('teleop canEnable: only a running, set-up, OFF function with no run in flig
 test('teleop modeChips: only what the node reports', () => {
   assert.deepEqual(TL.modeChips(fn()), [])                                                          // an older node: no mode keys
   assert.deepEqual(TL.modeChips(fn({}, { frame: 'base', lock: null, line: false, rotation_on: false })), ['base frame', 'no rotation'])
-  assert.deepEqual(TL.modeChips(fn({}, { frame: 'tool', lock: 'x', line: true, rotation_on: true, rotate: true })), ['tool frame', 'line x', 'straight', 'rotating'])
+  assert.deepEqual(TL.modeChips(fn({}, { frame: 'tool', lock: 'tool_z', line: true, rotation_on: true, rotate: true })), ['tool frame', 'line tool z', 'rotating'])   // a selected line replaces 'one axis'
+  assert.deepEqual(TL.modeChips(fn({}, { frame: 'tool', lock: null, line: true, rotation_on: false })), ['tool frame', 'one axis', 'no rotation'])
   assert.deepEqual(TL.modeChips(fn({ available: false }, { frame: 'tool' })), [])                    // a stale state shows nothing
 })
 
