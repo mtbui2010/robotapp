@@ -702,13 +702,9 @@ test('recordings: suggestion applied, clean text, default export name', () => {
 
 
 // ── the Go to poses (lib/poses.ts) ───────────────────────────────────────────
-test('poses: steps, preview, nearest speed', () => {
+test('poses: steps, nearest speed', () => {
   assert.deepEqual(PS.planSteps('movej::fold\n\n# note\nlift::0.5&&movej::give  # two'), ['movej::fold', 'lift::0.5&&movej::give'])
   assert.deepEqual(PS.planSteps('no steps here'), [])
-  assert.equal(PS.planPreview('movej::fold'), 'movej::fold')
-  assert.equal(PS.planPreview('movej::fold\nlift::0.5'), 'movej::fold … +1 step')
-  assert.equal(PS.planPreview('a::1\nb::2\nc::3'), 'a::1 … +2 steps')
-  assert.equal(PS.planPreview(''), '')
   assert.equal(PS.nearestSpeed(0.25), 0.25); assert.equal(PS.nearestSpeed(0.27), 0.25); assert.equal(PS.nearestSpeed(0.9), 1); assert.equal(PS.nearestSpeed(0.01), 0.1)
 })
 

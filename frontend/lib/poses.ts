@@ -10,12 +10,6 @@ export const POSE_SPEEDS = [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1] as con
 export const planSteps = (plan: string): string[] =>
   plan.replace(/\\n/g, '\n').split('\n').map(l => l.split('#')[0].trim()).filter(l => l.includes('::'))
 
-/** `movej::fold` or `lift::0.5 … +2 steps`: a short line for a list. */
-export function planPreview(plan: string): string {
-  const s = planSteps(plan)
-  return s.length <= 1 ? (s[0] ?? '') : `${s[0]} … +${s.length - 1} step${s.length > 2 ? 's' : ''}`
-}
-
 /** The nearest offered speed to `s` (so a speed set elsewhere still shows). */
 export const nearestSpeed = (s: number): number => POSE_SPEEDS.reduce((a, b) => (Math.abs(b - s) < Math.abs(a - s) ? b : a), POSE_SPEEDS[0] as number)
 

@@ -49,6 +49,7 @@ export default function TeleopBar({ functions, runInFlight, onChanged, poses, on
             )}
             <span className="ml-auto flex items-center gap-1.5">
               {poses && f === functions[0] && (
+                <span className="relative">
                 <select data-testid={`teleop-${f.name}-pose`} value="" disabled={runInFlight || moving === f.name} aria-label="Go to a pose"
                     title={runInFlight ? 'A run is in flight: cancel it first' : 'Go to a pose: the arm moves there (slowly: the speed is set in Edit poses), then remote control starts again'}
                     onChange={e => { if (e.target.value === '__edit__') { setEditing(true); return } const p = poses.poses.find(x => x.id === e.target.value); if (p) goTo(f.name, p, f.available) }}
@@ -56,7 +57,9 @@ export default function TeleopBar({ functions, runInFlight, onChanged, poses, on
                     <option value="">{moving === f.name ? 'moving…' : 'Go to…'}</option>
                     {poses.poses.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                     <option value="__edit__">✎ Edit poses…</option>
-                  </select>)}
+                  </select>
+                  {editing && <PoseEditor list={poses} onChanged={onPosesChanged} onClose={() => setEditing(false)} />}
+                </span>)}
               {bat && <span data-testid={`teleop-${f.name}-battery`} title={`Input device battery${bat.heard ? `, reported ${bat.heard}` : ''}`}
                 className={`px-1.5 py-0.5 rounded border ${bat.low ? 'border-amber-400 bg-amber-50 font-semibold text-amber-700' : 'border-gray-200 text-gray-600'}`}>{bat.text}</span>}
               <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-gray-500">
@@ -81,7 +84,6 @@ export default function TeleopBar({ functions, runInFlight, onChanged, poses, on
           </div>
         )
       })}
-      {editing && poses && <PoseEditor list={poses} onChanged={onPosesChanged} onClose={() => setEditing(false)} />}
       {err && <div data-testid="teleop-error" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{err}</div>}
     </div>
   )
