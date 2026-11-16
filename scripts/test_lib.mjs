@@ -521,6 +521,13 @@ test('teleop canEnable: only a running, set-up, OFF function with no run in flig
   assert.equal(TL.isOn(fn()), false)
 })
 
+test('teleop modeChips: only what the node reports', () => {
+  assert.deepEqual(TL.modeChips(fn()), [])                                                          // an older node: no mode keys
+  assert.deepEqual(TL.modeChips(fn({}, { frame: 'base', lock: null, line: false, rotation_on: false })), ['base frame', 'no rotation'])
+  assert.deepEqual(TL.modeChips(fn({}, { frame: 'tool', lock: 'x', line: true, rotation_on: true, rotate: true })), ['tool frame', 'line x', 'straight', 'rotating'])
+  assert.deepEqual(TL.modeChips(fn({ available: false }, { frame: 'tool' })), [])                    // a stale state shows nothing
+})
+
 test('teleop deviceText / gripperText / nearestLevel', () => {
   assert.deepEqual(TL.deviceText(fn()), { text: 'device ok', ok: true })
   assert.deepEqual(TL.deviceText(fn({}, { input_age_s: 5 })), { text: 'device silent', ok: false })

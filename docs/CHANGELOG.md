@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-14
 
+- Teleop strip: blue mode chips (base / tool frame, line lock, straight, rotation) from the new keys of the teleop state. `lib/teleop.ts` `modeChips`.
 - Teleoperation strip above the cameras: state, input-device and gripper chips, speed 25 / 50 / 100%, `▶ On` (asks first: a person next to the robot) and `■ Off` for each teleop function the robot lists (`GET /teleop`); nothing is drawn when it lists none. `components/TeleopBar.tsx`, `lib/teleop.ts`, `lib/useTeleop.ts`, docs/features/teleop.md. Needs robot_agent 72ac182 + kcare_robot 7949f1e + the robot_teleop node on the robot.
 
 ## 2026-11-13 (later)

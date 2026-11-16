@@ -8,6 +8,11 @@ export interface TeleopState {
   speed?: number                // 0..1, a fraction of the function's top speed
   input_age_s?: number | null   // seconds since the input device last sent anything; null = never
   stalled?: boolean
+  frame?: 'base' | 'tool'       // the frame of the twist right now (the tool-frame button held = 'tool')
+  lock?: 'x' | 'y' | 'z' | null // a straight-line lock
+  line?: boolean                // the straight-line button is held (only the main push axis)
+  rotate?: boolean              // the rotation button is held
+  rotation_on?: boolean         // false: translation only (rotation needs its button)
 }
 export interface TeleopFunction {
   name: string
@@ -53,3 +58,16 @@ export function nearestLevel(scale: number | undefined): number {
 /** The gripper chip, or null when the function has no gripper. */
 export const gripperText = (f: TeleopFunction): string | null =>
   f.state?.gripper_open === null || f.state?.gripper_open === undefined ? null : (f.state.gripper_open ? 'gripper open' : 'gripper closed')
+
+/** What the function is doing besides on / off: the frame of the push, a line lock, the straight-line hold, rotation. Only what the node reports. */
+export function modeChips(f: TeleopFunction): string[] {
+  const st = f.state
+  if (!st || !f.available) return []
+  const out: string[] = []
+  if (st.frame) out.push(st.frame === 'tool' ? 'tool frame' : 'base frame')
+  if (st.lock) out.push(`line ${st.lock}`)
+  if (st.line) out.push('straight')
+  if (st.rotation_on === false) out.push('no rotation')
+  else if (st.rotate) out.push('rotating')
+  return out
+}

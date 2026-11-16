@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { api } from '../lib/api'
-import { SPEED_LEVELS, canEnable, deviceText, gripperText, isOn, nearestLevel, stateLabel, type TeleopFunction, type Tone } from '../lib/teleop'
+import { SPEED_LEVELS, canEnable, deviceText, gripperText, isOn, modeChips, nearestLevel, stateLabel, type TeleopFunction, type Tone } from '../lib/teleop'
 
 const TONE: Record<Tone, string> = {
   off: 'bg-gray-100 text-gray-600 border-gray-300', wait: 'bg-amber-50 text-amber-700 border-amber-300',
@@ -25,6 +25,7 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
             <span data-testid={`teleop-${f.name}-state`} className={`px-1.5 py-0.5 rounded border ${TONE[pill.tone]}`}>{pill.text}</span>
             {f.available && <span className={dev.ok ? 'text-gray-500' : 'text-amber-700'}>{dev.text}</span>}
             {f.available && grip && <span className="text-gray-500">{grip}</span>}
+            {modeChips(f).map(c => <span key={c} data-testid={`teleop-${f.name}-chip`} className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700">{c}</span>)}
             <span className="ml-auto flex items-center gap-1">
               <span className="text-gray-500">speed</span>
               {SPEED_LEVELS.map(l => (
