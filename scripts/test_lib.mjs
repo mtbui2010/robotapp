@@ -536,6 +536,7 @@ test('teleop modeChips: only what the node reports', () => {
   assert.deepEqual(TL.modeChips(fn({}, { frame: 'tool', lock: 'tool_z', line: true, rotation_on: true, rotate: true })), ['tool frame', 'line tool z', 'rotating'])   // a selected line replaces 'one axis'
   assert.deepEqual(TL.modeChips(fn({}, { frame: 'tool', lock: null, line: true, rotation_on: false })), ['tool frame', 'one axis', 'no rotation'])
   assert.deepEqual(TL.modeChips(fn({}, { frame: 'hybrid', lock: null, line: true, rotation_on: false })), ['heading frame', 'one axis', 'no rotation'])
+  assert.deepEqual(TL.modeChips(fn({}, { frame: 'hybrid', lock: null, line: true, rotation_on: false, twist: true })), ['heading frame', 'one axis', 'twist rolls'])
   assert.deepEqual(TL.modeChips(fn({ available: false }, { frame: 'tool' })), [])                    // a stale state shows nothing
 })
 

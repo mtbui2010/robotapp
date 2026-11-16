@@ -13,6 +13,7 @@ export interface TeleopState {
   line?: boolean                // one axis at a time (only the main push axis is used)
   rotate?: boolean              // the rotation button is held
   rotation_on?: boolean         // false: translation only (rotation needs its button)
+  twist?: boolean               // the knob's twist rolls the hand about the gripper axis even while rotation is off
   battery?: number | null       // 0..1 charge of the INPUT DEVICE (e.g. a wireless SpaceMouse) when the node reports it; null / absent = not reported
   charging?: boolean            // the input device is charging (only with `battery`)
   battery_age_s?: number | null // seconds since the device last reported its battery (it reports now and then, not continuously)
@@ -70,7 +71,7 @@ export function modeChips(f: TeleopFunction): string[] {
   if (st.frame) out.push(st.frame === 'tool' ? 'tool frame' : st.frame === 'hybrid' ? 'heading frame' : 'base frame')
   if (st.lock) out.push(`line ${st.lock.replace('_', ' ')}`)
   else if (st.line) out.push('one axis')
-  if (st.rotation_on === false) out.push('no rotation')
+  if (st.rotation_on === false) out.push(st.twist ? 'twist rolls' : 'no rotation')
   else if (st.rotate) out.push('rotating')
   return out
 }
