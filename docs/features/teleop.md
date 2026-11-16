@@ -2,7 +2,7 @@
 
 One row per function, no text labels: a `🕹` icon (its tooltip names the function), the blue mode chips, a **gripper switch icon** (✋ + green switch = open, ✊ + grey switch =
 closed; read-only, absent for a function without a gripper), the device only when something is wrong (`device silent` / `no input device`), and at the right the speed drop-down
-(`⏱ 50%`, tooltip "Speed") the input device's battery (`🔋 82 %`, amber at 20 % or less; only when the node reports it), and ONE button that also says what the function is doing: `▶ On` (click: asks "A person is next to the robot?"), then `● driving` (click: switch off; amber
+(`(gauge icon) 50%`, tooltip "Speed") the input device's battery (`🔋 82 %`, amber at 20 % or less; only when the node reports it), and ONE button that also says what the function is doing: `▶ On` (click: asks "A person is next to the robot?"), then `● driving` (click: switch off; amber
 `starting…` / `blocked` while settling or stalled), `not running` / `not set up` (disabled). The battery chip sits beside the speed (tooltip: when it was last reported) and shows when the
 node reports `battery` (0..1, from the device's own report, 3 bytes `17 <percent> <status>`) in its state; the tooltip says when it was last reported (the device reports now and then). No `charging` flag: its byte is not understood. It needs `make battery` on the robot (a root process reads /dev/hidraw*).
 

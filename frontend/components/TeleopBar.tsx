@@ -39,7 +39,12 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
             <span className="ml-auto flex items-center gap-1.5">
               {bat && <span data-testid={`teleop-${f.name}-battery`} title={`Input device battery${bat.heard ? `, reported ${bat.heard}` : ''}`}
                 className={`px-1.5 py-0.5 rounded border ${bat.low ? 'border-amber-400 bg-amber-50 font-semibold text-amber-700' : 'border-gray-200 text-gray-600'}`}>{bat.text}</span>}
-              <span aria-hidden title="Speed">⏱</span>
+              <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-gray-500">
+                <title>Speed</title>
+                <path d="M3.5 17a9 9 0 1 1 17 0" />
+                <path d="M12 14l4.5-5" />
+                <circle cx="12" cy="14.5" r="1.3" fill="currentColor" stroke="none" />
+              </svg>
               <select data-testid={`teleop-${f.name}-speed`} value={String(level * 100)} disabled={!f.available} title="Speed: a fraction of the top speed" aria-label="Speed"
                 onChange={e => call(api.setTeleopSpeed(f.name, Number(e.target.value) / 100))}
                 className="px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-40">
