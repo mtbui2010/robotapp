@@ -14,12 +14,13 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
   const [err, setErr] = useState('')
   const [moving, setMoving] = useState<string | null>(null)                           // the function whose arm is going to a pose
   // Going to a pose: POST /skill switches teleop off by itself (the backend, begin_run). No question is asked: a person is always next to a robot that is driven remotely.
-  const goTo = (fn: string, p: TeleopPose) => {
+  const goTo = (fn: string, p: TeleopPose, restore: boolean) => {
     setMoving(fn); setErr('')
-    api.runSkill(p.skill, p.params).then(res => { const m = poseError(res); if (m) setErr(`${p.label}: ${m}`) })
+    api.runSkill(p.skill, p.params)
+      .then(res => { const m = poseError(res); if (m) { setErr(`${p.label}: ${m}`); return }       // a failed move leaves teleop off
+        return restore ? api.enableTeleop(fn, true, true) : undefined })                           // arrived: remote control starts again by itself
       .catch(e => setErr(`${p.label}: ${e instanceof Error ? e.message : String(e)}`)).finally(() => { setMoving(null); onChanged() })
   }
-  const call = (p: Promise<void>) => p.then(() => { setErr(''); onChanged() }).catch(e => setErr(e instanceof Error ? e.message : String(e)))
   if (!functions.length) return null
   return (
     <div data-testid="teleop-bar" className="mb-2 flex flex-col gap-1">
@@ -44,11 +45,11 @@ export default function TeleopBar({ functions, runInFlight, onChanged }: { funct
             )}
             <span className="ml-auto flex items-center gap-1.5">
               {!!f.poses?.length && (
-                <select data-testid={`teleop-${f.name}-pose`} value="" disabled={runInFlight || moving === f.name} aria-label="Go to pose"
-                    title={runInFlight ? 'A run is in flight: cancel it first' : 'Go to a pose: the arm moves there (teleop is switched off first)'}
-                    onChange={e => { const p = f.poses?.find(x => x.name === e.target.value); if (p) goTo(f.name, p) }}
-                    className="px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-40">
-                    <option value="">{moving === f.name ? 'moving…' : 'Go to pose…'}</option>
+                <select data-testid={`teleop-${f.name}-pose`} value="" disabled={runInFlight || moving === f.name} aria-label="Go to a pose"
+                    title={runInFlight ? 'A run is in flight: cancel it first' : 'Go to a pose: the arm moves there, then remote control starts again'}
+                    onChange={e => { const p = f.poses?.find(x => x.name === e.target.value); if (p) goTo(f.name, p, f.available) }}
+                    className="w-[90px] px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-40">
+                    <option value="">{moving === f.name ? 'moving…' : 'Go to…'}</option>
                     {f.poses?.map(p => <option key={p.name} value={p.name}>{p.label}</option>)}
                   </select>)}
               {bat && <span data-testid={`teleop-${f.name}-battery`} title={`Input device battery${bat.heard ? `, reported ${bat.heard}` : ''}`}

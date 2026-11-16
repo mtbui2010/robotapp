@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-16
 
+- Teleop strip: the pose drop-down is `Go to…` and 2/3 as wide; after a pose is reached remote control is switched on again by itself (when it was running; a failed move leaves it off) ([teleop](features/teleop.md)).
 - Teleop strip: no more "A person is next to the robot?" question for On or Go to pose (the operator decided: remote control always has a person next to the robot); the strip sends `confirm: true` itself ([teleop](features/teleop.md)).
 - Teleop strip: a `Go to pose…` drop-down (the poses come from `GET /teleop` `poses`, read by the backend from the robot's config, e.g. `ARM_CONFIGS` `approach_*`); asks before moving, runs `POST /skill/<skill>` ([teleop](features/teleop.md)).
 - Teleop strip: a mode chip `twist rolls` when the node lets the knob twist roll the hand while rotation is off ([teleop](features/teleop.md)).
