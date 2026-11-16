@@ -1,8 +1,10 @@
 # Teleoperation strip (2026-11-14)
 
-One row per function: `🕹 label`, the state pill, the device only when something is wrong (`device silent` / `no input device`; "device ok" is not shown), the blue mode
-chips, the gripper chip, then at the right the speed drop-down and the `▶ On` / `■ Off` button, which carries the input device's battery (`· 🔋 82 %`, amber at 20 % or less)
-when the node reports `battery` (0..1) and `charging` in its state. The node does not report it yet.
+One row per function, no text labels: a `🕹` icon (its tooltip names the function), the blue mode chips, a **gripper switch icon** (✋ + green switch = open, ✊ + grey switch =
+closed; read-only, absent for a function without a gripper), the device only when something is wrong (`device silent` / `no input device`), and at the right the speed drop-down
+(`50%`, tooltip "Speed") and ONE button that also says what the function is doing: `▶ On` (click: asks "A person is next to the robot?"), then `● driving` (click: switch off; amber
+`starting…` / `blocked` while settling or stalled), `not running` / `not set up` (disabled). The button carries the input device's battery (`· 🔋 82 %`, amber at 20 % or less) when the
+node reports `battery` (0..1) and `charging` in its state. The node does not report it yet.
 
 A thin strip above the cameras for the teleop functions a robot offers: a part of the robot (arm + gripper today) driven by an input
 device that is plugged into the **robot** (a SpaceMouse; any device works, the dashboard does not know which). The control loop (50 Hz)

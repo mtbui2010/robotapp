@@ -521,6 +521,15 @@ test('teleop canEnable: only a running, set-up, OFF function with no run in flig
   assert.equal(TL.isOn(fn()), false)
 })
 
+test('teleop driveLabel: the one button says what the function is doing', () => {
+  assert.equal(TL.driveLabel(fn()), '▶ On')
+  assert.equal(TL.driveLabel(fn({}, { state: 'hold' })), 'starting…')
+  assert.equal(TL.driveLabel(fn({}, { state: 'active' })), '● driving')
+  assert.equal(TL.driveLabel(fn({}, { state: 'active', stalled: true })), 'blocked')
+  assert.equal(TL.driveLabel(fn({ available: false })), 'not running')
+  assert.equal(TL.driveLabel(fn({}, { ready: false })), 'not set up')
+})
+
 test('teleop modeChips: only what the node reports', () => {
   assert.deepEqual(TL.modeChips(fn()), [])                                                          // an older node: no mode keys
   assert.deepEqual(TL.modeChips(fn({}, { frame: 'base', lock: null, line: false, rotation_on: false })), ['base frame', 'no rotation'])

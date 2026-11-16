@@ -82,3 +82,11 @@ export function batteryInfo(f: TeleopFunction): { text: string; low: boolean } |
   const pct = Math.round(Math.min(1, Math.max(0, b)) * 100)
   return { text: `${f.state?.charging ? '⚡' : '🔋'} ${pct}%`, low: pct <= 20 && !f.state?.charging }
 }
+
+/** The text of the one On / Off button: it also says what the function is doing, so there is no separate state pill. */
+export function driveLabel(f: TeleopFunction): string {
+  const l = stateLabel(f)
+  if (l.text === 'off') return '▶ On'
+  if (l.text === 'driving') return '● driving'
+  return l.text            // not running / not set up / starting… / blocked
+}
