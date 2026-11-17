@@ -13,5 +13,5 @@ Record is disabled, with the reason as its tooltip, when the recorder is not run
 values are remembered in this browser only (localStorage).
 
 Backend: `GET /recorder`, `POST /recorder/prompt {fields}`, `POST /recorder/start {prompt, meta}`, `POST /recorder/stop {label}` (robot_agent `api/recorder.py`);
-the recorder itself is `robot_teleop.recorder` on the robot, writing `/remote_dir/vla_data/raw/<date>/ep_NNNN/` (raw: nothing resampled or trimmed). Helpers:
+the recorder itself is `robot_teleop.recorder` on the robot, writing `<data_dir>/raw/<date>/ep_NNNN/` (`data_dir` = `../vla_data`, relative to the repo root: the `vla_data` folder next to the repos) (raw: nothing resampled or trimmed). Helpers:
 `frontend/lib/recorder.ts`, hook `useRecorder.ts`, component `RecorderBar.tsx`.
