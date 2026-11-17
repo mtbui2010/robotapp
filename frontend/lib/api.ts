@@ -600,6 +600,13 @@ export const api = {
     const r = await fetch(`${getAgentUrl()}/recordings/${day}/${ep}/edit`, { method: 'DELETE' })
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
   },
+  /** Move an episode (and its edit list) to the data folder's trash: the raw files are kept there. */
+  async deleteRecording(id: string): Promise<{ ok: boolean; trash: string }> {
+    const [day, ep] = id.split('/')
+    const r = await fetch(`${getAgentUrl()}/recordings/${day}/${ep}`, { method: 'DELETE' })
+    if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
+    return r.json()
+  },
   /** Save the suggested trim as the edit of each episode that has none (all of them with `overwrite`, only `ids` when given). */
   async autoCleanRecordings(ids?: string[], overwrite = false): Promise<{ cleaned: number; skipped: number; rows: { id: string; kept_s: number; was_s: number }[] }> {
     const r = await fetch(`${getAgentUrl()}/recordings/auto-clean`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, overwrite }) })

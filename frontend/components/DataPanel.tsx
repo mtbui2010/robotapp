@@ -18,6 +18,9 @@ export default function DataPanel() {
   const [expRes, setExpRes] = useState<RecExport | null>(null)
   const [cleanMsg, setCleanMsg] = useState('')
   const [redo, setRedo] = useState(false)
+  const [asking, setAsking] = useState<string | null>(null)             // the episode whose delete is waiting for its Yes
+  const trash = (id: string) => api.deleteRecording(id).then(r => { setAsking(null); if (sel === id) setSel(null); setCleanMsg(`${id} moved to ${r.trash}`); setErr(''); load() })
+    .catch(e => { setAsking(null); setErr(e instanceof Error ? e.message : String(e)) })
   const clean = (ids?: string[], overwrite = false) => api.autoCleanRecordings(ids, overwrite).then(r => { setCleanMsg(cleanText(r)); setErr(''); load(); setRev(v => v + 1) })
     .catch(e => setErr(e instanceof Error ? e.message : String(e)))
   const [rev, setRev] = useState(0)                                     // bumped after a clean: the open detail reloads
@@ -48,10 +51,10 @@ export default function DataPanel() {
       {err && <div data-testid="data-error" className="text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{err}</div>}
       <div className="overflow-x-auto border border-gray-200 rounded bg-white">
         <table className="w-full text-left">
-          <thead className="text-gray-500 border-b border-gray-200"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th><th>clean</th></tr></thead>
+          <thead className="text-gray-500 border-b border-gray-200"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th><th>clean</th><th></th></tr></thead>
           <tbody>
-            {list.episodes.map(r => <Row key={r.id} r={r} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} clean={() => clean([r.id], true)} />)}
-            {!list.episodes.length && <tr><td colSpan={9} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
+            {list.episodes.map(r => <Row key={r.id} r={r} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} clean={() => clean([r.id], true)} asking={asking === r.id} ask={() => setAsking(r.id)} no={() => setAsking(null)} del={() => trash(r.id)} />)}
+            {!list.episodes.length && <tr><td colSpan={10} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -60,8 +63,24 @@ export default function DataPanel() {
   )
 }
 
-function Row({ r, on, pick, clean }: { r: RecRow; on: boolean; pick: () => void; clean: () => void }) {
-  if (r.error) return <tr className="text-red-700"><td className="px-2 py-1">{r.id}</td><td colSpan={8}>{r.error}</td></tr>
+type RowProps = { r: RecRow; on: boolean; pick: () => void; clean: () => void; asking: boolean; ask: () => void; no: () => void; del: () => void }
+
+// The delete cell: 🗑, then `trash? Yes / No` in place. The episode is MOVED to <data>/trash (the raw files are kept there), never deleted for good.
+function DeleteCell({ r, asking, ask, no, del }: Pick<RowProps, 'r' | 'asking' | 'ask' | 'no' | 'del'>) {
+  return (
+    <td onClick={e => e.stopPropagation()} className="whitespace-nowrap">
+      {asking
+        ? <span className="inline-flex items-center gap-1 text-amber-800">to trash?
+            <button data-testid={`del-yes-${r.id}`} onClick={del} className="px-1.5 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white">Yes</button>
+            <button onClick={no} className="px-1.5 py-0.5 rounded border border-gray-300 bg-white">No</button></span>
+        : <button data-testid={`del-${r.id}`} onClick={ask} aria-label={`delete ${r.id}`} title="Delete this episode: it is moved to the trash folder of the data (the raw files are kept there)"
+            className="px-1.5 py-0.5 rounded border border-gray-300 bg-white text-red-600 hover:bg-red-50">🗑</button>}
+    </td>
+  )
+}
+
+function Row({ r, on, pick, clean, asking, ask, no, del }: RowProps) {
+  if (r.error) return <tr className="text-red-700"><td className="px-2 py-1">{r.id}</td><td colSpan={8}>{r.error}</td><DeleteCell r={r} asking={asking} ask={ask} no={no} del={del} /></tr>
   const s = r.summary, [a, b] = keptRange(r), lab = effectiveLabel(r)
   return (
     <tr data-testid={`row-${r.id}`} onClick={pick} className={`cursor-pointer border-b border-gray-100 ${on ? 'bg-blue-50' : 'hover:bg-gray-50'} ${r.edit?.exclude ? 'opacity-50 line-through' : ''}`}>
@@ -76,6 +95,7 @@ function Row({ r, on, pick, clean }: { r: RecRow; on: boolean; pick: () => void;
           : <button data-testid={`clean-${r.id}`} disabled={!s.trim_suggest} onClick={clean} className="px-1.5 py-0.5 rounded border border-emerald-400 text-emerald-700 hover:bg-emerald-50 disabled:opacity-30 no-underline"
               title={s.trim_suggest ? `Cut to ${fmtSec(s.trim_suggest[0])}–${fmtSec(s.trim_suggest[1])}` : 'nothing to suggest'}>🧹 cut</button>}
       </td>
+      <DeleteCell r={r} asking={asking} ask={ask} no={no} del={del} />
     </tr>
   )
 }

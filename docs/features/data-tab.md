@@ -10,6 +10,7 @@ never changed.
 - **Clean** (an edit list saved BESIDE the raw folder, `<data>/edits/`): trim the start / end (type, `⇤ here` / `here ⇥` at the cursor, or `suggest`: the idle start and end with 0.5 s margin), change
   the label, exclude the episode, add a note. Only the ends are trimmed: cutting a stretch in the middle would make the joints jump. `Reset` removes the edit. Changing the frame rate is part
   of the export (below): the raw streams keep their own rates.
+- **🗑 Delete** (last column of a row): asks `to trash? Yes / No` in place; Yes MOVES the episode and its edit list to `<data>/trash/<day>/<ep>`: nothing is deleted for good (the raw files are kept there; to put one back, move the folder back into `raw/<day>/`). A damaged episode (shown with its error) can be deleted too. To only leave an episode out of an export without moving it, use `exclude`.
 - **Export**: a name, the rate (10-50 Hz), how the action is made (future state: the joint state `horizon` s later, the default; the servo's target; the controller's reference) and whether
   failures are included. It writes a manifest (the name starts as `vla_<date>`; `<data>/exports/<name>.json`: not excluded, accepted labels, trims) and shows the command that turns it into a LeRobot dataset on the training
   server (`robot_teleop/tools/export_lerobot.py`; see robot_teleop `docs/raw_data.md`).

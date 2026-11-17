@@ -6,6 +6,10 @@ in `CLAUDE.md`, mixed with the specs. The full text of each entry is still in th
 line, link. Undated features (Cancel / Stop, camera streaming, Robot State, plan skills, skill and location
 aliases, planner guides) predate the dated notes; see their docs.
 
+## 2026-11-17
+
+- Data tab: a 🗑 button per episode (asks, then MOVES it to `<data>/trash`: never deleted for good) ([data-tab](features/data-tab.md)).
+
 ## 2026-11-16
 
 - The remote control strip and the Record row are hidden by default; a `⏺` button next to the tabs shows them (kept in this browser); they stay visible while a recording runs or the arm is driven ([teleop](features/teleop.md)).

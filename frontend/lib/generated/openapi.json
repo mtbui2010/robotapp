@@ -1040,6 +1040,25 @@
     "title": "RecordingList",
     "type": "object"
    },
+   "RecordingTrashed": {
+    "additionalProperties": true,
+    "properties": {
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "trash": {
+      "title": "Trash",
+      "type": "string"
+     }
+    },
+    "required": [
+     "ok",
+     "trash"
+    ],
+    "title": "RecordingTrashed",
+    "type": "object"
+   },
    "RenameLocationReq": {
     "properties": {
      "new_name": {
@@ -4194,6 +4213,52 @@
    }
   },
   "/recordings/{day}/{ep}": {
+   "delete": {
+    "operationId": "trash_recording_recordings__day___ep__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "day",
+      "required": true,
+      "schema": {
+       "title": "Day",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "ep",
+      "required": true,
+      "schema": {
+       "title": "Ep",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingTrashed"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Trash Recording"
+   },
    "get": {
     "operationId": "get_recording_recordings__day___ep__get",
     "parameters": [
