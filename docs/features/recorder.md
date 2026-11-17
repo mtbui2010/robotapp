@@ -4,7 +4,7 @@ A panel under the teleop strip (Cameras tab), drawn only when the robot has a re
 
 1. Fill the **fields** (the robot's config names them; kcare: `action`, `target object`, `target location`, `destination object`, `destination location`). Only `action` is required.
 2. The **✨ Generate** button (sparkles icon) makes a sentence from them: a **random template** that uses every filled field, with synonyms (`pick` -> `grab`, `top` -> `first`), so the same episode gets a new
-   wording each time; pressing Generate again gives a DIFFERENT sentence than the one shown (when the fields allow another). The prompt box can be edited by hand. Pressing **● Record** with an empty prompt makes one first; after a recording the prompt is cleared, so the next
+   wording each time; pressing Generate again gives a DIFFERENT sentence than the one shown (when the fields allow another). The prompt box can be edited by hand. Pressing **● Record** makes the prompt itself when there is none, or when the one shown was generated from other fields than the ones filled now (a prompt you typed or edited by hand is always kept); after a recording the prompt is cleared, so the next
    episode is worded again.
 3. **● Record** starts remote control (the teleop function the config names) and the recording together. While recording: the prompt, a clock, the camera frame counts.
 4. **✔ Success** / **✘ Failure** stop remote control and save the episode with that label (failures are kept, labelled); **🗑 Discard** throws it away. The copy to the shared folder runs **in the background** (a `⏳ saving…` line shows while it runs): ● Record is available again at once. No confirmation is asked (see [teleop](teleop.md)).

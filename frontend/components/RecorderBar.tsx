@@ -12,6 +12,7 @@ const load = (): Record<string, string> => { try { return JSON.parse(localStorag
 export default function RecorderBar({ status, runInFlight, onChanged }: { status: RecorderStatus | null; runInFlight: boolean; onChanged: () => void }) {
   const [fields, setFields] = useState<Record<string, string>>({})
   const [prompt, setPrompt] = useState('')
+  const [madeFor, setMadeFor] = useState('')                 // the fields the shown prompt was generated from; '' = it was typed by hand (never replaced)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => { setFields(load()) }, [])
@@ -19,14 +20,16 @@ export default function RecorderBar({ status, runInFlight, onChanged }: { status
   const phase = recPhase(status), st = status.state
   const setField = (k: string, v: string) => setFields(f => { const n = { ...f, [k]: v }; try { localStorage.setItem(KEY, JSON.stringify(n)) } catch { /* per-viewer convenience only */ } return n })
   const fail = (e: unknown) => setErr(e instanceof Error ? e.message : String(e))
-  const generate = () => api.makeRecordPrompt(fields, prompt.trim()).then(p => { setPrompt(p); setErr(''); return p })       // another sentence than the one shown
+  const generate = () => api.makeRecordPrompt(fields, prompt.trim()).then(p => { setPrompt(p); setMadeFor(JSON.stringify(fields)); setErr(''); return p })       // another sentence than the one shown
   const block = recordBlock(status, runInFlight, !!(fields.action || '').trim(), !!prompt.trim())
   const record = async () => {
     setBusy(true)
     try {
-      const p = prompt.trim() || await generate()
+      // Record makes the prompt itself when there is none, or when the one shown was generated from other fields than the ones filled now (a prompt typed by hand is kept)
+      const stale = !!prompt.trim() && madeFor !== '' && madeFor !== JSON.stringify(fields)
+      const p = prompt.trim() && !stale ? prompt.trim() : await api.makeRecordPrompt(fields).then(x => { setPrompt(x); setMadeFor(JSON.stringify(fields)); return x })
       await api.startRecording(p, { fields })
-      setPrompt('')                                      // the next episode gets a new wording
+      setPrompt(''); setMadeFor('')                      // the next episode gets a new wording
       setErr('')
     } catch (e) { fail(e) } finally { setBusy(false); onChanged() }
   }
@@ -57,7 +60,7 @@ export default function RecorderBar({ status, runInFlight, onChanged }: { status
             <button data-testid="recorder-generate" onClick={() => generate().catch(fail)} disabled={!(fields.action || '').trim()} aria-label="Generate a prompt" title="Generate a prompt from the fields (press again for another wording)"
               className="px-1.5 py-0.5 rounded border border-gray-300 bg-white hover:bg-gray-100 text-violet-600 disabled:opacity-40">
               <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M10 3l1.7 4.6L16.3 9.3l-4.6 1.7L10 15.6 8.3 11 3.7 9.3 8.3 7.6z" /><path d="M18 13l.9 2.4 2.4.9-2.4.9L18 19.6l-.9-2.4-2.4-.9 2.4-.9z" /></svg></button>
-            <input data-testid="recorder-prompt-input" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="prompt (made from the fields when empty)" aria-label="prompt"
+            <input data-testid="recorder-prompt-input" value={prompt} onChange={e => { setPrompt(e.target.value); setMadeFor('') }} placeholder="prompt (made from the fields when empty)" aria-label="prompt"
               className="min-w-[14rem] flex-1 px-1.5 py-0.5 rounded border border-gray-300 bg-white text-gray-800 placeholder:text-gray-400" />
             <button data-testid="recorder-record" disabled={busy || !!block} onClick={record} title={block || 'Start remote control and record an episode'}
               className="ml-auto px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white disabled:opacity-50">● Record</button>
