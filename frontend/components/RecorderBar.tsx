@@ -19,7 +19,7 @@ export default function RecorderBar({ status, runInFlight, onChanged }: { status
   const phase = recPhase(status), st = status.state
   const setField = (k: string, v: string) => setFields(f => { const n = { ...f, [k]: v }; try { localStorage.setItem(KEY, JSON.stringify(n)) } catch { /* per-viewer convenience only */ } return n })
   const fail = (e: unknown) => setErr(e instanceof Error ? e.message : String(e))
-  const generate = () => api.makeRecordPrompt(fields).then(p => { setPrompt(p); setErr(''); return p })
+  const generate = () => api.makeRecordPrompt(fields, prompt.trim()).then(p => { setPrompt(p); setErr(''); return p })       // another sentence than the one shown
   const block = recordBlock(status, runInFlight, !!(fields.action || '').trim(), !!prompt.trim())
   const record = async () => {
     setBusy(true)
@@ -54,8 +54,9 @@ export default function RecorderBar({ status, runInFlight, onChanged }: { status
               <input key={k} data-testid={`recorder-field-${k}`} value={fields[k] ?? ''} onChange={e => setField(k, e.target.value)} placeholder={fieldLabel(k)} aria-label={fieldLabel(k)}
                 className="w-[8.5rem] px-1.5 py-0.5 rounded border border-gray-300 bg-white text-gray-800 placeholder:text-gray-400" />
             ))}
-            <button data-testid="recorder-generate" onClick={() => generate().catch(fail)} disabled={!(fields.action || '').trim()} title="Make a sentence from the fields (press again for another wording)"
-              className="px-1.5 py-0.5 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40">🎲</button>
+            <button data-testid="recorder-generate" onClick={() => generate().catch(fail)} disabled={!(fields.action || '').trim()} aria-label="Generate a prompt" title="Generate a prompt from the fields (press again for another wording)"
+              className="px-1.5 py-0.5 rounded border border-gray-300 bg-white hover:bg-gray-100 text-violet-600 disabled:opacity-40">
+              <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M10 3l1.7 4.6L16.3 9.3l-4.6 1.7L10 15.6 8.3 11 3.7 9.3 8.3 7.6z" /><path d="M18 13l.9 2.4 2.4.9-2.4.9L18 19.6l-.9-2.4-2.4-.9 2.4-.9z" /></svg></button>
             <input data-testid="recorder-prompt-input" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="prompt (made from the fields when empty)" aria-label="prompt"
               className="min-w-[14rem] flex-1 px-1.5 py-0.5 rounded border border-gray-300 bg-white text-gray-800 placeholder:text-gray-400" />
             <button data-testid="recorder-record" disabled={busy || !!block} onClick={record} title={block || 'Start remote control and record an episode'}

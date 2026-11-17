@@ -645,6 +645,17 @@
    "RecorderPromptIn": {
     "additionalProperties": true,
     "properties": {
+     "avoid": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avoid"
+     },
      "fields": {
       "additionalProperties": {
        "type": "string"

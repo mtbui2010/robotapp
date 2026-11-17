@@ -518,9 +518,9 @@ export const api = {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   },
-  /** A random sentence from the robot's templates that uses every filled field. */
-  async makeRecordPrompt(fields: Record<string, string>): Promise<string> {
-    const r = await fetch(`${getAgentUrl()}/recorder/prompt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) })
+  /** A random sentence from the robot's templates that uses every filled field; `avoid` = the sentence shown now (the answer is another one when there is one). */
+  async makeRecordPrompt(fields: Record<string, string>, avoid?: string): Promise<string> {
+    const r = await fetch(`${getAgentUrl()}/recorder/prompt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields, avoid: avoid || undefined }) })
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
     return ((await r.json()) as { prompt: string }).prompt
   },
