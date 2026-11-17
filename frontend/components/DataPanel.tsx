@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import { cleanText, defaultExportName, editChanged, effectiveLabel, exportText, fmtSec, jointRange, keptRange, polyline, suggestApplied, xToTime, type RecDetail, type RecEdit, type RecExport, type RecList, type RecRow } from '../lib/recordings'
+import { type CropSpec, cropRect, cleanText, defaultExportName, editChanged, effectiveLabel, exportText, fmtSec, jointRange, keptRange, polyline, suggestApplied, xToTime, type RecDetail, type RecEdit, type RecExport, type RecList, type RecRow } from '../lib/recordings'
 
 const W = 640, H = 120
 const COLORS = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#db2777', '#65a30d']
@@ -14,7 +14,7 @@ export default function DataPanel() {
   const [err, setErr] = useState('')
   const load = useCallback(() => { api.listRecordings().then(l => { setList(l); setErr('') }).catch(e => setErr(e instanceof Error ? e.message : String(e))) }, [])
   useEffect(() => { load() }, [load])
-  const [exp, setExp] = useState({ name: defaultExportName(), fps: 30, action: 'future_state', horizon_s: 0.3, failures: false })
+  const [exp, setExp] = useState({ name: defaultExportName(), fps: 30, action: 'future_state', horizon_s: 0.3, failures: false, crop: false })
   const [expRes, setExpRes] = useState<RecExport | null>(null)
   const [cleanMsg, setCleanMsg] = useState('')
   const [redo, setRedo] = useState(false)
@@ -24,7 +24,7 @@ export default function DataPanel() {
   const clean = (ids?: string[], overwrite = false) => api.autoCleanRecordings(ids, overwrite).then(r => { setCleanMsg(cleanText(r)); setErr(''); load(); setRev(v => v + 1) })
     .catch(e => setErr(e instanceof Error ? e.message : String(e)))
   const [rev, setRev] = useState(0)                                     // bumped after a clean: the open detail reloads
-  const doExport = () => api.exportRecordings({ name: exp.name.trim(), fps: exp.fps, action: exp.action, horizon_s: exp.horizon_s, labels: exp.failures ? ['success', 'failure'] : ['success'] })
+  const doExport = () => api.exportRecordings({ name: exp.name.trim(), fps: exp.fps, action: exp.action, horizon_s: exp.horizon_s, labels: exp.failures ? ['success', 'failure'] : ['success'], crop: exp.crop })
     .then(r => { setExpRes(r); setErr('') }).catch(e => { setExpRes(null); setErr(e instanceof Error ? e.message : String(e)) })
   if (!list) return <div data-testid="data-panel" className="text-sm text-gray-500 p-3">{err || 'Reading the recordings…'}</div>
   const t = list.totals
@@ -43,6 +43,7 @@ export default function DataPanel() {
           <select value={exp.action} onChange={e => setExp({ ...exp, action: e.target.value })} aria-label="action" title="How the action is made: the state a moment later (default), the servo's target, or the controller's reference" className="px-1 py-0.5 rounded border border-gray-300 bg-white">
             <option value="future_state">action: future state</option><option value="servo">action: servo target</option><option value="ref">action: controller ref</option></select>
           {exp.action === 'future_state' && <input type="number" step="0.1" min="0" max="3" value={exp.horizon_s} onChange={e => setExp({ ...exp, horizon_s: Number(e.target.value) })} aria-label="horizon seconds" title="seconds ahead" className="w-14 px-1 py-0.5 rounded border border-gray-300" />}
+          {list.crop && <label className="flex items-center gap-1 text-gray-600" title="Cut the head camera to a square placed by the robot mode (see the dashed frame on the head image of an episode); every exported episode needs a mode"><input data-testid="export-crop" type="checkbox" checked={exp.crop} onChange={e => setExp({ ...exp, crop: e.target.checked })} />square crop</label>}
           <label className="flex items-center gap-1 text-gray-600"><input type="checkbox" checked={exp.failures} onChange={e => setExp({ ...exp, failures: e.target.checked })} />+ failures</label>
           <button data-testid="export-go" onClick={doExport} disabled={!exp.name.trim()} className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">Export</button>
         </span>
@@ -58,7 +59,7 @@ export default function DataPanel() {
           </tbody>
         </table>
       </div>
-      {sel && <Detail key={`${sel}/${rev}`} id={sel} onSaved={load} />}
+      {sel && <Detail key={`${sel}/${rev}`} id={sel} onSaved={load} crop={list.crop ?? null} modes={list.modes ?? []} />}
     </div>
   )
 }
@@ -86,7 +87,7 @@ function Row({ r, on, pick, clean, asking, ask, no, del }: RowProps) {
     <tr data-testid={`row-${r.id}`} onClick={pick} className={`cursor-pointer border-b border-gray-100 ${on ? 'bg-blue-50' : 'hover:bg-gray-50'} ${r.edit?.exclude ? 'opacity-50 line-through' : ''}`}>
       <td className="px-2 py-1 font-mono">{r.id}</td><td className="max-w-[18rem] truncate" title={r.prompt}>{r.prompt}</td>
       <td className={lab === 'success' ? 'text-green-700' : 'text-amber-700'}>{lab}{r.edit?.label && r.edit.label !== r.label ? ' ✎' : ''}</td>
-      <td data-testid={`mode-${r.id}`} className={r.robot_mode ? 'text-gray-700' : 'text-gray-300'}>{r.robot_mode ?? '–'}</td>
+      <td data-testid={`mode-${r.id}`} className={r.robot_mode ? 'text-gray-700' : 'text-gray-300'}>{r.robot_mode ?? '–'}{r.edit?.robot_mode && r.edit.robot_mode !== r.recorded_mode ? ' ✎' : ''}</td>
       <td>{fmtSec(s.duration_s)}</td><td>{s.idle_head_s?.toFixed(1) ?? '–'} / {s.idle_tail_s?.toFixed(1) ?? '–'} s</td>
       <td>{s.moving_fraction !== undefined ? `${Math.round(s.moving_fraction * 100)}%` : '–'}</td>
       <td>{r.edit?.trim_start_s !== undefined || r.edit?.trim_end_s !== undefined ? `${fmtSec(a)}–${fmtSec(b)} ✎` : 'all'}</td>
@@ -101,7 +102,8 @@ function Row({ r, on, pick, clean, asking, ask, no, del }: RowProps) {
   )
 }
 
-function Detail({ id, onSaved }: { id: string; onSaved: () => void }) {
+function Detail({ id, onSaved, crop, modes }: { id: string; onSaved: () => void; crop: Record<string, CropSpec> | null; modes: string[] }) {
+  const [dim, setDim] = useState<Record<string, [number, number]>>({})            // natural size of each camera image (for the crop frame)
   const [d, setD] = useState<RecDetail | null>(null)
   const [t, setT] = useState(0)
   const [play, setPlay] = useState(false)
@@ -120,7 +122,7 @@ function Detail({ id, onSaved }: { id: string; onSaved: () => void }) {
   const a = form.trim_start_s ?? 0, b = form.trim_end_s ?? dur
   const px = (s: number) => (s / dur) * W
   const changed = editChanged(d.edit, form, dur)
-  const save = () => api.saveRecordingEdit(id, { ...(form.trim_start_s !== undefined || form.trim_end_s !== undefined ? { trim_start_s: a, trim_end_s: b } : {}), label: form.label, exclude: !!form.exclude, note: form.note })
+  const save = () => api.saveRecordingEdit(id, { ...(form.trim_start_s !== undefined || form.trim_end_s !== undefined ? { trim_start_s: a, trim_end_s: b } : {}), label: form.label, exclude: !!form.exclude, note: form.note, robot_mode: form.robot_mode })
     .then(() => { setErr(''); onSaved(); return api.getRecording(id).then(x => { setD(x); setForm(x.edit ?? {}) }) }).catch(e => setErr(e instanceof Error ? e.message : String(e)))
   const reset = () => api.deleteRecordingEdit(id).then(() => { setForm({}); onSaved(); return api.getRecording(id).then(setD) }).catch(e => setErr(e instanceof Error ? e.message : String(e)))
   const sug = d.summary.trim_suggest
@@ -129,7 +131,17 @@ function Detail({ id, onSaved }: { id: string; onSaved: () => void }) {
       <div className="flex flex-wrap gap-2">
         {Object.keys(d.cameras).map(cam => (
           // eslint-disable-next-line @next/next/no-img-element
-          <figure key={cam} className="m-0"><img data-testid={`frame-${cam}`} src={api.recordingFrameUrl(id, cam, t)} alt={`${cam} at ${fmtSec(t)}`} className="h-44 rounded border border-gray-200 bg-gray-100" /><figcaption className="text-gray-500 text-center">{cam}</figcaption></figure>
+          <figure key={cam} className="m-0">
+            <div className="relative inline-block">
+              <img data-testid={`frame-${cam}`} src={api.recordingFrameUrl(id, cam, t)} alt={`${cam} at ${fmtSec(t)}`} onLoad={e => { const w = e.currentTarget.naturalWidth, h = e.currentTarget.naturalHeight; setDim(m => ({ ...m, [cam]: [w, h] })) }}
+                className="h-44 rounded border border-gray-200 bg-gray-100" />
+              {crop?.[cam]?.square && dim[cam] && (() => {
+                const [w, h] = dim[cam], r = cropRect(w, h, crop[cam], form.robot_mode ?? d.robot_mode)
+                return <div data-testid={`crop-${cam}`} title="the square the export keeps of this camera, for this mode" className="absolute border-2 border-dashed border-amber-400 pointer-events-none"
+                  style={{ left: `${(r.x / w) * 100}%`, top: `${(r.y / h) * 100}%`, width: `${(r.side / w) * 100}%`, height: `${(r.side / h) * 100}%` }} />
+              })()}
+            </div>
+            <figcaption className="text-gray-500 text-center">{cam}{crop?.[cam]?.square ? ' (dashed: crop)' : ''}</figcaption></figure>
         ))}
         <div className="flex-1 min-w-[16rem] flex flex-col gap-1">
           <div className="font-medium text-gray-800">{d.prompt}</div>
@@ -165,6 +177,8 @@ function Detail({ id, onSaved }: { id: string; onSaved: () => void }) {
         <button onClick={() => setForm({ ...form, trim_start_s: undefined, trim_end_s: undefined })} className="px-1.5 py-0.5 rounded border border-gray-300 bg-white hover:bg-gray-100">all</button>
         <select value={form.label ?? ''} onChange={e => setForm({ ...form, label: e.target.value || undefined })} aria-label="label" className="px-1 py-0.5 rounded border border-gray-300 bg-white">
           <option value="">label: as recorded ({d.label})</option><option value="success">label: success</option><option value="failure">label: failure</option></select>
+        <select data-testid="mode-select" value={form.robot_mode ?? ''} onChange={e => setForm({ ...form, robot_mode: e.target.value || undefined })} aria-label="robot mode" title="The robot's mode when this episode was recorded (it places the crop of the head camera)" className="px-1 py-0.5 rounded border border-gray-300 bg-white">
+          <option value="">mode: as recorded ({d.recorded_mode ?? 'none'})</option>{Array.from(new Set([...modes, ...(d.recorded_mode ? [d.recorded_mode] : [])])).map(m => <option key={m} value={m}>mode: {m}</option>)}</select>
         <label className="flex items-center gap-1"><input data-testid="exclude" type="checkbox" checked={!!form.exclude} onChange={e => setForm({ ...form, exclude: e.target.checked })} />exclude</label>
         <input value={form.note ?? ''} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="note" aria-label="note" className="min-w-[10rem] flex-1 px-1.5 py-0.5 rounded border border-gray-300" />
         <button data-testid="edit-save" onClick={save} disabled={!changed} className="px-2 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white disabled:opacity-40">Save</button>

@@ -613,7 +613,7 @@ export const api = {
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
     return r.json()
   },
-  async exportRecordings(body: { name: string; fps: number; action: string; horizon_s: number; labels: string[] }): Promise<RecExport> {
+  async exportRecordings(body: { name: string; fps: number; action: string; horizon_s: number; labels: string[]; crop?: boolean }): Promise<RecExport> {
     const r = await fetch(`${getAgentUrl()}/recordings/export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${r.status}`)
     return r.json()

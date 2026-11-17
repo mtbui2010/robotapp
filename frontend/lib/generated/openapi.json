@@ -928,6 +928,17 @@
       ],
       "title": "Note"
      },
+     "robot_mode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Robot Mode"
+     },
      "trim_end_s": {
       "anyOf": [
        {
@@ -991,6 +1002,11 @@
       "title": "Action",
       "type": "string"
      },
+     "crop": {
+      "default": false,
+      "title": "Crop",
+      "type": "boolean"
+     },
      "fps": {
       "default": 30,
       "title": "Fps",
@@ -1025,6 +1041,18 @@
    "RecordingList": {
     "additionalProperties": true,
     "properties": {
+     "crop": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Crop"
+     },
      "dir": {
       "title": "Dir",
       "type": "string"
@@ -1035,6 +1063,14 @@
        "type": "object"
       },
       "title": "Episodes",
+      "type": "array"
+     },
+     "modes": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Modes",
       "type": "array"
      },
      "totals": {

@@ -15,21 +15,23 @@ export interface RecSummary {
   max_speed_rad_s?: number
   warnings: string[]
 }
-export interface RecEdit { trim_start_s?: number; trim_end_s?: number; label?: string; exclude?: boolean; note?: string }
+export interface RecEdit { trim_start_s?: number; trim_end_s?: number; label?: string; exclude?: boolean; note?: string; robot_mode?: string }
 export interface RecRow {
   id: string
   day: string
   episode: string
   prompt: string
   label?: string | null
-  robot_mode?: string | null    // left | front | right: from the head angle when the recording started (episodes recorded before that have none)
+  robot_mode?: string | null    // left | front | right: the operator's setting, else the one recorded (from the head angle when the recording started; older episodes have none)
+  recorded_mode?: string | null // the mode as recorded
   summary: RecSummary
   edit?: RecEdit | null
   error?: string
 }
 export interface RecSeries { t: number[]; joints: number[][]; gripper: number[]; gripper_cmd?: number[] }
 export interface RecDetail extends RecRow { series: RecSeries; cameras: Record<string, { frames: number; first_t: number }> }
-export interface RecList { dir: string; episodes: RecRow[]; totals: { episodes: number; hours: number; success: number; failure: number; excluded: number } }
+export interface CropSpec { square?: boolean; offset?: number; size?: number; anchor?: Record<string, string> }
+export interface RecList { dir: string; modes?: string[]; crop?: Record<string, CropSpec> | null; episodes: RecRow[]; totals: { episodes: number; hours: number; success: number; failure: number; excluded: number } }
 export interface RecExport { manifest: string; episodes: number; hours: number; command: string }
 
 /** The label that counts: the operator's edit wins over the one given when recording. */
@@ -70,7 +72,7 @@ export const xToTime = (x: number, w: number, duration: number): number => Math.
 export function editChanged(saved: RecEdit | null | undefined, now: RecEdit, duration: number): boolean {
   const norm = (e: RecEdit | null | undefined) => ({
     a: e?.trim_start_s && e.trim_start_s > 0 ? e.trim_start_s : 0, b: e?.trim_end_s && e.trim_end_s < duration - 0.05 ? e.trim_end_s : duration,
-    label: e?.label ?? '', exclude: !!e?.exclude, note: e?.note ?? '',
+    label: e?.label ?? '', exclude: !!e?.exclude, note: e?.note ?? '', mode: e?.robot_mode ?? '',
   })
   return JSON.stringify(norm(saved)) !== JSON.stringify(norm(now))
 }
@@ -92,3 +94,14 @@ export function cleanText(x: { cleaned: number; skipped: number; rows: { kept_s:
 
 /** A default export name: `vla_20261116`. */
 export const defaultExportName = (d = new Date()): string => `vla_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+
+/** The square crop of a w x h image for a robot mode (the same rule as robot_teleop.export.crop_square_box, which the export and the policy client use):
+ *  its side is the shorter dimension; anchor 'left' = `offset` px from the left edge, 'right' = `offset` px from the right edge, else centred. */
+export function cropRect(w: number, h: number, spec: CropSpec, mode?: string | null): { x: number; y: number; side: number } {
+  const side = Math.min(w, h), offset = spec.offset ?? 0, anchor = (spec.anchor ?? {})[mode ?? ''] ?? 'centre'
+  if (w >= h) {
+    const x0 = anchor === 'left' ? offset : anchor === 'right' ? w - side - offset : Math.floor((w - side) / 2)
+    return { x: Math.max(0, Math.min(w - side, x0)), y: 0, side }
+  }
+  return { x: 0, y: Math.floor((h - side) / 2), side }
+}

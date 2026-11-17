@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-17
 
+- Data tab: a `mode` select per episode (the operator's setting wins), the head image shows the dashed square the export keeps for that mode, and Export has a `square crop` checkbox ([data-tab](features/data-tab.md)).
 - Data tab: a `mode` column (left | front | right) from the recorded `robot_mode` ([data-tab](features/data-tab.md)).
 - Record panel: the dice is a sparkles **Generate** icon; pressing it again always gives a different sentence (the shown one is sent as `avoid`) ([recorder](features/recorder.md)).
 - Data tab: a 🗑 button per episode (asks, then MOVES it to `<data>/trash`: never deleted for good) ([data-tab](features/data-tab.md)).

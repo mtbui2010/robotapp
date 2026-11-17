@@ -716,3 +716,15 @@ test('poses: why a form cannot be saved', () => {
   assert.match(PS.poseFormError('FOLD', 'movej::fold', ps), /already exists/)               // names are unique, case-insensitive
   assert.equal(PS.poseFormError('fold', 'movej::fold', ps, 'a'), '')                          // the pose being edited may keep its own name
 })
+
+test('recordings: the square crop is placed by the robot mode (the same rule as the export)', () => {
+  const spec = { square: true, offset: 120, size: 480, anchor: { left: 'left', right: 'right', front: 'centre' } }
+  assert.deepEqual(RS.cropRect(1280, 720, spec, 'left'), { x: 120, y: 0, side: 720 })
+  assert.deepEqual(RS.cropRect(1280, 720, spec, 'right'), { x: 440, y: 0, side: 720 })            // 1280 - 720 - 120
+  assert.deepEqual(RS.cropRect(1280, 720, spec, 'front'), { x: 280, y: 0, side: 720 })
+  assert.deepEqual(RS.cropRect(1280, 720, spec, null), { x: 280, y: 0, side: 720 })               // no mode: centred
+  assert.deepEqual(RS.cropRect(1280, 720, { ...spec, offset: 900 }, 'left'), { x: 560, y: 0, side: 720 })   // never past the edge
+  assert.deepEqual(RS.cropRect(720, 1280, spec, 'left'), { x: 0, y: 280, side: 720 })             // a portrait image: centred vertically
+  assert.equal(RS.editChanged(null, { robot_mode: 'left' }, 20), true)
+  assert.equal(RS.editChanged({ robot_mode: 'left' }, { robot_mode: 'left' }, 20), false)
+})
