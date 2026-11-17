@@ -728,3 +728,10 @@ test('recordings: the square crop is placed by the robot mode (the same rule as 
   assert.equal(RS.editChanged(null, { robot_mode: 'left' }, 20), true)
   assert.equal(RS.editChanged({ robot_mode: 'left' }, { robot_mode: 'left' }, 20), false)
 })
+
+test('recorder: the background saving text', () => {
+  const r = (n) => ({ available: true, fields: [], state: { state: 'idle', ready: true, saving: n } })
+  assert.equal(RC.savingText(r(0)), ''); assert.equal(RC.savingText(r(undefined)), '')
+  assert.equal(RC.savingText(r(1)), 'saving…'); assert.equal(RC.savingText(r(2)), 'saving 2…')
+  assert.equal(RC.recordBlock(r(1), false, true, true), '')                       // copying in the background does not block the next recording
+})

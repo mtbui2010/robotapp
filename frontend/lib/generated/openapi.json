@@ -1002,6 +1002,11 @@
       "title": "Action",
       "type": "string"
      },
+     "auto_trim": {
+      "default": true,
+      "title": "Auto Trim",
+      "type": "boolean"
+     },
      "crop": {
       "default": false,
       "title": "Crop",

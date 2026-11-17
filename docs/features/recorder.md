@@ -7,8 +7,7 @@ A panel under the teleop strip (Cameras tab), drawn only when the robot has a re
    wording each time; pressing Generate again gives a DIFFERENT sentence than the one shown (when the fields allow another). The prompt box can be edited by hand. Pressing **● Record** with an empty prompt makes one first; after a recording the prompt is cleared, so the next
    episode is worded again.
 3. **● Record** starts remote control (the teleop function the config names) and the recording together. While recording: the prompt, a clock, the camera frame counts.
-4. **✔ Success** / **✘ Failure** stop remote control and save the episode with that label (failures are kept, labelled); **🗑 Discard** throws it away. `saving…` shows
-   while the episode is copied to the shared folder. No confirmation is asked (see [teleop](teleop.md)).
+4. **✔ Success** / **✘ Failure** stop remote control and save the episode with that label (failures are kept, labelled); **🗑 Discard** throws it away. The copy to the shared folder runs **in the background** (a `⏳ saving…` line shows while it runs): ● Record is available again at once. No confirmation is asked (see [teleop](teleop.md)).
 
 Record is disabled, with the reason as its tooltip, when the recorder is not running on the robot, a run is in flight, or the shared folder cannot be written. The field
 values are remembered in this browser only (localStorage).

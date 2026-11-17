@@ -14,17 +14,23 @@ export default function DataPanel() {
   const [err, setErr] = useState('')
   const load = useCallback(() => { api.listRecordings().then(l => { setList(l); setErr('') }).catch(e => setErr(e instanceof Error ? e.message : String(e))) }, [])
   useEffect(() => { load() }, [load])
-  const [exp, setExp] = useState({ name: defaultExportName(), fps: 30, action: 'future_state', horizon_s: 0.3, failures: false, crop: false })
+  const [exp, setExp] = useState({ name: defaultExportName(), fps: 30, action: 'future_state', horizon_s: 0.3, failures: false, crop: false, trim: true })
   const [expRes, setExpRes] = useState<RecExport | null>(null)
   const [cleanMsg, setCleanMsg] = useState('')
   const [redo, setRedo] = useState(false)
+  const setMode = (r: RecRow, m: string) => {                           // the mode of an episode, saved at once from the table (the other parts of its edit are kept)
+    const e = r.edit ?? {}
+    const rest = { trim_start_s: e.trim_start_s, trim_end_s: e.trim_end_s, label: e.label, exclude: e.exclude, note: e.note }
+    const empty = !m && Object.values(rest).every(v => v === undefined || v === '' || v === false)
+    ;(empty ? api.deleteRecordingEdit(r.id) : api.saveRecordingEdit(r.id, { ...rest, robot_mode: m || undefined })).then(() => { setErr(''); load() }).catch(e2 => setErr(e2 instanceof Error ? e2.message : String(e2)))
+  }
   const [asking, setAsking] = useState<string | null>(null)             // the episode whose delete is waiting for its Yes
   const trash = (id: string) => api.deleteRecording(id).then(r => { setAsking(null); if (sel === id) setSel(null); setCleanMsg(`${id} moved to ${r.trash}`); setErr(''); load() })
     .catch(e => { setAsking(null); setErr(e instanceof Error ? e.message : String(e)) })
   const clean = (ids?: string[], overwrite = false) => api.autoCleanRecordings(ids, overwrite).then(r => { setCleanMsg(cleanText(r)); setErr(''); load(); setRev(v => v + 1) })
     .catch(e => setErr(e instanceof Error ? e.message : String(e)))
   const [rev, setRev] = useState(0)                                     // bumped after a clean: the open detail reloads
-  const doExport = () => api.exportRecordings({ name: exp.name.trim(), fps: exp.fps, action: exp.action, horizon_s: exp.horizon_s, labels: exp.failures ? ['success', 'failure'] : ['success'], crop: exp.crop })
+  const doExport = () => api.exportRecordings({ name: exp.name.trim(), fps: exp.fps, action: exp.action, horizon_s: exp.horizon_s, labels: exp.failures ? ['success', 'failure'] : ['success'], crop: exp.crop, auto_trim: exp.trim })
     .then(r => { setExpRes(r); setErr('') }).catch(e => { setExpRes(null); setErr(e instanceof Error ? e.message : String(e)) })
   if (!list) return <div data-testid="data-panel" className="text-sm text-gray-500 p-3">{err || 'Reading the recordings…'}</div>
   const t = list.totals
@@ -43,6 +49,7 @@ export default function DataPanel() {
           <select value={exp.action} onChange={e => setExp({ ...exp, action: e.target.value })} aria-label="action" title="How the action is made: the state a moment later (default), the servo's target, or the controller's reference" className="px-1 py-0.5 rounded border border-gray-300 bg-white">
             <option value="future_state">action: future state</option><option value="servo">action: servo target</option><option value="ref">action: controller ref</option></select>
           {exp.action === 'future_state' && <input type="number" step="0.1" min="0" max="3" value={exp.horizon_s} onChange={e => setExp({ ...exp, horizon_s: Number(e.target.value) })} aria-label="horizon seconds" title="seconds ahead" className="w-14 px-1 py-0.5 rounded border border-gray-300" />}
+          <label className="flex items-center gap-1 text-gray-600" title="An episode with no saved trim is exported without its idle start and end (nothing changes there); a trim you saved is always used. Off: whole episodes."><input data-testid="export-trim" type="checkbox" checked={exp.trim} onChange={e => setExp({ ...exp, trim: e.target.checked })} />cut idle ends</label>
           {list.crop && <label className="flex items-center gap-1 text-gray-600" title="Cut the head camera to a square placed by the robot mode (see the dashed frame on the head image of an episode); every exported episode needs a mode"><input data-testid="export-crop" type="checkbox" checked={exp.crop} onChange={e => setExp({ ...exp, crop: e.target.checked })} />square crop</label>}
           <label className="flex items-center gap-1 text-gray-600"><input type="checkbox" checked={exp.failures} onChange={e => setExp({ ...exp, failures: e.target.checked })} />+ failures</label>
           <button data-testid="export-go" onClick={doExport} disabled={!exp.name.trim()} className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">Export</button>
@@ -54,7 +61,7 @@ export default function DataPanel() {
         <table className="w-full text-left">
           <thead className="text-gray-500 border-b border-gray-200"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th title="the robot's mode when the recording started: the head camera's view (and the crop that suits it) depends on it">mode</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th><th>clean</th><th></th></tr></thead>
           <tbody>
-            {list.episodes.map(r => <Row key={r.id} r={r} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} clean={() => clean([r.id], true)} asking={asking === r.id} ask={() => setAsking(r.id)} no={() => setAsking(null)} del={() => trash(r.id)} />)}
+            {list.episodes.map(r => <Row key={r.id} r={r} modes={list.modes ?? []} setMode={m => setMode(r, m)} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} clean={() => clean([r.id], true)} asking={asking === r.id} ask={() => setAsking(r.id)} no={() => setAsking(null)} del={() => trash(r.id)} />)}
             {!list.episodes.length && <tr><td colSpan={11} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
           </tbody>
         </table>
@@ -64,7 +71,7 @@ export default function DataPanel() {
   )
 }
 
-type RowProps = { r: RecRow; on: boolean; pick: () => void; clean: () => void; asking: boolean; ask: () => void; no: () => void; del: () => void }
+type RowProps = { r: RecRow; modes: string[]; setMode: (m: string) => void; on: boolean; pick: () => void; clean: () => void; asking: boolean; ask: () => void; no: () => void; del: () => void }
 
 // The delete cell: 🗑, then `trash? Yes / No` in place. The episode is MOVED to <data>/trash (the raw files are kept there), never deleted for good.
 function DeleteCell({ r, asking, ask, no, del }: Pick<RowProps, 'r' | 'asking' | 'ask' | 'no' | 'del'>) {
@@ -80,14 +87,21 @@ function DeleteCell({ r, asking, ask, no, del }: Pick<RowProps, 'r' | 'asking' |
   )
 }
 
-function Row({ r, on, pick, clean, asking, ask, no, del }: RowProps) {
+function Row({ r, modes, setMode, on, pick, clean, asking, ask, no, del }: RowProps) {
   if (r.error) return <tr className="text-red-700"><td className="px-2 py-1">{r.id}</td><td colSpan={9}>{r.error}</td><DeleteCell r={r} asking={asking} ask={ask} no={no} del={del} /></tr>
   const s = r.summary, [a, b] = keptRange(r), lab = effectiveLabel(r)
   return (
     <tr data-testid={`row-${r.id}`} onClick={pick} className={`cursor-pointer border-b border-gray-100 ${on ? 'bg-blue-50' : 'hover:bg-gray-50'} ${r.edit?.exclude ? 'opacity-50 line-through' : ''}`}>
       <td className="px-2 py-1 font-mono">{r.id}</td><td className="max-w-[18rem] truncate" title={r.prompt}>{r.prompt}</td>
       <td className={lab === 'success' ? 'text-green-700' : 'text-amber-700'}>{lab}{r.edit?.label && r.edit.label !== r.label ? ' ✎' : ''}</td>
-      <td data-testid={`mode-${r.id}`} className={r.robot_mode ? 'text-gray-700' : 'text-gray-300'}>{r.robot_mode ?? '–'}{r.edit?.robot_mode && r.edit.robot_mode !== r.recorded_mode ? ' ✎' : ''}</td>
+      <td data-testid={`mode-${r.id}`} onClick={e => e.stopPropagation()}>
+        <select data-testid={`mode-set-${r.id}`} value={r.edit?.robot_mode ?? ''} onChange={e => setMode(e.target.value)} aria-label={`mode of ${r.id}`}
+          title="The robot's mode when this episode was recorded (it places the crop of the head camera). Changing it is saved at once."
+          className={`px-1 py-0.5 rounded border bg-white ${r.robot_mode ? 'border-gray-300 text-gray-700' : 'border-amber-400 text-amber-700'}`}>
+          <option value="">{r.recorded_mode ?? 'set…'}</option>
+          {Array.from(new Set([...modes, ...(r.recorded_mode ? [r.recorded_mode] : [])])).map(m => <option key={m} value={m}>{m}{r.recorded_mode === m ? ' (recorded)' : ''}</option>)}
+        </select>{r.edit?.robot_mode && r.edit.robot_mode !== r.recorded_mode ? ' ✎' : ''}
+      </td>
       <td>{fmtSec(s.duration_s)}</td><td>{s.idle_head_s?.toFixed(1) ?? '–'} / {s.idle_tail_s?.toFixed(1) ?? '–'} s</td>
       <td>{s.moving_fraction !== undefined ? `${Math.round(s.moving_fraction * 100)}%` : '–'}</td>
       <td>{r.edit?.trim_start_s !== undefined || r.edit?.trim_end_s !== undefined ? `${fmtSec(a)}–${fmtSec(b)} ✎` : 'all'}</td>

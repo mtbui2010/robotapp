@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import { clock, countsText, fieldLabel, lastText, recPhase, recordBlock, type RecorderStatus } from '../lib/recorder'
+import { clock, countsText, fieldLabel, lastText, recPhase, recordBlock, savingText, type RecorderStatus } from '../lib/recorder'
 
 const KEY = 'robotapp_rec_fields'
 const load = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch { return {} } }
@@ -65,6 +65,7 @@ export default function RecorderBar({ status, runInFlight, onChanged }: { status
         )}
       </div>
       {(err || st?.error) && <div data-testid="recorder-error" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{err || st?.error}</div>}
+      {savingText(status) && <div data-testid="recorder-saving" className="text-xs text-gray-500 px-1" title="The last episode is being copied to the shared folder in the background: you can record the next one now">⏳ {savingText(status)} <span className="text-gray-400">(in the background: you can record again)</span></div>}
       {phase === 'idle' && lastText(status) && <div data-testid="recorder-last" className="text-xs text-gray-500 px-1">{lastText(status)}{status.state?.last?.dir ? ` → ${status.state.last.dir}` : ''}</div>}
     </div>
   )

@@ -2,7 +2,8 @@
 // `api.getRecorder` / `makeRecordPrompt` / `startRecording` / `stopRecording`. Nothing here names a task, a field or a language: the fields and the
 // prompt templates are the robot's own config, read by the backend.
 export interface RecorderState {
-  state: 'idle' | 'recording' | 'saving'
+  state: 'idle' | 'recording' | 'saving'      // 'saving' only from an older node: the new one is idle while it copies in the background
+  saving?: number               // episodes being copied to the shared folder in the background (a new recording can start meanwhile)
   episode?: string
   prompt?: string
   elapsed_s?: number
@@ -52,4 +53,10 @@ export function recordBlock(r: RecorderStatus, runInFlight: boolean, hasAction: 
 export function lastText(r: RecorderStatus): string {
   const l = r.state?.last
   return l ? `saved ${l.episode} (${l.label}${typeof l.duration_s === 'number' ? `, ${clock(l.duration_s)}` : ''})` : ''
+}
+
+/** `saving 2…` while episodes are being copied in the background; '' when none (an older node says 'saving' as its state instead). */
+export function savingText(r: RecorderStatus): string {
+  const n = r.state?.saving ?? 0
+  return n > 1 ? `saving ${n}…` : n === 1 ? 'saving…' : ''
 }
