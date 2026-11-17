@@ -22,6 +22,7 @@ export interface RecRow {
   episode: string
   prompt: string
   label?: string | null
+  robot_mode?: string | null    // left | front | right: from the head angle when the recording started (episodes recorded before that have none)
   summary: RecSummary
   edit?: RecEdit | null
   error?: string

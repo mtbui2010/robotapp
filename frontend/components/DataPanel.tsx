@@ -51,10 +51,10 @@ export default function DataPanel() {
       {err && <div data-testid="data-error" className="text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{err}</div>}
       <div className="overflow-x-auto border border-gray-200 rounded bg-white">
         <table className="w-full text-left">
-          <thead className="text-gray-500 border-b border-gray-200"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th><th>clean</th><th></th></tr></thead>
+          <thead className="text-gray-500 border-b border-gray-200"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th title="the robot's mode when the recording started: the head camera's view (and the crop that suits it) depends on it">mode</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th><th>clean</th><th></th></tr></thead>
           <tbody>
             {list.episodes.map(r => <Row key={r.id} r={r} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} clean={() => clean([r.id], true)} asking={asking === r.id} ask={() => setAsking(r.id)} no={() => setAsking(null)} del={() => trash(r.id)} />)}
-            {!list.episodes.length && <tr><td colSpan={10} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
+            {!list.episodes.length && <tr><td colSpan={11} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -80,12 +80,13 @@ function DeleteCell({ r, asking, ask, no, del }: Pick<RowProps, 'r' | 'asking' |
 }
 
 function Row({ r, on, pick, clean, asking, ask, no, del }: RowProps) {
-  if (r.error) return <tr className="text-red-700"><td className="px-2 py-1">{r.id}</td><td colSpan={8}>{r.error}</td><DeleteCell r={r} asking={asking} ask={ask} no={no} del={del} /></tr>
+  if (r.error) return <tr className="text-red-700"><td className="px-2 py-1">{r.id}</td><td colSpan={9}>{r.error}</td><DeleteCell r={r} asking={asking} ask={ask} no={no} del={del} /></tr>
   const s = r.summary, [a, b] = keptRange(r), lab = effectiveLabel(r)
   return (
     <tr data-testid={`row-${r.id}`} onClick={pick} className={`cursor-pointer border-b border-gray-100 ${on ? 'bg-blue-50' : 'hover:bg-gray-50'} ${r.edit?.exclude ? 'opacity-50 line-through' : ''}`}>
       <td className="px-2 py-1 font-mono">{r.id}</td><td className="max-w-[18rem] truncate" title={r.prompt}>{r.prompt}</td>
       <td className={lab === 'success' ? 'text-green-700' : 'text-amber-700'}>{lab}{r.edit?.label && r.edit.label !== r.label ? ' ✎' : ''}</td>
+      <td data-testid={`mode-${r.id}`} className={r.robot_mode ? 'text-gray-700' : 'text-gray-300'}>{r.robot_mode ?? '–'}</td>
       <td>{fmtSec(s.duration_s)}</td><td>{s.idle_head_s?.toFixed(1) ?? '–'} / {s.idle_tail_s?.toFixed(1) ?? '–'} s</td>
       <td>{s.moving_fraction !== undefined ? `${Math.round(s.moving_fraction * 100)}%` : '–'}</td>
       <td>{r.edit?.trim_start_s !== undefined || r.edit?.trim_end_s !== undefined ? `${fmtSec(a)}–${fmtSec(b)} ✎` : 'all'}</td>
