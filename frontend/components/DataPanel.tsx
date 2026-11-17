@@ -94,13 +94,16 @@ function Row({ r, modes, setMode, on, pick, clean, asking, ask, no, del }: RowPr
     <tr data-testid={`row-${r.id}`} onClick={pick} className={`cursor-pointer border-b border-gray-100 ${on ? 'bg-blue-50' : 'hover:bg-gray-50'} ${r.edit?.exclude ? 'opacity-50 line-through' : ''}`}>
       <td className="px-2 py-1 font-mono">{r.id}</td><td className="max-w-[18rem] truncate" title={r.prompt}>{r.prompt}</td>
       <td className={lab === 'success' ? 'text-green-700' : 'text-amber-700'}>{lab}{r.edit?.label && r.edit.label !== r.label ? ' ✎' : ''}</td>
-      <td data-testid={`mode-${r.id}`} onClick={e => e.stopPropagation()}>
-        <select data-testid={`mode-set-${r.id}`} value={r.edit?.robot_mode ?? ''} onChange={e => setMode(e.target.value)} aria-label={`mode of ${r.id}`}
-          title="The robot's mode when this episode was recorded (it places the crop of the head camera). Changing it is saved at once."
-          className={`px-1 py-0.5 rounded border bg-white ${r.robot_mode ? 'border-gray-300 text-gray-700' : 'border-amber-400 text-amber-700'}`}>
-          <option value="">{r.recorded_mode ?? 'set…'}</option>
-          {Array.from(new Set([...modes, ...(r.recorded_mode ? [r.recorded_mode] : [])])).map(m => <option key={m} value={m}>{m}{r.recorded_mode === m ? ' (recorded)' : ''}</option>)}
-        </select>{r.edit?.robot_mode && r.edit.robot_mode !== r.recorded_mode ? ' ✎' : ''}
+      <td data-testid={`mode-${r.id}`} onClick={e => e.stopPropagation()} className="whitespace-nowrap">
+        {/* the same width and the same plain labels in every row; the source is a small mark after it: rec = as recorded, ✎ = set by you */}
+        <select data-testid={`mode-set-${r.id}`} value={r.robot_mode ?? ''} onChange={e => setMode(e.target.value === r.recorded_mode ? '' : e.target.value)} aria-label={`mode of ${r.id}`}
+          title="The robot's mode when this episode was recorded (it places the crop of the head camera). Changing it is saved at once; choosing the recorded mode again removes your setting."
+          className={`w-20 px-1 py-0.5 rounded border bg-white ${r.robot_mode ? 'border-gray-300 text-gray-700' : 'border-amber-400 text-amber-700'}`}>
+          {!r.robot_mode && <option value="">set…</option>}
+          {Array.from(new Set([...modes, ...(r.recorded_mode ? [r.recorded_mode] : []), ...(r.robot_mode ? [r.robot_mode] : [])])).map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <span className="ml-1 inline-block w-6 text-[10px] text-gray-400" title={r.edit?.robot_mode && r.edit.robot_mode !== r.recorded_mode ? 'set by you' : r.recorded_mode ? 'as recorded' : ''}>
+          {r.edit?.robot_mode && r.edit.robot_mode !== r.recorded_mode ? '✎' : r.recorded_mode ? 'rec' : ''}</span>
       </td>
       <td>{fmtSec(s.duration_s)}</td><td>{s.idle_head_s?.toFixed(1) ?? '–'} / {s.idle_tail_s?.toFixed(1) ?? '–'} s</td>
       <td>{s.moving_fraction !== undefined ? `${Math.round(s.moving_fraction * 100)}%` : '–'}</td>
