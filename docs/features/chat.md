@@ -103,6 +103,7 @@ the **Log** panel (order in the column: Robot State, Plan progress, planner step
   it follows the run (the step that starts next replaces it). Clicking a Plan progress row shows that step instead, with a
   "↺ current" link to go back; the next step that starts goes back to following the current one. Limited height with mouse
   scroll, and the Done badge.
+  Under it, dimmed and labelled `previous — step i-1`, is the log of the step before it (newest first; 2026-11-18).
 - Robot State and the GRACE trace are unchanged; the Log steps also work for SAGE events (`index` / `action` / `object`
   instead of `step` / `total` / `task`).
 

@@ -928,6 +928,17 @@
       ],
       "title": "Note"
      },
+     "prompt": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prompt"
+     },
      "robot_mode": {
       "anyOf": [
        {

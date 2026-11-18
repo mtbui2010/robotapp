@@ -288,7 +288,7 @@ all three Korean test phrases right).
 
 **🔥 Warm up (2026-10-16).** Whisper unloads after 300 s unused, Ollama after `keep_alive`, visionserve loads a
 model on its first call — and on 2026-10-15 Whisper could not load again (GPU full) and `ask` failed. The
-DevicePanel's **🔥 Warm up** (next to Ping All; operator-clicked, nothing runs by itself) calls kcare's
+DevicePanel's **🔥 Warm up** (next to Ping; operator-clicked, nothing runs by itself) calls kcare's
 `warmup_servers` skill (`skills/warmup.py`, also usable as a plan step; not narrated). It warms **every server of
 every AI connection at the same time**: Whisper (0.5 s of silence, with the server's VAD off — with it on the model never ran and a full GPU warmed "ok"), Ollama (an empty `/api/generate` with
 `keep_alive`), visionserve (the models kcare calls: FIND_CONFIGS detectors, `siglip-image`); a cloud API only has

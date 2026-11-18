@@ -46,3 +46,5 @@ sentence per language through the browser's voice: it tells whether the browser'
 Test by hand: restart the backend (direct needs `GET /tts`), tick **record screen**, run `announce::안녕하세요`, stop, play the
 `.webm`; again with 🎤 ticked, answering an `ask::`. The robot's own speaker (`source='robot'`) is outside the browser and is
 never recorded.
+
+**Quick buttons** (the pose / skill buttons under the camera): a click never starts this recording, even with *rec screen* ticked (2026-11-18); a run typed in the Agent panel does.

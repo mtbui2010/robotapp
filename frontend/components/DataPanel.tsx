@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import { type CropSpec, cropRect, cleanText, defaultExportName, editChanged, effectiveLabel, exportText, fmtSec, jointRange, keptRange, polyline, suggestApplied, xToTime, type RecDetail, type RecEdit, type RecExport, type RecList, type RecRow } from '../lib/recordings'
+import { type CropSpec, cropRect, cleanText, defaultExportName, editChanged, effectiveLabel, exportText, fmtSec, jointRange, keptRange, kindCounts, polyline, rowsOfKind, suggestApplied, withPrompt, xToTime, type RecDetail, type RecEdit, type RecExport, type RecList, type RecRow } from '../lib/recordings'
 
 const W = 640, H = 120
 const COLORS = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#db2777', '#65a30d']
@@ -18,11 +18,16 @@ export default function DataPanel() {
   const [expRes, setExpRes] = useState<RecExport | null>(null)
   const [cleanMsg, setCleanMsg] = useState('')
   const [redo, setRedo] = useState(false)
+  const [kind, setKind] = useState('')                                  // the filter: '' = every episode, else `stack cups` / `open drawer` (from the fields filled when recording)
   const setMode = (r: RecRow, m: string) => {                           // the mode of an episode, saved at once from the table (the other parts of its edit are kept)
     const e = r.edit ?? {}
-    const rest = { trim_start_s: e.trim_start_s, trim_end_s: e.trim_end_s, label: e.label, exclude: e.exclude, note: e.note }
+    const rest = { trim_start_s: e.trim_start_s, trim_end_s: e.trim_end_s, label: e.label, exclude: e.exclude, note: e.note, prompt: e.prompt }
     const empty = !m && Object.values(rest).every(v => v === undefined || v === '' || v === false)
     ;(empty ? api.deleteRecordingEdit(r.id) : api.saveRecordingEdit(r.id, { ...rest, robot_mode: m || undefined })).then(() => { setErr(''); load() }).catch(e2 => setErr(e2 instanceof Error ? e2.message : String(e2)))
+  }
+  const setPrompt = (r: RecRow, text: string) => {                      // the wording of an episode, saved at once from the table (an edit: the raw files are not changed)
+    const next = withPrompt(r.edit, r.recorded_prompt ?? r.prompt, text)
+    ;(next ? api.saveRecordingEdit(r.id, next) : api.deleteRecordingEdit(r.id)).then(() => { setErr(''); load() }).catch(e2 => setErr(e2 instanceof Error ? e2.message : String(e2)))
   }
   const [asking, setAsking] = useState<string | null>(null)             // the episode whose delete is waiting for its Yes
   const trash = (id: string) => api.deleteRecording(id).then(r => { setAsking(null); if (sel === id) setSel(null); setCleanMsg(`${id} moved to ${r.trash}`); setErr(''); load() })
@@ -34,6 +39,8 @@ export default function DataPanel() {
     .then(r => { setExpRes(r); setErr('') }).catch(e => { setExpRes(null); setErr(e instanceof Error ? e.message : String(e)) })
   if (!list) return <div data-testid="data-panel" className="text-sm text-gray-500 p-3">{err || 'Reading the recordings…'}</div>
   const t = list.totals
+  const kinds = kindCounts(list.episodes)
+  const shown = rowsOfKind(list.episodes, kinds.some(k => k.kind === kind) ? kind : '')   // a kind that is gone (episodes deleted) shows all
   return (
     <div data-testid="data-panel" className="flex flex-col gap-2 text-xs">
       <div className="flex flex-wrap items-center gap-2 border border-gray-200 rounded px-2 py-1 bg-white">
@@ -57,12 +64,21 @@ export default function DataPanel() {
       </div>
       {expRes && <div data-testid="export-result" className="border border-green-200 bg-green-50 rounded px-2 py-1 text-green-800">{exportText(expRes)}<div className="font-mono text-[11px] text-gray-700 break-all select-all mt-0.5">{expRes.command}</div></div>}
       {err && <div data-testid="data-error" className="text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{err}</div>}
-      <div className="overflow-x-auto border border-gray-200 rounded bg-white">
+      {kinds.length > 0 && (
+        <div data-testid="kind-filter" className="flex flex-wrap items-center gap-1 text-gray-600" title="Filter the list by what was filled when recording (action + object). It only changes what is listed here; Auto-clean all and Export still use every episode.">
+          <span>show</span>
+          {[{ kind: '', n: list.episodes.length }, ...kinds].map(k => (
+            <button key={k.kind || 'all'} data-testid={`kind-${k.kind || 'all'}`} onClick={() => setKind(k.kind)} aria-pressed={kind === k.kind}
+              className={`px-2 py-0.5 rounded-full border ${kind === k.kind ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300 bg-white hover:bg-gray-100'}`}>{k.kind || 'all'} <span className="opacity-70">{k.n}</span></button>))}
+          {kind && <span className="text-gray-500">{shown.length} of {list.episodes.length}</span>}
+        </div>)}
+      {/* about 5 rows high, then it scrolls; the header stays */}
+      <div data-testid="data-table" className="overflow-auto max-h-56 border border-gray-200 rounded bg-white">
         <table className="w-full text-left">
-          <thead className="text-gray-500 border-b border-gray-200"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th title="the robot's mode when the recording started: the head camera's view (and the crop that suits it) depends on it">mode</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th><th>clean</th><th></th></tr></thead>
+          <thead className="text-gray-500 border-b border-gray-200 sticky top-0 bg-white z-10"><tr><th className="px-2 py-1">episode</th><th>prompt</th><th>label</th><th title="the robot's mode when the recording started: the head camera's view (and the crop that suits it) depends on it">mode</th><th>length</th><th>idle start / end</th><th>moving</th><th>kept</th><th>⚠</th><th>clean</th><th></th></tr></thead>
           <tbody>
-            {list.episodes.map(r => <Row key={r.id} r={r} modes={list.modes ?? []} setMode={m => setMode(r, m)} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} clean={() => clean([r.id], true)} asking={asking === r.id} ask={() => setAsking(r.id)} no={() => setAsking(null)} del={() => trash(r.id)} />)}
-            {!list.episodes.length && <tr><td colSpan={11} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
+            {shown.map(r => <Row key={r.id} r={r} modes={list.modes ?? []} setMode={m => setMode(r, m)} setPrompt={t => setPrompt(r, t)} on={sel === r.id} pick={() => setSel(sel === r.id ? null : r.id)} clean={() => clean([r.id], true)} asking={asking === r.id} ask={() => setAsking(r.id)} no={() => setAsking(null)} del={() => trash(r.id)} />)}
+            {!shown.length && <tr><td colSpan={11} className="px-2 py-3 text-gray-500">No episodes yet in {list.dir}. Record some with ● Record on the Cameras tab.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -71,7 +87,7 @@ export default function DataPanel() {
   )
 }
 
-type RowProps = { r: RecRow; modes: string[]; setMode: (m: string) => void; on: boolean; pick: () => void; clean: () => void; asking: boolean; ask: () => void; no: () => void; del: () => void }
+type RowProps = { r: RecRow; modes: string[]; setMode: (m: string) => void; setPrompt: (t: string) => void; on: boolean; pick: () => void; clean: () => void; asking: boolean; ask: () => void; no: () => void; del: () => void }
 
 // The delete cell: 🗑, then `trash? Yes / No` in place. The episode is MOVED to <data>/trash (the raw files are kept there), never deleted for good.
 function DeleteCell({ r, asking, ask, no, del }: Pick<RowProps, 'r' | 'asking' | 'ask' | 'no' | 'del'>) {
@@ -87,12 +103,33 @@ function DeleteCell({ r, asking, ask, no, del }: Pick<RowProps, 'r' | 'asking' |
   )
 }
 
-function Row({ r, modes, setMode, on, pick, clean, asking, ask, no, del }: RowProps) {
+// The prompt cell: the sentence (✎ when you changed it); double-click or the pencil edits it in place, Enter / leaving the box saves, Esc cancels, an empty
+// text (or the recorded one) goes back to the recorded wording. Saved in the edit list, the raw episode is not touched.
+function PromptCell({ r, save }: { r: RecRow; save: (text: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const done = (keep: boolean) => { const t = draft; setDraft(null); if (keep && t !== null && t.trim() !== r.prompt.trim()) save(t) }
+  const edited = !!r.edit?.prompt && r.edit.prompt !== r.recorded_prompt
+  return (
+    <td data-testid={`prompt-${r.id}`} onClick={e => e.stopPropagation()} onDoubleClick={() => setDraft(r.prompt)} className="max-w-[18rem]">
+      {draft !== null
+        ? <input data-testid={`prompt-input-${r.id}`} autoFocus value={draft} onChange={e => setDraft(e.target.value)} onBlur={() => done(true)} aria-label={`prompt of ${r.id}`}
+            onKeyDown={e => { if (e.key === 'Enter') done(true); else if (e.key === 'Escape') done(false) }} className="w-full px-1 py-0.5 rounded border border-blue-300 bg-white text-gray-800" />
+        : <span className="group flex items-center gap-1">
+            <span className="truncate" title={edited ? `recorded as: ${r.recorded_prompt}` : r.prompt}>{r.prompt}</span>
+            {edited && <span className="text-[10px] text-gray-400" title={`recorded as: ${r.recorded_prompt}`}>✎</span>}
+            <button data-testid={`prompt-edit-${r.id}`} onClick={() => setDraft(r.prompt)} aria-label={`edit the prompt of ${r.id}`} title="Edit the prompt (double-click works too)"
+              className="invisible group-hover:visible text-[10px] px-0.5 text-gray-400 hover:text-blue-500">✎</button>
+          </span>}
+    </td>
+  )
+}
+
+function Row({ r, modes, setMode, setPrompt, on, pick, clean, asking, ask, no, del }: RowProps) {
   if (r.error) return <tr className="text-red-700"><td className="px-2 py-1">{r.id}</td><td colSpan={9}>{r.error}</td><DeleteCell r={r} asking={asking} ask={ask} no={no} del={del} /></tr>
   const s = r.summary, [a, b] = keptRange(r), lab = effectiveLabel(r)
   return (
     <tr data-testid={`row-${r.id}`} onClick={pick} className={`cursor-pointer border-b border-gray-100 ${on ? 'bg-blue-50' : 'hover:bg-gray-50'} ${r.edit?.exclude ? 'opacity-50 line-through' : ''}`}>
-      <td className="px-2 py-1 font-mono">{r.id}</td><td className="max-w-[18rem] truncate" title={r.prompt}>{r.prompt}</td>
+      <td className="px-2 py-1 font-mono">{r.id}</td><PromptCell r={r} save={setPrompt} />
       <td className={lab === 'success' ? 'text-green-700' : 'text-amber-700'}>{lab}{r.edit?.label && r.edit.label !== r.label ? ' ✎' : ''}</td>
       <td data-testid={`mode-${r.id}`} onClick={e => e.stopPropagation()} className="whitespace-nowrap">
         {/* the same width and the same plain labels in every row; the source is a small mark after it: rec = as recorded, ✎ = set by you */}
@@ -139,7 +176,7 @@ function Detail({ id, onSaved, crop, modes }: { id: string; onSaved: () => void;
   const a = form.trim_start_s ?? 0, b = form.trim_end_s ?? dur
   const px = (s: number) => (s / dur) * W
   const changed = editChanged(d.edit, form, dur)
-  const save = () => api.saveRecordingEdit(id, { ...(form.trim_start_s !== undefined || form.trim_end_s !== undefined ? { trim_start_s: a, trim_end_s: b } : {}), label: form.label, exclude: !!form.exclude, note: form.note, robot_mode: form.robot_mode })
+  const save = () => api.saveRecordingEdit(id, { ...(form.trim_start_s !== undefined || form.trim_end_s !== undefined ? { trim_start_s: a, trim_end_s: b } : {}), label: form.label, exclude: !!form.exclude, note: form.note, robot_mode: form.robot_mode, prompt: form.prompt })
     .then(() => { setErr(''); onSaved(); return api.getRecording(id).then(x => { setD(x); setForm(x.edit ?? {}) }) }).catch(e => setErr(e instanceof Error ? e.message : String(e)))
   const reset = () => api.deleteRecordingEdit(id).then(() => { setForm({}); onSaved(); return api.getRecording(id).then(setD) }).catch(e => setErr(e instanceof Error ? e.message : String(e)))
   const sug = d.summary.trim_suggest

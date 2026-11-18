@@ -606,7 +606,8 @@ export default function PlanPanel({ events, steps, planMethod, running }: Props)
   const runningAt = steps.map(st => st.status).lastIndexOf('running')
   const currentAt = runningAt >= 0 ? runningAt : steps.length - 1
   const shownAt = picked != null && picked >= 0 && picked < steps.length ? picked : currentAt
-  const stepsView = steps.length ? [{ step: steps[shownAt], i: shownAt }] : []   // SAGE reuses a step index after a splice: key by position
+  // the shown step first, the one before it under it (newest first); SAGE reuses a step index after a splice: key by position
+  const stepsView = steps.length ? [shownAt, shownAt - 1].filter(i => i >= 0).map(i => ({ step: steps[i], i })) : []
 
   // Two backends, two shapes: the closed-loop (GRACE) sends `status`
   // ('success'|'failed'|'planned'|'aborted'); run_direct / legacy `run` send a
@@ -691,7 +692,7 @@ export default function PlanPanel({ events, steps, planMethod, running }: Props)
       {/* GRACE per-sub-goal plan / violations / refine trace */}
       <GracePlanningTrace events={events} />
 
-      {/* Log: the detail (logs, result JSON) of the step being run, or of the step picked in Plan progress. */}
+      {/* Log: the detail (logs, result JSON) of the step being run, or of the step picked in Plan progress, and under it the step before (newest first). */}
       {steps.length > 0 && (
         <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-2" style={SMALL}>
           <div className="flex items-center justify-between">
@@ -707,8 +708,9 @@ export default function PlanPanel({ events, steps, planMethod, running }: Props)
             </div>
           </div>
           <div ref={logRef} data-testid="exec-scroll" className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
-          {stepsView.map(({ step, i }) => (
-            <div key={i} data-log-seq={i} className="min-w-0">
+          {stepsView.map(({ step, i }, k) => (
+            <div key={i} data-log-seq={i} className={`min-w-0 ${k > 0 ? 'border-t border-gray-200 pt-2 opacity-70' : ''}`}>
+              {k > 0 && <p className="text-[10px] text-gray-400 uppercase mb-1">previous — step {i + 1}</p>}
               {/* only the log of the step (its msg lines, result): the step's own title is in Plan progress */}
               {step.logs && <StepLogs logs={step.logs} />}
               {step.result && <StepResult result={step.result} />}

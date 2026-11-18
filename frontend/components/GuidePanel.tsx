@@ -22,21 +22,21 @@ const STEPS: Step[] = [
     number: 2,
     title: 'Register the running robot',
     description: 'Point the dashboard at the agent URL from Step 1 so it can load skills.',
-    detail: 'In the Robot Agent picker at the top of the left sidebar, click "+ Add", enter a name and the agent URL (http://localhost:8001 if it\'s on the same machine), then Save. Click "Connect" to load skills — a green "✓ N skills" badge confirms success.',
+    detail: 'In the Robot Agent picker at the top of the left sidebar, click ＋ (Add a robot), enter a name and the agent URL (http://localhost:8001 if it\'s on the same machine), then Save. Click "Connect" to load skills — a green "✓ N skills" badge confirms success.',
     example: 'http://localhost:8001',
   },
   {
     number: 3,
     title: 'Connect an LLM',
     description: 'The LLM turns natural-language commands into a task plan.',
-    detail: 'In the Connections panel click "+ Add", choose type "LLM", pick a provider (Llama / ChatGPT / Gemini). For ChatGPT/Gemini enter the API key (saved server-side; leave blank later to keep). Then mark one LLM as active with the radio button next to it.',
+    detail: 'In the Connections panel click ＋ (Add a connection), choose type "LLM", pick a provider (Llama / ChatGPT / Gemini). For ChatGPT/Gemini enter the API key (saved server-side; leave blank later to keep). Then mark one LLM as active with the radio button next to it.',
     example: '{"name": "llama", "url": "http://localhost:11434", "model": "llama3"}',
   },
   {
     number: 4,
     title: 'Connect to ROS',
     description: 'Add the ROS services, topics, and actions your skills need.',
-    detail: 'Click "Scan ROS" to discover ROS2 endpoints on the robot, then click "+ add" next to each one to quick-connect. Or add manually via "+ Add" → type ROS Service / ROS Topic / ROS Action. The form auto-suggests encode/decode templates from the data_interface.',
+    detail: 'Click "Scan" to discover ROS2 endpoints on the robot, then click "+ add" next to each one to quick-connect. Or add manually via ＋ (Add a connection) → type ROS Service / ROS Topic / ROS Action. The form auto-suggests encode/decode templates from the data_interface.',
     example: '{"conn_name": "/skill_pick", "data_interface": "rosinterfaces/srv/SendStringData"}',
   },
   {
@@ -245,7 +245,7 @@ export default function GuidePanel({ open: openProp, onOpenChange, hideTrigger }
               {tab === 'configs' && (
                 <div className="flex flex-col gap-3">
                   <p className="text-xs text-gray-500 mb-1">
-                    Reference configs for the "+ Add" form. The form has dedicated fields for these values — the JSON shown is what gets sent. ChatGPT / Gemini API keys are entered in a separate password field and stored server-side, not in the config.
+                    Reference configs for the ＋ (Add a connection) form. The form has dedicated fields for these values — the JSON shown is what gets sent. ChatGPT / Gemini API keys are entered in a separate password field and stored server-side, not in the config.
                   </p>
                   {CONNECTION_CONFIGS.map(cfg => (
                     <div key={cfg.type} className="border border-gray-200 rounded-lg overflow-hidden">

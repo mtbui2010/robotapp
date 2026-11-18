@@ -179,6 +179,8 @@ interface WarmKind {
   level: 'ok' | 'warn' | 'error'
   servers: { connection: string; idx: number; label: string; primary: boolean; ok: boolean; sec: number; error: string }[]
 }
+// The small square-ish buttons of the picker rows (add / edit / delete / warm up): an icon, the meaning is in title + aria-label.
+const ICON_BTN = 'px-2 py-1 text-xs rounded leading-none whitespace-nowrap'
 const WARM_KINDS: [string, string][] = [['vlms', 'VLMs'], ['visions', 'Visions'], ['voices', 'Voices']]
 
 export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveChange }: Props) {
@@ -888,32 +890,16 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
           <button
             onClick={() => void connectActiveRobot()}
             disabled={agentConnecting || !activeRobot}
-            className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded"
+            className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded whitespace-nowrap"
             title="Test connection to the active robot"
           >
             {agentConnecting ? '…' : 'Connect'}
           </button>
-          <button
-            onClick={openAddRobot}
-            className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
-          >
-            + Add
-          </button>
-          <button
-            onClick={openEditRobot}
-            disabled={!activeRobot}
-            className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700 rounded"
-          >
-            Edit
-          </button>
-          <button
-            onClick={removeActiveRobot}
-            disabled={!activeRobot}
-            className="px-2.5 py-1 text-xs bg-red-100 hover:bg-red-200 disabled:opacity-40 text-red-700 rounded"
-            title="Remove the active robot"
-          >
-            Remove
-          </button>
+          <button onClick={openAddRobot} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 text-gray-700`} title="Add a robot" aria-label="Add a robot">＋</button>
+          <button onClick={openEditRobot} disabled={!activeRobot} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700`}
+            title="Edit the active robot" aria-label="Edit the active robot">✎</button>
+          <button onClick={removeActiveRobot} disabled={!activeRobot} className={`${ICON_BTN} bg-red-100 hover:bg-red-200 disabled:opacity-40 text-red-700`}
+            title="Remove the active robot" aria-label="Remove the active robot">🗑</button>
         </div>
 
         {robotEditor && (
@@ -984,28 +970,13 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
               </option>
             ))}
           </select>
-          <button
-            onClick={openAddLocation}
-            disabled={locBusy || locations.length === 0}
-            className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700 rounded"
-          >
-            + Add
-          </button>
-          <button
-            onClick={openRenameLocation}
-            disabled={locBusy || !activeLocation}
-            className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700 rounded"
-          >
-            Rename
-          </button>
-          <button
-            onClick={() => void removeLocation()}
-            disabled={locBusy || !activeLocation || activeLocation === 'default'}
-            className="px-2.5 py-1 text-xs bg-red-100 hover:bg-red-200 disabled:opacity-40 text-red-700 rounded"
+          <button onClick={openAddLocation} disabled={locBusy || locations.length === 0} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700`}
+            title="Add a location" aria-label="Add a location">＋</button>
+          <button onClick={openRenameLocation} disabled={locBusy || !activeLocation} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700`}
+            title="Rename the active location" aria-label="Rename the active location">✎</button>
+          <button onClick={() => void removeLocation()} disabled={locBusy || !activeLocation || activeLocation === 'default'} className={`${ICON_BTN} bg-red-100 hover:bg-red-200 disabled:opacity-40 text-red-700`}
             title={activeLocation === 'default' ? 'The default location cannot be deleted' : 'Delete the active location'}
-          >
-            Delete
-          </button>
+            aria-label="Delete the active location">🗑</button>
         </div>
 
         {activeLocation && locUsers(activeLocation).length > 0 && (
@@ -1087,7 +1058,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
             <button
               onClick={warmUp}
               disabled={warming}
-              className="px-2 py-1 text-xs bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-white rounded"
+              className={`${ICON_BTN} bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-white`}
               title="Warm up: load the models on every AI server (all at once), so the first answer is not slow. Green: the main servers work · amber: a fallback does · red: no server of a kind works"
               aria-label="Warm up servers"
             >
@@ -1096,23 +1067,25 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
             <button
               onClick={pingAll}
               disabled={pinging}
-              className="px-2.5 py-1 text-xs bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white rounded"
+              className="px-2 py-1 text-xs bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white rounded"
               title="Ping all connections now"
             >
-              {pinging ? 'Pinging…' : 'Ping All'}
+              {pinging ? '…' : 'Ping'}
             </button>
             <button
               onClick={scanRos}
               disabled={scanning}
-              className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded"
+              className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded"
+              title="Scan ROS: discover the ROS 2 endpoints on the robot"
             >
-              {scanning ? 'Scanning…' : 'Scan ROS'}
+              {scanning ? '…' : 'Scan'}
             </button>
             <button
               onClick={() => { setShowAdd(!showAdd); setEditId(null); setConnOpen(true) }}
-              className="px-2.5 py-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
+              className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 text-gray-700`}
+              title="Add a connection" aria-label="Add a connection"
             >
-              + Add
+              ＋
             </button>
           </div>
         </div>

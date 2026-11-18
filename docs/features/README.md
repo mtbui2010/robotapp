@@ -27,4 +27,5 @@ add the dated line to [../CHANGELOG.md](../CHANGELOG.md).
 | [SAGE planner + assist layer (2026-10-09)](sage-assist.md) |
 | [Planner prompt (read-only, built from the manifest; 2026-11-02)](planner-prompt.md) |
 | [Config groups in the dashboard (2026-10-26)](config-groups.md) |
-| [Drawer skills: open_drawer handle, vla_drawer_open (2026-10-26)](drawer-skills.md) |
+| [Drawer skills: open_drawer handle (2026-10-26)](drawer-skills.md) |
+| [VLA stack skill: `vla_stack` through vlaserve (2026-11-18)](vla-stack.md) |

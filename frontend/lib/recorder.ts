@@ -45,7 +45,7 @@ export function recordBlock(r: RecorderStatus, runInFlight: boolean, hasAction: 
   if (r.state && r.state.ready === false) return 'the shared folder cannot be written'
   if (recPhase(r) !== 'idle') return `the recorder is ${r.state?.state}`
   if (runInFlight) return 'a run is in flight: cancel it first'
-  if (!hasPrompt && !hasAction) return 'fill the action (and the other fields), or write a prompt'
+  if (!hasPrompt && !hasAction) return 'fill the action (and the other fields) of the checked row'
   return ''
 }
 
@@ -59,4 +59,31 @@ export function lastText(r: RecorderStatus): string {
 export function savingText(r: RecorderStatus): string {
   const n = r.state?.saving ?? 0
   return n > 1 ? `saving ${n}…` : n === 1 ? 'saving…' : ''
+}
+
+/** The field rows of the Record bar (two, so open and close a drawer need no retyping), the "Go to" pose each row starts from (`inits`: a pose id, '' = none),
+ *  whether that row records BEFORE the move (`before`; default false = the recording starts after the arm arrived) and which row Record uses. `raw` = the saved state, `legacy` = the single set of fields an older version saved (it becomes row 1). Anything unreadable
+ *  gives empty rows, no init, the first row active. */
+export interface RecRows { rows: Record<string, string>[]; inits: string[]; before: boolean[]; active: number }
+export function parseRecRows(raw: string | null, legacy: string | null, n = 2): RecRows {
+  const obj = (t: string | null): Record<string, string> => { try { const v = JSON.parse(t || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} } }
+  let rows: Record<string, string>[] = []
+  let inits: string[] = []
+  let before: boolean[] = []
+  let active = 0
+  try {
+    const v = JSON.parse(raw || 'null')
+    if (v && Array.isArray(v.rows)) {
+      rows = v.rows.filter((r: unknown) => r && typeof r === 'object' && !Array.isArray(r))
+      inits = Array.isArray(v.inits) ? v.inits.map((x: unknown) => (typeof x === 'string' ? x : '')) : []
+      before = Array.isArray(v.before) ? v.before.map((x: unknown) => x === true) : []
+      active = Number(v.active) || 0
+    }
+  } catch { /* unreadable: start empty */ }
+  if (!rows.length) rows = [obj(legacy)]
+  while (rows.length < n) rows.push({})
+  rows = rows.slice(0, n)
+  inits = Array.from({ length: n }, (_, i) => inits[i] ?? '')
+  before = Array.from({ length: n }, (_, i) => before[i] ?? false)
+  return { rows, inits, before, active: active >= 0 && active < n ? active : 0 }
 }

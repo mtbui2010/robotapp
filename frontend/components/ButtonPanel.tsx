@@ -324,10 +324,10 @@ export default function ButtonPanel({ onRun, refreshKey = 0 }: Props) {
               </div>
             </div>
           ))}
-          {form === null && (
-            <button type="button" onClick={openAdd} title="Add a button to this group" data-testid="button-add"
-              className="h-[30px] text-[13px] rounded border border-dashed border-gray-300 text-gray-400 hover:text-blue-500 hover:border-blue-400">＋</button>
-          )}
+          {/* always there: while the form is open it shows as pressed and a click closes the form (it used to disappear, and the form sits below the tray) */}
+          <button type="button" onClick={form !== null && editId === null ? cancel : openAdd} data-testid="button-add" aria-pressed={form !== null && editId === null}
+            title={form !== null && editId === null ? 'Close the form' : 'Add a button to this group'}
+            className={`h-[30px] text-[13px] rounded border border-dashed ${form !== null && editId === null ? 'border-blue-400 text-blue-500 bg-blue-50' : 'border-gray-300 text-gray-400 hover:text-blue-500 hover:border-blue-400'}`}>＋</button>
         </div>
       )}
 

@@ -6,6 +6,20 @@ in `CLAUDE.md`, mixed with the specs. The full text of each entry is still in th
 line, link. Undated features (Cancel / Stop, camera streaming, Robot State, plan skills, skill and location
 aliases, planner guides) predate the dated notes; see their docs.
 
+## 2026-11-18
+
+- **Data tab:** the prompt of an episode can be edited in the table (double-click / ✎); saved in the edit list, used by the list and the export, raw files untouched. robot_agent: `prompt` in `PUT /recordings/<day>/<ep>/edit`, `recorded_prompt` in the rows; Auto-clean no longer drops a mode or prompt you set ([data-tab](features/data-tab.md)).
+- **Record bar:** a `Go to…` drop-down before each row picks the pose the arm goes to before that row's recording starts (the move is not recorded; a failed move records nothing) ([recorder](features/recorder.md)). The row checkbox is first in each row; `rec first` (per row, off by default) starts the recording before the move so the move is part of the episode.
+- **Record bar:** two rows of fields with a checkbox each (Record uses the checked row; no retyping between open and close drawer); the prompt box is gone, ✨ shows a sample sentence under its row; one blue Record button for both rows; the Record button, clock and icon are blue, not red ([recorder](features/recorder.md))
+- **Sidebar pickers:** the robot, location and connections rows are compact: `＋` / `✎` / `🗑` icon buttons (the meaning is in the tooltip), `Ping` and `Scan` instead of `Ping All` / `Scan ROS`; nothing wraps in the 288 px column.
+- **Log panel / buttons:** the Log shows the step before the shown one under it (newest first); the `＋` cell of a button group stays visible while the add form is open ([chat](features/chat.md), [shortcut-buttons](features/shortcut-buttons.md)).
+- **Data tab:** the episode table is ~5 rows high with a scroll, and chips filter it by what was filled when recording (`stack cups`, `open drawer`, `close drawer`) ([data-tab](features/data-tab.md)).
+- **Record prompts:** *Generate* has more wordings for opening and closing a drawer (`open the drawer`, `shut this drawer`, `pull open the top drawer for me` ...); the kcare templates are in `RECORDER['prompts']` ([recorder](features/recorder.md)). Also for `align` (shoes) and `wipe` (spill / table, with a towel).
+- **Screen recording:** a quick-button click (Arm / Head / ... tabs) no longer starts the *rec screen* recording even when its box is ticked; only a run from the Agent panel does ([screen-recording](features/screen-recording.md)).
+- `vla_stack`: default model `kcare-stack-4999` (stacked the cups on the robot; 1000 did not grasp), `seconds` 25 as a cap, and the run ends early when the cup was grasped, released and the arm stands still (`VLA_CONFIGS.stack.finish`) ([vla-stack](features/vla-stack.md)).
+- New skill `vla_stack` (kcare_robot): stacks cups with the pi0.5 policy served by vlaserve; dry run by default, not tested on the robot. [features/vla-stack.md](features/vla-stack.md)
+- `vla_drawer_open` removed (skill, `VLA_CONFIGS` form, sim connection) in kcare_robot; policies will be served by a single vlaserve container with per-model manifests. [features/drawer-skills.md](features/drawer-skills.md)
+
 ## 2026-11-17
 
 - The data folder is configured as a relative path (`../vla_data`, from the repo root): the same on every machine ([recorder](features/recorder.md)).

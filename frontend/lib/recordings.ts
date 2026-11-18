@@ -15,12 +15,14 @@ export interface RecSummary {
   max_speed_rad_s?: number
   warnings: string[]
 }
-export interface RecEdit { trim_start_s?: number; trim_end_s?: number; label?: string; exclude?: boolean; note?: string; robot_mode?: string }
+export interface RecEdit { trim_start_s?: number; trim_end_s?: number; label?: string; exclude?: boolean; note?: string; robot_mode?: string; prompt?: string }
 export interface RecRow {
   id: string
   day: string
   episode: string
-  prompt: string
+  prompt: string                // the wording that counts: the operator's edit, else the one recorded
+  recorded_prompt?: string      // the wording recorded with the episode (the edit never changes the raw files)
+  kind_fields?: Record<string, string> | null   // what the operator filled when recording (action, target_object ...); older episodes have none
   label?: string | null
   robot_mode?: string | null    // left | front | right: the operator's setting, else the one recorded (from the head angle when the recording started; older episodes have none)
   recorded_mode?: string | null // the mode as recorded
@@ -72,7 +74,7 @@ export const xToTime = (x: number, w: number, duration: number): number => Math.
 export function editChanged(saved: RecEdit | null | undefined, now: RecEdit, duration: number): boolean {
   const norm = (e: RecEdit | null | undefined) => ({
     a: e?.trim_start_s && e.trim_start_s > 0 ? e.trim_start_s : 0, b: e?.trim_end_s && e.trim_end_s < duration - 0.05 ? e.trim_end_s : duration,
-    label: e?.label ?? '', exclude: !!e?.exclude, note: e?.note ?? '', mode: e?.robot_mode ?? '',
+    label: e?.label ?? '', exclude: !!e?.exclude, note: e?.note ?? '', mode: e?.robot_mode ?? '', prompt: e?.prompt ?? '',
   })
   return JSON.stringify(norm(saved)) !== JSON.stringify(norm(now))
 }
@@ -104,4 +106,29 @@ export function cropRect(w: number, h: number, spec: CropSpec, mode?: string | n
     return { x: Math.max(0, Math.min(w - side, x0)), y: 0, side }
   }
   return { x: 0, y: Math.floor((h - side) / 2), side }
+}
+
+/** What an episode is about, from the fields the operator filled: `stack cups`, `open drawer`. '' when it has none (older episodes, errors). */
+export function kindOf(r: RecRow): string {
+  const f = r.kind_fields ?? {}
+  return [f.action, f.target_object].map(v => (v ?? '').trim().toLowerCase()).filter(Boolean).join(' ')
+}
+
+/** The kinds present with how many episodes each has, the biggest first (ties by name); episodes with no kind are left out. */
+export function kindCounts(rows: RecRow[]): { kind: string; n: number }[] {
+  const c = new Map<string, number>()
+  for (const r of rows) { const k = kindOf(r); if (k) c.set(k, (c.get(k) ?? 0) + 1) }
+  return [...c].map(([kind, n]) => ({ kind, n })).sort((a, b) => b.n - a.n || a.kind.localeCompare(b.kind))
+}
+
+/** The rows of one kind; '' = all of them. */
+export const rowsOfKind = (rows: RecRow[], kind: string): RecRow[] => (kind ? rows.filter(r => kindOf(r) === kind) : rows)
+
+/** The edit list after the prompt of an episode was changed to `text`: the other parts are kept; a text that is empty or the recorded one removes the
+ *  override; null = nothing is left to save (delete the edit). */
+export function withPrompt(edit: RecEdit | null | undefined, recorded: string, text: string): RecEdit | null {
+  const { prompt: _old, ...rest } = edit ?? {}
+  const t = text.replace(/\s+/g, ' ').trim()
+  const next: RecEdit = t && t !== recorded.trim() ? { ...rest, prompt: t } : rest
+  return Object.values(next).every(v => v === undefined || v === '' || v === false) ? null : next
 }

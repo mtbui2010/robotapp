@@ -134,7 +134,7 @@ export default function Home() {
   const repeatRef = useRef<{ remaining: number; continueOnError: boolean; active: boolean }>(
     { remaining: 1, continueOnError: false, active: false }
   )
-  const argsRef = useRef<{ finalPrompt: string; direct: boolean; lang: string; planner: 'grace' | 'direct' | 'sage'; planOnly: boolean; logData: boolean; logTarget: 'backend' | 'frontend'; logAll: boolean; voice: boolean } | null>(null)
+  const argsRef = useRef<{ finalPrompt: string; direct: boolean; lang: string; planner: 'grace' | 'direct' | 'sage'; planOnly: boolean; logData: boolean; logTarget: 'backend' | 'frontend'; logAll: boolean; voice: boolean; screenRec: boolean } | null>(null)
   const robotLangsRef = useRef<RobotLanguages | null>(null)   // the robot's languages, for the speech language of a Detect run
   const heardLangRef = useRef<string | null>(null)             // the language heard last in a Detect run
   const runLang = (l: string) => speechLanguage(l, robotLangsRef.current, heardLangRef.current)
@@ -244,7 +244,7 @@ export default function Home() {
     // Planner actually used: structured/explicit plans run directly; otherwise
     // it's the chosen planner ('grace' | 'direct').
     setRunMethod(a.direct ? 'direct' : (a.planner ?? 'grace'))
-    beginRecording()                // no-op unless screen recording is enabled
+    if (a.screenRec) beginRecording()   // no-op unless screen recording is enabled; a quick-button run never starts one
 
     // Only the backend target writes the dataset to disk on the server; the
     // frontend target keeps the backend hands-off and downloads log images here.
@@ -594,7 +594,7 @@ export default function Home() {
   }, [emit, speak, beginRecording, endRecording, setRecordingPrefix, stopNudge, sendRun])
   useEffect(() => { fireRef.current = fire }, [fire])
 
-  const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true) => {
+  const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true, screenRec = true) => {
     if (!finalPrompt.trim() || running) return
     runFromChatRef.current = nextRunChatRef.current
     nextRunChatRef.current = false
@@ -614,7 +614,7 @@ export default function Home() {
       })
     }
     loadSpeechRate()                  // Global Configs may have changed since the page loaded
-    argsRef.current = { finalPrompt, direct, lang, planner, planOnly, logData, logTarget, logAll, voice }
+    argsRef.current = { finalPrompt, direct, lang, planner, planOnly, logData, logTarget, logAll, voice, screenRec }
     repeatRef.current = { remaining: repeatTimes, continueOnError, active: true }
     setTrial(0)                     // fire() bumps it to 1
     setRunning(true)
@@ -870,7 +870,7 @@ export default function Home() {
             <div className="p-3 border-b border-gray-200 flex-shrink-0">
               {/* Button-panel shortcuts run silently — no voice announcements. */}
               <ButtonPanel
-                onRun={plan => run(plan, true, 'en', 'grace', false, false, 'frontend', 1, false, true, false)}
+                onRun={plan => run(plan, true, 'en', 'grace', false, false, 'frontend', 1, false, true, false, false)}   // a button: no data log, no voice, no screen recording
                 refreshKey={skillRefreshKey} />
             </div>
             <div className="p-4 flex-1 overflow-y-auto">
@@ -952,7 +952,7 @@ export default function Home() {
               </button>
             </div>
             {mainTab === 'cameras' && showDataTools && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} poses={poseList} onPosesChanged={refreshPoses} />}
-            {mainTab === 'cameras' && showDataTools && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} />}
+            {mainTab === 'cameras' && showDataTools && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} poses={poseList} />}
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
               : mainTab === 'data' && recorder ? <DataPanel /> : <MapPanel clients={clients} running={running} />}

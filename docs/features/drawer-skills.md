@@ -19,27 +19,4 @@ not pass it, so their choice is unchanged). `retract_from_drawer` drives back af
 ENV of a drawer needs `handle` (detector name) and `handle_height`; without them open / close_drawer say so.
 Offline test: `kaair_real_capture/drawer_handle_20261026/test_drawer_select.py`. Not yet run on the robot.
 
-## vla_drawer_open: SmolVLA through vla-serve (2026-10-26)
-
-`vla_drawer_open::drawer` (kcare `skills/vla.py`) drives to the ENV place, puts the robot in the trained pose
-(head to the place's `default_mode` side tilted −41°, lift lowest, gripper open, `movej::approach_drawer`),
-checks it (arm ≤ 5°, head ≤ 8°, gripper open) and runs the policy served by vla-serve
-(`docker run --gpus all -p 11450:11450 -v /path/to/ckpt:/ckpt mtbui2010/vlaserve:latest serve --host 0.0.0.0
-/ckpt/<run>/pretrained_model`; checkpoint + README: `/remote_dir/kcare_vla_open_drawer_20261026/`). It is
-`vla_drawer_node_real.py` folded into the skill — its own rclpy node for the head / wrist images and joint states,
-actions to the forward controllers, the trajectory controllers switched back afterwards, also on error and on the
-dashboard's Cancel (watched by the skill: a forward controller is no action goal). The server is the
-**`http` connection `vlaserve`** (Connections panel, its `url` = vla-serve; kcare_bucheon: `http://192.168.0.6:11450`, the dev PC — container
-`vla-serve-drawer`, `--restart unless-stopped`, ~1.2 GB on the 3090, checkpoint mounted read-only from
-`remote_dir/kcare_vla_open_drawer_20261026/checkpoint`; from the robot one call ≈ 210 ms, 0 stalls at 15 fps,
-2026-10-26 dry run `kaair_real_capture/vla_drawer_20261026/dryrun_real_policy.py`). Settings: config group `VLA_CONFIGS.drawer_open` (Skill panel →
-vla_drawer_open): `url` (overrides the connection; neither → the sim's `/drawer/open` action when the site has a
-`vla_drawer_open` connection — the ros_action that had leaked into kcare_bucheon gave "action server not available"), **`execute` False = dry run** (nothing sent; README step 1), `fps` 30 (training speed; the first real run at 15,
-2026-10-26, reached ~60 % of the depth and closed on air), `seconds` 15 = TRAINED-motion seconds (the run lasts
-seconds × 30 / fps), `max_jump` 0.6 rad (0.35 tripped at 30 fps after 2.5 s: the real arm lags the commands), on any stop the arm's own
-position is sent as the last forward command before the switch back (the trajectory controller holds the last
-COMMAND: after the tripped run the arm went on 24°), `prompt` (or the place's ENV `vla_prompt`: "open the top drawer" · "open
-drawer" = middle · "open the bottom drawer"); any of them per call (`…, execute=True`). A text that is no ENV
-place is the prompt, run where the robot is (the old form). The vlaserve client comes from `client_path` (the copy
-next to the checkpoint) when not installed. Offline test (real topics, fake policy, dry run):
-`kaair_real_capture/vla_drawer_20261026/test_vla_drawer.py`. Never run with `execute` on the robot yet.
+(2026-11-18: the `vla_drawer_open` skill, its `VLA_CONFIGS` group, the sim `/drawer/open` connection and its vla-serve container were removed. Policies are served by the new vlaserve container; see its own docs.)

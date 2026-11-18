@@ -735,3 +735,46 @@ test('recorder: the background saving text', () => {
   assert.equal(RC.savingText(r(1)), 'saving…'); assert.equal(RC.savingText(r(2)), 'saving 2…')
   assert.equal(RC.recordBlock(r(1), false, true, true), '')                       // copying in the background does not block the next recording
 })
+
+test('recordings: episodes are grouped by the fields filled when recording', () => {
+  const row = (id, f) => ({ id, day: 'd', episode: id, prompt: 'p', kind_fields: f, summary: { duration_s: 1, warnings: [] } })
+  const rows = [row('a', { action: 'Stack', target_object: 'cups ' }), row('b', { action: 'stack', target_object: 'cups' }),
+    row('c', { action: 'open', target_object: 'drawer' }), row('d', { action: 'close', target_object: 'drawer' }), row('e', null), row('f', { action: '', target_object: '' })]
+  assert.equal(RS.kindOf(rows[0]), 'stack cups')
+  assert.deepEqual(RS.kindCounts(rows), [{ kind: 'stack cups', n: 2 }, { kind: 'close drawer', n: 1 }, { kind: 'open drawer', n: 1 }])
+  assert.deepEqual(RS.rowsOfKind(rows, 'open drawer').map(r => r.id), ['c'])
+  assert.equal(RS.rowsOfKind(rows, '').length, 6)                      // '' = all, also the ones with no kind
+  assert.equal(RS.rowsOfKind(rows, 'wipe table').length, 0)
+})
+
+test('recorder: two field rows, one active; an older single set of fields becomes row 1', () => {
+  const none = RC.parseRecRows(null, null)
+  assert.deepEqual(none, { rows: [{}, {}], inits: ['', ''], before: [false, false], active: 0 })
+  const old = RC.parseRecRows(null, JSON.stringify({ action: 'open', target_object: 'drawer' }))
+  assert.deepEqual(old.rows, [{ action: 'open', target_object: 'drawer' }, {}])
+  const two = RC.parseRecRows(JSON.stringify({ rows: [{ action: 'open' }, { action: 'close' }], active: 1 }), JSON.stringify({ action: 'x' }))
+  assert.deepEqual(two, { rows: [{ action: 'open' }, { action: 'close' }], inits: ['', ''], before: [false, false], active: 1 })     // the saved rows win over the old key
+  assert.equal(RC.parseRecRows(JSON.stringify({ rows: [{}, {}], active: 7 }), null).active, 0)   // a bad index falls back to the first row
+  assert.deepEqual(RC.parseRecRows('not json', 'also not json').rows, [{}, {}])
+})
+
+test('recordings: a prompt edit keeps the rest of the edit, and the recorded wording (or nothing) removes it', () => {
+  assert.deepEqual(RS.withPrompt(null, 'shut drawer', ' close   the drawer '), { prompt: 'close the drawer' })
+  assert.deepEqual(RS.withPrompt({ label: 'failure', trim_start_s: 2, prompt: 'old' }, 'shut drawer', 'new'), { label: 'failure', trim_start_s: 2, prompt: 'new' })
+  assert.deepEqual(RS.withPrompt({ label: 'failure', prompt: 'old' }, 'shut drawer', 'shut drawer'), { label: 'failure' })   // the recorded wording again: no override
+  assert.equal(RS.withPrompt({ prompt: 'old' }, 'shut drawer', '   '), null)                                              // nothing left: the edit is deleted
+  assert.equal(RS.withPrompt(null, 'shut drawer', ''), null)
+  assert.equal(RS.editChanged({ prompt: 'a' }, { prompt: 'b' }, 10), true)
+})
+
+test('recorder: the pose each row starts from is kept, padded to the rows, and an odd value is no pose', () => {
+  const got = RC.parseRecRows(JSON.stringify({ rows: [{ action: 'open' }, { action: 'close' }], inits: ['p1'], active: 0 }), null)
+  assert.deepEqual(got.inits, ['p1', ''])
+  assert.deepEqual(RC.parseRecRows(JSON.stringify({ rows: [{}, {}], inits: [3, 'p2', 'p3'] }), null).inits, ['', 'p2'])
+})
+
+test('recorder: recording before the move is off by default and kept per row', () => {
+  assert.deepEqual(RC.parseRecRows(null, null).before, [false, false])
+  assert.deepEqual(RC.parseRecRows(JSON.stringify({ rows: [{}, {}], before: [false, true] }), null).before, [false, true])
+  assert.deepEqual(RC.parseRecRows(JSON.stringify({ rows: [{}, {}], before: ['yes', 1, true] }), null).before, [false, false])   // only a real true counts
+})

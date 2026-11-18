@@ -9,7 +9,7 @@ A button has a **group**; the groups are an ordered list in `button_groups.json`
 `''` is **Other**, an implicit last group: a button with no group, or whose group was deleted (another machine), is in it.
 
 - The panel is a **row of group chips** (`Head · Mobile · Lift · Arm · Get ready · ＋`, one line in the 288 px column) and, under
-  it, the **tray of the open group**: its buttons plus a `＋` cell that adds a button to that group. Click a chip to open its
+  it, the **tray of the open group**: its buttons plus a `＋` cell that adds a button to that group (always shown; while the add form is open it is highlighted and a click closes the form, 2026-11-18). Click a chip to open its
   tray; click the open chip again to close it (the choice is kept in `localStorage`, `robotapp_button_group`; `-` = closed).
   One tray at a time. Other appears only when it has buttons.
 - Groups: `＋` new (asks the name), hover a chip for ✎ rename / × delete: × opens a **warning box** under the bar (not `window.confirm`, which a browser can mute) that
