@@ -1,0 +1,122 @@
+site_name: "robotapp"
+site_description: "A web dashboard for any robot_agent backend: chat, plans, cameras, map and a recorder."
+site_url: https://mtbui2010.github.io/robotapp/
+repo_url: https://github.com/mtbui2010/robotapp
+repo_name: mtbui2010/robotapp
+edit_uri: edit/main/website/docs/
+copyright: "robotapp documentation"
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - def_list
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_css:
+  - assets/extra.css
+extra_javascript:
+  - assets/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Where robotapp sits: overview.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Connect to a robot: guides/connect.md
+      - Run a task from the chat: guides/chat-task.md
+      - Run a plan or a shortcut button: guides/structured.md
+      - Stop a run: guides/stop.md
+      - Move the robot from the map: guides/map-move.md
+      - Record and clean episodes: guides/record-data.md
+      - Two robots in two tabs: guides/two-tabs.md
+  - How it works:
+      - Architecture and one run: how-it-works/index.md
+      - Key ideas: how-it-works/key-ideas.md
+      - Code map: how-it-works/code-map.md
+      - Proving it works: how-it-works/correctness.md
+  - Learn:
+      - 1. Where the dashboard sits: learn/01-ui-mode.md
+      - 2. The contract (OpenAPI, lint): learn/02-contract.md
+      - 3. The agent event stream: learn/03-event-stream.md
+      - 4. State and data flow in the page: learn/04-state.md
+      - 5. Camera and depth frames: learn/05-camera-depth.md
+      - 6. Map frames and robot poses: learn/06-map-pose.md
+      - 7. Build, check and run it for real: learn/07-build-run.md
+  - Modules:
+      - Page (run controller): modules/page.md
+      - API client: modules/api-client.md
+      - OpenAPI dump and types: modules/generated-contract.md
+      - Chat card and run state: modules/chat.md
+      - Voice and microphone: modules/voice.md
+      - Structured plans and buttons: modules/structured-runs.md
+      - Plan, log and robot state: modules/plan-view.md
+      - Cameras and depth: modules/cameras.md
+      - Map tab: modules/map.md
+      - Remote control and poses: modules/teleop-poses.md
+      - Recorder: modules/recorder.md
+      - Data tab: modules/data-tab.md
+      - Robots, sites, connections: modules/robots-connections.md
+      - Skills: modules/skills.md
+      - Configs and planner prompt: modules/configs.md
+      - Screen recording and run logs: modules/capture-logs.md
+      - Shared widgets and Guide: modules/shared-widgets.md
+      - Polling hooks: modules/hooks.md
+      - Lint: modules/lint.md
+      - Tests: modules/tests.md
+      - Build and deploy: modules/build-deploy.md
+  - Reference:
+      - Endpoints: reference/endpoints.md
+      - Agent events: reference/agent-events.md
+      - Browser storage: reference/browser-storage.md
+      - Make targets: reference/make-targets.md
+      - MAP config: reference/map-config.md
+      - Backend coupling: reference/backend-coupling.md
+      - Glossary: reference/glossary.md
