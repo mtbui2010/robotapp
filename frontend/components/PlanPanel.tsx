@@ -354,7 +354,7 @@ interface Props {
   running: boolean      // a run is active (false with no verdict: the plan list shows it as stopped)
 }
 
-// ── GRACE planning trace ──────────────────────────────────
+// ── SAGE planning trace ──────────────────────────────────
 // Reconstructs the per-sub-goal planning detail from the streamed `plan_step`
 // events (decompose → expand → refine → verify) so the operator can see the
 // concrete plan under each sub-goal, which steps violated symbolic
@@ -452,7 +452,7 @@ function GracePlanningTrace({ events }: { events: AgentEvent[] }) {
     <div className="bg-gray-50 border border-gray-200 rounded p-2 text-[11px]">
       <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1.5 w-full text-left">
         <span className="text-gray-600 text-[10px] w-3">{open ? '▾' : '▸'}</span>
-        <span className="text-gray-400 uppercase">GRACE planning trace</span>
+        <span className="text-gray-400 uppercase">SAGE planning trace</span>
         <span className="text-gray-400">— {traces.length} sub-goal{traces.length > 1 ? 's' : ''}</span>
         <span className={`ml-auto text-[10px] px-1 py-0.5 rounded border ${
           allOk ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'
@@ -550,13 +550,13 @@ const SMALL: React.CSSProperties = { zoom: 0.8 }
 
 export default function PlanPanel({ events, steps, planMethod, running }: Props) {
   // The 'plan' event differs by path: legacy/direct sends `plan` (a string),
-  // the closed-loop (GRACE) sends `steps` (an array of {action, object}). Render
-  // either — otherwise a GRACE plan never shows and "Generating…" stays stuck.
+  // the closed-loop (SAGE) sends `steps` (an array of {action, object}). Render
+  // either — otherwise a SAGE plan never shows and "Generating…" stays stuck.
   // BACKEND-WORKAROUND(plan-event-shape)
   const planEv = events.find(e => e.event === 'plan')
   const plan: string | undefined =
     // Prefer the kcare `skill::inputs` text the robot actually runs; then the
-    // legacy/direct `plan` string; finally a formatted view of GRACE steps.
+    // legacy/direct `plan` string; finally a formatted view of SAGE steps.
     typeof planEv?.plan_text === 'string' && planEv.plan_text.trim()
       ? planEv.plan_text
       : typeof planEv?.plan === 'string'
@@ -583,7 +583,7 @@ export default function PlanPanel({ events, steps, planMethod, running }: Props)
     return () => { cancelled = true }
   }, [startCount])
 
-  // Latest live planner-progress step (GRACE multi-step).
+  // Latest live planner-progress step (SAGE multi-step).
   const lastStep = (() => {
     for (let i = events.length - 1; i >= 0; i--) if (events[i].event === 'plan_step') return events[i]
     return undefined
@@ -609,7 +609,7 @@ export default function PlanPanel({ events, steps, planMethod, running }: Props)
   // the shown step first, the one before it under it (newest first); SAGE reuses a step index after a splice: key by position
   const stepsView = steps.length ? [shownAt, shownAt - 1].filter(i => i >= 0).map(i => ({ step: steps[i], i })) : []
 
-  // Two backends, two shapes: the closed-loop (GRACE) sends `status`
+  // Two backends, two shapes: the closed-loop (SAGE) sends `status`
   // ('success'|'failed'|'planned'|'aborted'); run_direct / legacy `run` send a
   // boolean `success`. Prefer `status` when present, else fall back to `success`.
   // BACKEND-WORKAROUND(done-event-shape)
@@ -669,7 +669,7 @@ export default function PlanPanel({ events, steps, planMethod, running }: Props)
         </p>
       )}
 
-      {/* Live multi-step planner progress (GRACE) — so a long plan never looks hung */}
+      {/* Live multi-step planner progress (SAGE) — so a long plan never looks hung */}
       {lastStep && !plan && (
         <p className="text-[11px] text-gray-500 flex items-center gap-2 font-mono">
           <span className="animate-pulse">▸</span>
@@ -689,7 +689,7 @@ export default function PlanPanel({ events, steps, planMethod, running }: Props)
       {/* Multi-step planner breakdown (post-hoc) */}
       {plan && planMeta && <PlannerMeta meta={planMeta} />}
 
-      {/* GRACE per-sub-goal plan / violations / refine trace */}
+      {/* SAGE per-sub-goal plan / violations / refine trace */}
       <GracePlanningTrace events={events} />
 
       {/* Log: the detail (logs, result JSON) of the step being run, or of the step picked in Plan progress, and under it the step before (newest first). */}

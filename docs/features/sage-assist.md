@@ -2,10 +2,10 @@
 
 <!-- Moved verbatim from CLAUDE.md (lines 897-954) on 2026-10-30; links rebased to docs/features/. -->
 
-**SAGE** is the paper's planner ("SAGE: Symbolic Action-Gating and Editing", code identifier GRACE:
-`pyplanner.GRACEPlanner`, GRACE-Fixed settings). 💬 Chat → planner **SAGE + assist** (the default; `planner: 'sage'` on
+**SAGE** is the planner ("SAGE: Symbolic Action-Gating and Editing"; code: `embodiplan.SAGEPlanner`, called GRACE in older
+versions). 💬 Chat → planner **SAGE + assist** (the default; `planner: 'sage'` on
 `/ws/agent`, or `ROBOT_AGENT_PLANNER=sage`) runs [core/planning/assist_loop.py](../../../robot_agent/robot_agent/core/planning/assist_loop.py)
-(`AssistLoop`) around it; **SAGE (plain loop)** (`'grace'`) is the original `ClosedLoop`. Every plan and every
+(`AssistLoop`) around it; **SAGE (plain loop)** (`'grace'`, a deprecated alias of `'sage_plain'` in robot_agent from 2026-11-20; this dashboard still sends `'grace'`, which an older robot_agent understands too) is the original `ClosedLoop`. Every plan and every
 change of plan comes from SAGE — the assist layer never adds, drops or reorders steps:
 
 1. **Understand** (one LLM JSON call on the translated *and* the original words): goals
@@ -16,7 +16,7 @@ change of plan comes from SAGE — the assist layer never adds, drops or reorder
    object it did not list).
 2. **Plan**: SAGE `generate_plan`; the checker `_check` simulates the plan as written and reports violations
    (not a listed place, Pick without Find, Open with a full hand, goals not reached, the task repeated after
-   the goals are done …). Critical findings go to **SAGE's own sub-goal Editing** (`GRACEPlanner._refine` on
+   the goals are done …). Critical findings go to **SAGE's own sub-goal Editing** (`SAGEPlanner._refine` on
    the offending sub-goal block, `_sage_edit`, `edit_rounds` 3); a block the earlier blocks already achieved is
    asked for no steps. Offline (`kcare-sim/scripts/bench_plan.py`, 13 tasks, qwen3-vl:8b): valid plans 5/13 as
    generated → 9–10/13 after SAGE's edits (`replan`-based editing did not help: it keeps the future sub-goals).

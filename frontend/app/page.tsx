@@ -48,7 +48,7 @@ const downloadJpeg = (b64: string, name: string): void => {
 }
 
 // Mirrors the backend's failure test (unified_agent._is_failure_event): a step
-// returning isdone False, a run-level error, or a GRACE symbolic violation.
+// returning isdone False, a run-level error, or a SAGE symbolic violation.
 const isFailureEvent = (ev: AgentEvent): boolean => {
   if (ev.event === 'error') return true
   if (ev.event === 'step_done') {

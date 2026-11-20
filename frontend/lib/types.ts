@@ -129,7 +129,7 @@ export interface AgentEvent {
   }
   ts?: number
   _rx?: number                       // client only: when the dashboard received the event (ms); never sent by the backend
-  // Closed-loop (GRACE) events
+  // Closed-loop (SAGE) events
   say?: string                       // localized phrase for voice output
   say_lang?: string                  // the phrase's language when not the run's (a plain-name step is said in English)
   quiet?: boolean                    // step_start of a `%skill::…` step: not narrated (nor the 15 s nudge)
@@ -154,8 +154,8 @@ export interface AgentEvent {
              earcon?: number                 // "your turn" / "got it" tone volume, 0 = off
              rate?: number }                 // how fast to say the prompt
   index?: number                     // step index (closed-loop)
-  action?: string                    // GRACE action
-  object?: string                    // GRACE object
+  action?: string                    // SAGE action
+  object?: string                    // SAGE object
   skill?: string | null              // mapped kcare skill
   status?: string                    // step/run status
   reason?: string                    // failure reason
@@ -167,12 +167,12 @@ export interface AgentEvent {
   run_id?: string
   elapsed_ms?: number                 // total run wall-clock (client-measured)
   world?: WorldState                 // closed-loop: persistent symbolic state snapshot
-  // Live multi-step planner progress (GRACE): decompose → expand → refine
+  // Live multi-step planner progress (SAGE): decompose → expand → refine
   phase?: string
   subgoals?: string[]
   subgoal?: string
   attempt?: number
-  // GRACE per-sub-goal planning detail (plan_step): expanded steps, symbolic
+  // SAGE per-sub-goal planning detail (plan_step): expanded steps, symbolic
   // violations, and the final verify verdict.
   ok?: boolean
   violations?: Array<Record<string, unknown>>

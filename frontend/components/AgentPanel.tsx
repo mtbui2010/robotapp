@@ -292,7 +292,7 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
                   <div className="inline-flex rounded border border-gray-300 overflow-hidden">
                     {([['all', true], ['failed only', false]] as const).map(([label, v]) => (
                       <button key={label} type="button" onClick={() => updateLogAll(v)}
-                        title={v ? 'Log every run' : 'Keep only runs that failed — a step returning isdone False, an error, or a GRACE symbolic violation'}
+                        title={v ? 'Log every run' : 'Keep only runs that failed — a step returning isdone False, an error, or a SAGE symbolic violation'}
                         className={`px-1.5 py-0.5 ${logAll === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'}`}
                       >{label}</button>
                     ))}
