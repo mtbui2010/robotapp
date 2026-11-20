@@ -7,17 +7,23 @@
 // stopAll / releaseLock POST.
 import { jsonCall } from './api'
 import { readTabPref, writeTabPref } from './tabPref'
-import type { CancelResult, FleetEvent, FleetPlan, FleetRobot, SubmitResult } from './fleet_types'
+import { activeFleet, setFleetUrlOf } from './fleetRegistry'
+import { diffConfig } from './fleetEdit'
+import type { CancelResult, FleetConfig, FleetDef, FleetEvent, FleetPlan, FleetRobot, FleetRobotBody, SubmitResult, SyncResult } from './fleet_types'
 
 export const LS_FLEET_URL = 'robotapp_fleet_url'
 export const DEFAULT_FLEET_URL = 'http://localhost:8100'
 
 function getFleetUrl(): string {
   if (typeof window === 'undefined') return DEFAULT_FLEET_URL
+  const chosen = activeFleet()   // a fleet selected in this tab: its own manager
+  if (chosen) return chosen.url.replace(/\/+$/, '')
   return (readTabPref(LS_FLEET_URL) || DEFAULT_FLEET_URL).replace(/\/+$/, '')
 }
 
 function setFleetUrl(url: string): void {
+  const chosen = activeFleet()
+  if (chosen) { setFleetUrlOf(chosen.name, url.trim().replace(/\/+$/, '') || DEFAULT_FLEET_URL); return }
   writeTabPref(LS_FLEET_URL, url.trim().replace(/\/+$/, '') || DEFAULT_FLEET_URL)
 }
 
@@ -64,7 +70,34 @@ function subscribe(onEvent: (e: FleetEvent) => void, onStatus: (s: LiveStatus) =
   return { close() { stopped = true; if (timer) clearTimeout(timer); ws?.close() } }
 }
 
+// ── The manager's robot list (contract: GET /fleet/config, PUT / DELETE /fleet/robots/{id}). Never moves anything. ──
+const baseOf = (url: string) => url.trim().replace(/\/+$/, '')
+const getConfig = (url: string): Promise<FleetConfig> => jsonCall<FleetConfig>(`${baseOf(url)}/fleet/config`, 'GET')
+const putRobot = (url: string, id: string, body: FleetRobotBody): Promise<unknown> =>
+  jsonCall(`${baseOf(url)}/fleet/robots/${enc(id)}`, 'PUT', body)
+/** A 409 (a goal runs on the robot) comes back as an Error with the manager's reason. */
+const deleteRobot = (url: string, id: string): Promise<unknown> =>
+  jsonCall(`${baseOf(url)}/fleet/robots/${enc(id)}`, 'DELETE')
+
+const msgOf = (e: unknown) => (e instanceof Error ? e.message : String(e))
+
+/** Make the manager's robots match the fleet: PUT every member, DELETE the others. A manager that cannot be read
+ *  is "not synced" (the fleet stays saved in the browser); each failed call is named with the manager's text. */
+async function syncFleet(def: FleetDef, urlOf: (robot: string) => string | undefined): Promise<SyncResult> {
+  let config: FleetConfig
+  try { config = await getConfig(def.url) } catch (e) { return { state: 'not_synced', text: `not synced: ${msgOf(e)}` } }
+  const { put, del, missing } = diffConfig(def, config, urlOf)
+  const errors = missing.map(id => `${id}: no URL in the robot list`)
+  for (const p of put) await putRobot(def.url, p.id, p.body).catch(e => errors.push(`${p.id}: ${msgOf(e)}`))
+  for (const id of del) await deleteRobot(def.url, id).catch(e => errors.push(`remove ${id}: ${msgOf(e)}`))
+  return errors.length ? { state: 'error', text: errors.join('; ') } : { state: 'synced', text: 'synced' }
+}
+
 export const fleet = {
+  getConfig,
+  putRobot,
+  deleteRobot,
+  syncFleet,
   getFleetUrl,
   setFleetUrl,
   async robots(): Promise<FleetRobot[]> {

@@ -42,10 +42,37 @@ only file that calls the fleet API, rule 1); types [lib/fleet_types.ts](../../fr
 - **Reading never starts anything** (rule 6): opening the tab, the WebSocket, the 5 s reads and ↻ are `GET` only.
   The POSTs are Submit, Approve, Answer, Release and Stop all, each on a click.
 
+## Robot / fleet selector and fleet editor (2026-11-21)
+
+The robot drop-down at the top of the sidebar ([DevicePanel.tsx](../../frontend/components/DevicePanel.tsx)) lists the
+registry robots (group **Robots**, as before) and the fleets (group **Fleets**). Choosing a robot is the old behaviour (and
+leaves any fleet); choosing a fleet makes it this tab's fleet and opens the Fleet tab on that fleet's manager URL
+(`fleet.getFleetUrl()` = the selected fleet's URL; the **Use** box of the tab edits that fleet's URL). `👥` adds a fleet;
+`✎` / `🗑` act on the selected robot, or on the selected fleet (deleting a fleet is local only; its robots stay in the
+list and the manager is left alone).
+
+- **Storage** ([lib/fleetRegistry.ts](../../frontend/lib/fleetRegistry.ts), no HTTP): `localStorage` `robotapp_fleets` =
+  `[{name, url, members: [{name, real}]}]` (members are registry robot names); the selected fleet is per tab
+  (`robotapp_active_fleet`, same pattern as the active robot: sessionStorage, the last choice seeds a new tab).
+- **Editor** ([FleetEditor.tsx](../../frontend/components/FleetEditor.tsx)): name, manager URL, a checkbox per registry
+  robot and, for each ticked one, a required **real / simulated** choice. There is no default: Save stays disabled
+  (the reason is shown) until every member is chosen, and the name must be unique. It only edits; nothing moves (rule 6).
+- **Sync on Save** (`fleet.syncFleet`, [lib/fleet.ts](../../frontend/lib/fleet.ts)): `GET {url}/fleet/config`, then
+  `PUT /fleet/robots/{id}` `{url, real}` for every member (the URL is the registry robot's) and `DELETE
+  /fleet/robots/{id}` for each robot the manager has that is not a member. The manager's error text (for example the 409
+  while a goal runs on the robot) is shown in the editor and under the selector; when the config cannot be read, the fleet
+  stays saved and the line says `not synced: ...`.
+- **Registry changes**: deleting a robot that a fleet uses asks first, naming the fleets, and removes it from their
+  members; renaming a robot renames it in the fleets. Neither calls the manager: open the fleet and Save to sync it.
+- Pure logic (options, validation, diff, drop / rename): [lib/fleetEdit.ts](../../frontend/lib/fleetEdit.ts); tests in
+  `scripts/test_fleet.mjs` (selector, draft validation, diff, registry, sync on a fake fetch, unreachable manager).
+  Contract with the manager (being built; not in SPEC section 6 yet): `GET /fleet/config` returns
+  `{robots: [{id, url, real}], places, exclusive, policy}`; `PUT /fleet/robots/{id}` body `{url, real, places?}`.
+
 Backend: `GET /fleet/robots`, `GET /fleet/plans` (**not in the SPEC yet**: without it the tab shows the plans it
 submitted or saw on the WebSocket), `GET /fleet/plans/{id}`, `POST /fleet/requests`, `POST .../approve`,
 `POST .../answer`, `POST /fleet/stop` (a list of `CancelResult`, bare or as `{results}`),
 `POST /fleet/locks/{resource}/release`, `WS /ws/fleet`. The manager must allow the dashboard's origin (CORS).
 
-Not verified: no browser run and no fleet manager (its API was not written on 2026-11-21); tested with unit tests
+Not verified: no browser run (the selector and editor were only type-checked, built and unit-tested) and no fleet manager (its API was not written on 2026-11-21); tested with unit tests
 on made-up plans and a fake fetch / WebSocket only.

@@ -5,6 +5,10 @@ import type { ClientEntry, ClientType, LocationsInfo, PoolKind, PoolLevel, RosSc
 import type { Robot } from '../lib/api'
 import TEMPLATES_RAW from '../lib/ros_templates.json'
 import PanelSearch from './PanelSearch'
+import FleetEditor from './FleetEditor'
+import { useFleets } from './useFleets'
+import { fleetsUsing, parseSelection, selectorOptions } from '../lib/fleetEdit'
+import { followRobot, forgetRobot } from '../lib/fleetRegistry'
 import ServerListEditor, {
   KIND_DEFAULT_NAME, STATUS_DOT, defaultRows, rowsError, rowsFromConfig, rowsToConfig, type ServerRow,
 } from './ServerListEditor'
@@ -158,6 +162,7 @@ interface Props {
   onClientsChange: (clients: ClientEntry[]) => void
   onAgentConnect?: () => void
   onActiveChange?: (t: ActiveTarget) => void      // the robot / site this tab drives (shown by the Cameras / Map tabs)
+  onFleetChosen?: (name: string) => void          // a fleet was picked in the robot / fleet drop-down (the Fleet tab opens)
 }
 
 function getHead(name: string): string {
@@ -183,7 +188,7 @@ interface WarmKind {
 const ICON_BTN = 'px-2 py-1 text-xs rounded leading-none whitespace-nowrap'
 const WARM_KINDS: [string, string][] = [['vlms', 'VLMs'], ['visions', 'Visions'], ['voices', 'Voices']]
 
-export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveChange }: Props) {
+export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveChange, onFleetChosen }: Props) {
   const [clients, setClients]   = useState<ClientEntry[]>([])
   const [rosData, setRosData]   = useState<RosScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -217,6 +222,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
   const [robotEditor, setRobotEditor]     = useState<
     { mode: 'add' } | { mode: 'edit'; original: string } | null
   >(null)
+  const fl = useFleets(onFleetChosen)   // the fleets, in the same drop-down as the robots (docs/features/fleet.md)
   const [robotNameInput, setRobotNameInput] = useState('')
   const [robotUrlInput,  setRobotUrlInput]  = useState('')
   const [robotEditorError, setRobotEditorError] = useState<string | null>(null)
@@ -354,6 +360,8 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
       return
     }
     if (robotEditor.mode === 'add') api.setActiveRobot(robotNameInput.trim())
+    else if (robotEditor.original !== robotNameInput.trim()) { followRobot(robotEditor.original, robotNameInput.trim()); fl.reload() }
+    fl.clear()
     reloadRobots()
     closeRobotEditor()
     void connectActiveRobot()
@@ -361,8 +369,12 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
 
   const removeActiveRobot = () => {
     if (!activeRobot) return
-    if (!confirm(`Remove robot "${activeRobot}"?`)) return
+    const used = fleetsUsing(fl.fleets, activeRobot)
+    const warn = used.length ? `\n\nIt is a member of ${used.map(n => `"${n}"`).join(', ')}: it will be removed from ${used.length > 1 ? 'those fleets' : 'that fleet'} (save the fleet to update its manager).` : ''
+    if (!confirm(`Remove robot "${activeRobot}"?${warn}`)) return
     api.removeRobot(activeRobot)
+    forgetRobot(activeRobot)
+    fl.reload()
     reloadRobots()
     setAgentStatus(null)
   }
@@ -877,15 +889,23 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
 
         <div className="flex gap-1.5 items-center">
           <select
-            value={activeRobot}
-            onChange={e => switchActiveRobot(e.target.value)}
-            disabled={robots.length === 0}
+            value={fl.active ? `fleet:${fl.active}` : `robot:${activeRobot}`}
+            onChange={e => {
+              const s = parseSelection(e.target.value)
+              if (s?.kind === 'fleet') fl.choose(s.name)
+              else if (s) { fl.clear(); void switchActiveRobot(s.name) }
+            }}
+            disabled={robots.length === 0 && fl.fleets.length === 0}
+            aria-label="robot or fleet"
             className="flex-1 bg-white border border-gray-200 text-gray-800 rounded px-2 py-1.5 text-xs disabled:opacity-50"
           >
             {robots.length === 0 && <option value="">(no robots — click Add)</option>}
-            {robots.map(r => (
-              <option key={r.name} value={r.name}>{r.name}</option>
-            ))}
+            {(['Robots', 'Fleets'] as const).map(g => {
+              const opts = selectorOptions(robots, fl.fleets).filter(o => o.group === g)
+              return opts.length > 0 && (
+                <optgroup key={g} label={g}>{opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</optgroup>
+              )
+            })}
           </select>
           <button
             onClick={() => void connectActiveRobot()}
@@ -896,11 +916,22 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
             {agentConnecting ? '…' : 'Connect'}
           </button>
           <button onClick={openAddRobot} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 text-gray-700`} title="Add a robot" aria-label="Add a robot">＋</button>
-          <button onClick={openEditRobot} disabled={!activeRobot} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700`}
-            title="Edit the active robot" aria-label="Edit the active robot">✎</button>
-          <button onClick={removeActiveRobot} disabled={!activeRobot} className={`${ICON_BTN} bg-red-100 hover:bg-red-200 disabled:opacity-40 text-red-700`}
-            title="Remove the active robot" aria-label="Remove the active robot">🗑</button>
+          <button onClick={() => fl.openEditor(null)} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 text-gray-700`} title="Add a fleet" aria-label="Add a fleet">👥</button>
+          <button onClick={fl.active ? () => fl.openEditor(fl.active) : openEditRobot} disabled={!activeRobot && !fl.active} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700`}
+            title={fl.active ? 'Edit the selected fleet' : 'Edit the active robot'} aria-label="Edit the selected robot or fleet">✎</button>
+          <button onClick={fl.active ? () => { if (confirm(`Delete fleet "${fl.active}"? Its robots stay in the robot list.`)) fl.remove(fl.active) } : removeActiveRobot} disabled={!activeRobot && !fl.active} className={`${ICON_BTN} bg-red-100 hover:bg-red-200 disabled:opacity-40 text-red-700`}
+            title={fl.active ? 'Delete the selected fleet' : 'Remove the active robot'} aria-label="Remove the selected robot or fleet">🗑</button>
         </div>
+
+        {fl.note && !fl.editor && (
+          <div className={`text-[10px] ${fl.note.sync.state === 'synced' ? 'text-green-700' : 'text-red-600'}`} data-testid="fleet-sync-note">
+            Fleet "{fl.note.fleet}": {fl.note.sync.text}
+          </div>
+        )}
+        {fl.editor && (
+          <FleetEditor key={fl.editor.original ?? '+'} robots={robots} fleets={fl.fleets} original={fl.editor.original}
+                       onClose={fl.closeEditor} onSaved={fl.setNote} />
+        )}
 
         {robotEditor && (
           <div className="border border-gray-200 rounded p-2 bg-gray-50 flex flex-col gap-1.5">

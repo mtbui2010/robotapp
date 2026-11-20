@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-21
 
+- **Robot / fleet selector:** the robot drop-down at the top of the sidebar has a second group, **Fleets**; choosing one opens the Fleet tab on that fleet's manager (per tab). `👥` adds a fleet; `✎` / `🗑` edit / delete the selected robot or fleet. A fleet = name, manager URL, member robots from the robot list and a required real / simulated choice for each (no default); Save keeps it in this browser (`robotapp_fleets`) and syncs the manager (`GET /fleet/config`, `PUT` / `DELETE /fleet/robots/{id}`; the manager's error text such as a 409 is shown, an unreachable manager = "not synced"). Removing a robot that a fleet uses warns and takes it out of the fleet ([fleet](features/fleet.md)). The manager endpoints were not built yet: tested on a fake fetch only.
 - **Fleet tab (👥):** several robots through the robot_fleet manager (default `http://localhost:8100`, per tab): robots (real / sim, idle / busy / lost), a request box, the plan grouped by robot with what each goal waits for, the robot's questions with an answer box, Approve (the only thing that starts motion; names the real robots and asks first), a red Stop all that shows each robot's result (a failed or empty cancel is a warning), a lost-robot banner with lock release, live updates from `/ws/fleet`. Rule 1 now allows robot_fleet's OpenAPI through `frontend/lib/fleet.ts` (lint `HTTP_ALLOWED`); not run in a browser, the manager's API does not exist yet ([fleet](features/fleet.md)).
 
 ## 2026-11-20

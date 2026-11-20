@@ -76,3 +76,33 @@ export interface FleetEvent {
   robot?: string
   [key: string]: unknown
 }
+
+// ── Fleet definitions kept in the browser (lib/fleetRegistry.ts) and the manager's config (lib/fleet.ts) ──
+// Hand-written from the manager contract: GET /fleet/config, PUT / DELETE /fleet/robots/{id}.
+
+/** A registry robot that belongs to a fleet; `real` is the operator's required choice (no default). */
+export interface FleetMember { name: string; real: boolean }
+
+/** A fleet as the dashboard keeps it: its manager and the robots (by registry name) it works with. */
+export interface FleetDef { name: string; url: string; members: FleetMember[] }
+
+/** One robot of GET /fleet/config. */
+export interface FleetConfigRobot { id: string; url: string; real: boolean; places?: unknown }
+
+/** GET /fleet/config. */
+export interface FleetConfig {
+  robots: FleetConfigRobot[]
+  places?: unknown
+  exclusive?: unknown
+  policy?: unknown
+}
+
+/** Body of PUT /fleet/robots/{id}. */
+export interface FleetRobotBody { url: string; real: boolean; places?: unknown }
+
+/** What saving a fleet did to the manager. */
+export interface SyncResult {
+  state: 'synced' | 'not_synced' | 'error'
+  /** One line for the person: "synced", "not synced: ...", or the manager's errors. */
+  text: string
+}

@@ -18,10 +18,12 @@ const load = async name => {
   return import(pathToFileURL(outfile).href)
 }
 const mkStore = () => { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) } }
-globalThis.window = { location: { origin: 'http://x', protocol: 'http:', hostname: 'x' } }
+globalThis.window = { location: { origin: 'http://x', protocol: 'http:', hostname: 'x' }, dispatchEvent: () => true }
 globalThis.localStorage = mkStore()
 globalThis.sessionStorage = mkStore()
 const FV = await load('fleetView')
+const FE_ = await load('fleetEdit')
+const FR = await load('fleetRegistry')
 const { fleet, reconnectDelay, DEFAULT_FLEET_URL } = await load('fleet')
 
 const node = (goal_id, goal, robot, after = [], state = 'pending') => ({ goal_id, goal, robot, after, state })
@@ -212,4 +214,101 @@ test('fleet subscribe: /ws/fleet events reach the caller, non-JSON is dropped, i
   await new Promise(r => setTimeout(r, 5))
   assert.equal(sockets.length, 2, 'no reconnect after close()')
   assert.deepEqual(status, ['connecting', 'open', 'closed', 'connecting', 'closed'])
+})
+
+// ── fleet selector, editor logic, registry and manager sync ─────────────────────────────────────────────────
+const fl = (name, ...members) => ({ name, url: `http://${name}:8100`, members: members.map(([n, real]) => ({ name: n, real })) })
+
+test('selector options: robots first, fleets in a second group; values parse back', () => {
+  const o = FE_.selectorOptions([{ name: 'ra' }, { name: 'rb' }], [{ name: 'fx' }])
+  assert.deepEqual(o.map(x => [x.group, x.value]), [['Robots', 'robot:ra'], ['Robots', 'robot:rb'], ['Fleets', 'fleet:fx']])
+  assert.deepEqual(FE_.parseSelection('fleet:fx'), { kind: 'fleet', name: 'fx' })
+  assert.deepEqual(FE_.parseSelection('robot:a:b'), { kind: 'robot', name: 'a:b' })
+  assert.equal(FE_.parseSelection(''), null)
+})
+
+test('draft: Save needs a name, a URL, a unique name and a real/sim choice for EVERY member (no default)', () => {
+  let d = FE_.fleetToDraft(null, 'http://m:1')
+  assert.match(FE_.draftProblem(d, [], null), /Name/)
+  d = { ...d, name: ' f1 ' }
+  assert.equal(FE_.draftProblem(d, [], null), null, 'no members is allowed')
+  d = FE_.toggleMember(d, 'ra')
+  assert.deepEqual(d.members, [{ name: 'ra', real: null }])
+  assert.match(FE_.draftProblem(d, [], null), /ra/, 'disabled until chosen')
+  d = FE_.setMemberReal(d, 'ra', false)                       // simulated is a choice too
+  assert.equal(FE_.draftProblem(d, [], null), null)
+  assert.deepEqual(FE_.draftToFleet({ ...d, url: 'http://m:1//' }), { name: 'f1', url: 'http://m:1', members: [{ name: 'ra', real: false }] })
+  assert.match(FE_.draftProblem(d, [fl('f1')], null), /already exists/)
+  assert.equal(FE_.draftProblem(d, [fl('f1')], 'f1'), null, 'editing keeps its own name')
+  assert.match(FE_.draftProblem({ ...d, url: ' ' }, [], null), /URL/)
+  assert.equal(FE_.toggleMember(d, 'ra').members.length, 0)
+})
+
+test('diffConfig: PUT every member, DELETE the manager robots that are not members', () => {
+  const urls = { ra: 'http://a', rb: 'http://b' }
+  const cfg = { robots: [{ id: 'ra', url: 'http://old', real: true }, { id: 'rz', url: 'http://z', real: true }] }
+  const d = FE_.diffConfig(fl('f', ['ra', false], ['rb', true]), cfg, n => urls[n])
+  assert.deepEqual(d.put, [{ id: 'ra', body: { url: 'http://a', real: false } }, { id: 'rb', body: { url: 'http://b', real: true } }])
+  assert.deepEqual(d.del, ['rz'])
+  assert.deepEqual(FE_.diffConfig(fl('f', ['rq', true]), { robots: [] }, () => undefined).missing, ['rq'])
+})
+
+test('a robot removed from the registry leaves its fleets; a renamed one is followed', () => {
+  const fs = [fl('f1', ['ra', true], ['rb', false]), fl('f2', ['rb', true])]
+  assert.deepEqual(FE_.fleetsUsing(fs, 'ra'), ['f1'])
+  assert.deepEqual(FE_.dropRobot(fs, 'rb').map(f => f.members.length), [1, 0])
+  assert.deepEqual(FE_.renameRobot(fs, 'ra', 'rc')[0].members[0], { name: 'rc', real: true })
+})
+
+test('registry: fleets in localStorage; the active fleet is per tab and gives the manager URL', () => {
+  globalThis.localStorage = mkStore(); globalThis.sessionStorage = mkStore()
+  assert.deepEqual(FR.listFleets(), [])
+  FR.saveFleet(null, fl('f1', ['ra', true])); FR.saveFleet(null, fl('f2'))
+  assert.deepEqual(FR.listFleets().map(f => f.name), ['f1', 'f2'])
+  assert.equal(fleet.getFleetUrl(), DEFAULT_FLEET_URL, 'no fleet selected: the plain per-tab URL')
+  FR.setActiveFleet('f2')
+  assert.equal(fleet.getFleetUrl(), 'http://f2:8100')
+  fleet.setFleetUrl('http://other:9/')                         // the tab's "Use" box edits the selected fleet
+  assert.equal(FR.listFleets()[1].url, 'http://other:9')
+  FR.saveFleet('f2', fl('f3'))                                 // rename follows the active fleet
+  assert.equal(FR.getActiveFleetName(), 'f3')
+  FR.followRobot('ra', 'rz'); assert.equal(FR.listFleets()[0].members[0].name, 'rz')
+  FR.forgetRobot('rz'); assert.equal(FR.listFleets()[0].members.length, 0)
+  FR.removeFleet('f3')
+  assert.equal(FR.getActiveFleetName(), '')
+  assert.deepEqual(FR.listFleets().map(f => f.name), ['f1'])
+  assert.equal(fleet.getFleetUrl(), DEFAULT_FLEET_URL)
+})
+
+test('syncFleet: PUTs the members, DELETEs the others, reports the manager text (409) ', async () => {
+  const f = fl('f', ['ra', true], ['rb', false])
+  const urlOf = n => ({ ra: 'http://a', rb: 'http://b' })[n]
+  const cfg = { robots: [{ id: 'ra', url: 'http://a', real: true }, { id: 'rz', url: 'http://z', real: true }, { id: 'ry', url: 'http://y', real: true }] }
+  await withFetch((url, m) => {
+    if (m === 'GET') return [200, cfg]
+    if (url.endsWith('/rz')) return [409, { detail: 'goal g1 is running on rz' }]
+    return [200, {}]
+  }, async () => {
+    const r = await fleet.syncFleet(f, urlOf)
+    assert.deepEqual(calls.map(c => [c.method, c.url.replace('http://f:8100', '')]),
+      [['GET', '/fleet/config'], ['PUT', '/fleet/robots/ra'], ['PUT', '/fleet/robots/rb'], ['DELETE', '/fleet/robots/rz'], ['DELETE', '/fleet/robots/ry']])
+    assert.deepEqual(calls[2].body, { url: 'http://b', real: false })
+    assert.equal(r.state, 'error')
+    assert.match(r.text, /rz: goal g1 is running on rz/)
+  })
+  await withFetch(() => [200, { robots: [] }], async () => {
+    assert.deepEqual(await fleet.syncFleet(f, urlOf), { state: 'synced', text: 'synced' })
+  })
+})
+
+test('syncFleet: an unreachable manager is "not synced", nothing else is sent', async () => {
+  const orig = globalThis.fetch
+  let n = 0
+  globalThis.fetch = async () => { n++; throw new TypeError('Failed to fetch') }
+  try {
+    const r = await fleet.syncFleet(fl('f', ['ra', true]), () => 'http://a')
+    assert.equal(r.state, 'not_synced')
+    assert.match(r.text, /^not synced/)
+    assert.equal(n, 1)
+  } finally { globalThis.fetch = orig }
 })

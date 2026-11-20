@@ -74,6 +74,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false)   // collapsed by default (2026-10-27); ▶ opens it
   const [planOpen, setPlanOpen]       = useState(true)
   const [mainTab, setMainTab]         = useState<'cameras' | 'map' | 'data' | 'fleet'>('cameras')
+  const [fleetKey, setFleetKey]       = useState(0)   // a fleet chosen in the selector: the Fleet tab starts over on its manager
   // Remote control + Record are only used to make data: hidden until the operator asks (kept in this browser); never hidden while recording or while teleop drives the arm
   const [dataTools, setDataTools]       = useState(false)
   useEffect(() => { try { setDataTools(localStorage.getItem('robotapp_data_tools') === '1') } catch { /* off */ } }, [])
@@ -820,7 +821,7 @@ export default function Home() {
         <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${sidebarOpen ? 'w-80' : 'w-0'}`}>
           <div className={`flex flex-col overflow-y-auto h-full ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} transition-opacity duration-150`}>
             <div className="p-4 border-b border-gray-200">
-              <DevicePanel onClientsChange={setClients} onAgentConnect={() => setSkillRefreshKey(k => k + 1)} onActiveChange={setTarget} />
+              <DevicePanel onClientsChange={setClients} onAgentConnect={() => setSkillRefreshKey(k => k + 1)} onActiveChange={setTarget} onFleetChosen={() => { setMainTab('fleet'); setFleetKey(k => k + 1) }} />
             </div>
             <div className="p-4 border-t border-gray-200">
               <SkillPanel refreshKey={skillRefreshKey} />
@@ -956,7 +957,7 @@ export default function Home() {
             {mainTab === 'cameras' && showDataTools && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} poses={poseList} />}
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
-              : mainTab === 'fleet' ? <FleetPanel lang={lang === LANG_AUTO ? undefined : lang} />
+              : mainTab === 'fleet' ? <FleetPanel key={fleetKey} lang={lang === LANG_AUTO ? undefined : lang} />
               : mainTab === 'data' && recorder ? <DataPanel /> : <MapPanel clients={clients} running={running} />}
           </section>
 
