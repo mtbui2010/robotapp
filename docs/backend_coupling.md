@@ -58,6 +58,7 @@ today; "response" = needs a `response_model` first.
 | `SimState`, `SimObject`, `SimFurniture` | kcare-sim bridge `/sim/command` (JSON string over a ROS service) | `POST /agent/{agent}/send` | no: owned by kcare-sim; would need a schema published by the sim |
 | `AgentEvent` (60+ optional fields), `StepLog`, `Step` (`components/PlanPanel.tsx`) | `UnifiedAgent`, `ClosedLoop`, `AssistLoop`, kcare `hri.py` (`speak`, `listen`, `choose`, `qa_state`, `alarm`) | `/ws/agent` | no: needs an event schema (a discriminated union on `event`). In progress: `arch/run-manager` adds `run_id` and `GET /runs`, `/runs/{id}` |
 | return of `api.runSkill` (`{isdone, msg, ...}`) | each skill's dict | `POST /skill/{name}` | no. In progress: `arch/contract` adds `SkillResult` (`ok`, `code: FailureCode`, `msg`) with `to_legacy()` |
+| `FleetRobot`, `FleetPlan`, `FleetGoalNode`, `FleetGoal`, `FleetOutcome`, `CancelResult`, `SubmitResult`, `FleetEvent` (`lib/fleet_types.ts`, 2026-11-21) | robot_fleet `models.py`, SPEC section 6 (a separate repo, not robot_agent) | `/fleet/*`, `WS /ws/fleet` | no: `make gen-types` reads robot_agent only; the fleet `api.py` is not written yet. `FleetRobot.locks` is not in the SPEC (optional) |
 | `Robot` (`lib/api.ts`), `PlanCheck`, `QaLine`, `ConfigView`, `Lang` | UI only | - | not backend types; keep |
 
 ## 3. UI workarounds for backend bugs and inconsistencies

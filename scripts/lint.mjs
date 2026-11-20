@@ -4,10 +4,13 @@
 // today: package.json has no eslint; `next build` skips its lint step).
 //
 //   1. Endpoints: every robot_agent path built in frontend/lib/api.ts exists in
-//      frontend/lib/generated/openapi.json (scripts/gen_types.sh); /ws/* are
-//      WebSocket routes, which OpenAPI does not list.
-//   2. Only lib/api.ts talks HTTP: a fetch() / new WebSocket() elsewhere must
-//      take a URL from an `api.` helper.
+//      frontend/lib/generated/openapi.json (scripts/gen_types.sh), and every
+//      robot_fleet path built in frontend/lib/fleet.ts in
+//      frontend/lib/generated/fleet_openapi.json when that file exists (not
+//      generated yet: skipped); /ws/* are WebSocket routes, which OpenAPI does not list.
+//   2. Only lib/api.ts (robot_agent) and lib/fleet.ts (robot_fleet) talk HTTP: a
+//      fetch() / new WebSocket() elsewhere must take a URL from an `api.` helper.
+//      Do not add to HTTP_ALLOWED.
 //   3. Bundled robot data: a .json under frontend/lib imported by the UI must be
 //      in BUNDLED_ALLOWED (each one is listed in docs/backend_coupling.md). Do
 //      not add to it: get the data from the backend instead.
@@ -21,6 +24,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const FE = join(ROOT, 'frontend')
 const BUNDLED_ALLOWED = new Set(['lib/skill_configs.json', 'lib/ros_templates.json'])
+const HTTP_ALLOWED = new Set(['lib/api.ts', 'lib/fleet.ts'])
 const errors = []
 const err = (file, line, msg) => errors.push(`${relative(ROOT, file)}:${line}: ${msg}`)
 
@@ -37,39 +41,42 @@ const sources = ['app', 'components', 'lib'].flatMap(d => walk(join(FE, d)))
 const lineOf = (text, idx) => text.slice(0, idx).split('\n').length
 
 // 1. endpoints vs OpenAPI
-const specPath = join(FE, 'lib/generated/openapi.json')
-if (!existsSync(specPath)) {
-  console.log('lint: no frontend/lib/generated/openapi.json (scripts/gen_types.sh) — endpoint check skipped')
-} else {
+function checkEndpoints(client, specName, urlRe, owner) {
+  const specPath = join(FE, 'lib/generated', specName)
+  if (!existsSync(specPath)) {
+    console.log(`lint: no frontend/lib/generated/${specName} — ${client} endpoint check skipped`)
+    return
+  }
   const spec = JSON.parse(readFileSync(specPath, 'utf8'))
   const toRe = p => new RegExp('^' + p.replace(/[.*+?^$()|[\]\\]/g, '\\$&')
     .replace(/\{(?:[^}]+:path|path|cid|connect_id)\}/g, '.+')   // FastAPI drops `:path` from OpenAPI
     .replace(/\{[^}]+\}/g, '[^/]+') + '$')
   const known = Object.keys(spec.paths).map(p => [p, toRe(p)])
-  const apiFile = join(FE, 'lib/api.ts')
+  const apiFile = join(FE, client)
   const text = readFileSync(apiFile, 'utf8')
-  const re = /\$\{get(?:AgentUrl|WsBase)\(\)\}(\/[^`?]*)/g
   let m, n = 0
-  while ((m = re.exec(text))) {
+  while ((m = urlRe.exec(text))) {
     n += 1
     // `${...}` segments → one placeholder segment; a `.join('/')` path → many
     const path = m[1].replace(/([^/])\$\{[^}]*\}$/, '$1')    // trailing `${q}`: a query string
       .replace(/\$\{[^}]*join\('\/'\)\}/g, 'x/y').replace(/\$\{[^}]*\}/g, 'x')
     if (path.startsWith('/ws/')) continue
-    if (!known.some(([, r]) => r.test(path))) err(apiFile, lineOf(text, m.index), `${m[1]} is not in robot_agent's OpenAPI`)
+    if (!known.some(([, r]) => r.test(path))) err(apiFile, lineOf(text, m.index), `${m[1]} is not in ${owner}'s OpenAPI`)
   }
-  console.log(`lint: ${n} endpoint URLs in lib/api.ts checked against ${known.length} OpenAPI paths`)
+  console.log(`lint: ${n} endpoint URLs in ${client} checked against ${known.length} OpenAPI paths`)
 }
+checkEndpoints('lib/api.ts', 'openapi.json', /\$\{get(?:AgentUrl|WsBase)\(\)\}(\/[^`?]*)/g, 'robot_agent')
+checkEndpoints('lib/fleet.ts', 'fleet_openapi.json', /\$\{getFleet(?:Url|WsBase)\(\)\}(\/[^`?]*)/g, 'robot_fleet')
 
 for (const file of sources) {
   const rel = relative(FE, file)
   const text = readFileSync(file, 'utf8')
-  // 2. HTTP outside lib/api.ts
-  if (rel !== 'lib/api.ts') {
+  // 2. HTTP outside lib/api.ts and lib/fleet.ts
+  if (!HTTP_ALLOWED.has(rel)) {
     const re = /\b(fetch|new WebSocket)\(\s*([^,)\s]*)/g
     let m
     while ((m = re.exec(text))) {
-      if (!m[2].startsWith('api.')) err(file, lineOf(text, m.index), `${m[1]}() outside lib/api.ts — add a wrapper there`)
+      if (!m[2].startsWith('api.')) err(file, lineOf(text, m.index), `${m[1]}() outside lib/api.ts / lib/fleet.ts — add a wrapper there`)
     }
   }
   // 3. bundled JSON

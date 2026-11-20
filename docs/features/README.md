@@ -29,3 +29,4 @@ add the dated line to [../CHANGELOG.md](../CHANGELOG.md).
 | [Config groups in the dashboard (2026-10-26)](config-groups.md) |
 | [Drawer skills: open_drawer handle (2026-10-26)](drawer-skills.md) |
 | [VLA stack skill: `vla_stack` through vlaserve (2026-11-18)](vla-stack.md) |
+| [Fleet tab: several robots through the fleet manager (2026-11-21)](fleet.md) |

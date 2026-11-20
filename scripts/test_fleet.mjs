@@ -1,0 +1,215 @@
+#!/usr/bin/env node
+// Unit tests of the Fleet tab's pure modules (lib/fleetView.ts) and of the fleet manager client (lib/fleet.ts, with a
+// fake fetch / WebSocket / storage). Made-up robots, places and goals only.  Run: make unit
+import { createRequire } from 'node:module'
+import { mkdtempSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { tmpdir } from 'node:os'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
+const FE = join(dirname(fileURLToPath(import.meta.url)), '..', 'frontend')
+const { buildSync } = createRequire(join(FE, 'package.json'))('esbuild')
+const out = mkdtempSync(join(tmpdir(), 'robotapp-fleet-'))
+const load = async name => {
+  const outfile = join(out, name + '.mjs')
+  buildSync({ entryPoints: [join(FE, 'lib', name + '.ts')], outfile, bundle: true, format: 'esm', platform: 'node', logLevel: 'error' })
+  return import(pathToFileURL(outfile).href)
+}
+const mkStore = () => { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) } }
+globalThis.window = { location: { origin: 'http://x', protocol: 'http:', hostname: 'x' } }
+globalThis.localStorage = mkStore()
+globalThis.sessionStorage = mkStore()
+const FV = await load('fleetView')
+const { fleet, reconnectDelay, DEFAULT_FLEET_URL } = await load('fleet')
+
+const node = (goal_id, goal, robot, after = [], state = 'pending') => ({ goal_id, goal, robot, after, state })
+const W1 = { type: 'on', object: 'widget', from: 'bench', to: 'crate' }
+const W2 = { type: 'go', to: 'dock' }
+const plan = (goals, state = 'awaiting_approval') => ({ plan_id: 'p1', text: 'move the widget', state, goals, questions: [], warnings: [] })
+const bot = (id, real, state = 'idle') => ({ id, url: `http://${id}`, ...(real === undefined ? {} : { real }), state })
+
+// ── fleetView ─────────────────────────────────────────────────────────────────────────────────────────────
+test('fleetView goalLabel: the goal in its own words, empty parts left out', () => {
+  assert.equal(FV.goalLabel(W1), 'on widget from bench to crate')
+  assert.equal(FV.goalLabel(W2), 'go to dock')
+})
+
+test('fleetView groupByRobot: robots in order of their first goal, goals with no robot last', () => {
+  const p = plan([node('g1', W1, 'r2'), node('g2', W2, null), node('g3', W2, 'r1'), node('g4', W1, 'r2')])
+  assert.deepEqual(FV.groupByRobot(p).map(g => [g.robot, g.goals.map(n => n.goal_id)]), [['r2', ['g1', 'g4']], ['r1', ['g3']], [null, ['g2']]])
+})
+
+test('fleetView _empty: a plan with no goals gives no groups, no real robots, no confirmation', () => {
+  const p = plan([])
+  assert.deepEqual(FV.groupByRobot(p), [])
+  assert.deepEqual(FV.realRobotsOf(p, []), [])
+  assert.equal(FV.approveConfirm(p, []), '')
+  assert.deepEqual(FV.stopLines([]), [])
+  assert.deepEqual(FV.lostRobots([]), [])
+  assert.deepEqual(FV.mergePlans([], []), [])
+})
+
+test('fleetView afterText: starts first, or what it waits for (goal, words, robot); an unknown id is kept', () => {
+  const p = plan([node('g1', W1, 'r1'), node('g2', W2, 'r2', ['g1', 'g9'])])
+  assert.equal(FV.afterText(p.goals[0], p), 'starts first')
+  assert.equal(FV.afterText(p.goals[1], p), 'after g1 (on widget from bench to crate on r1), g9')
+})
+
+test('fleetView stateColour: done and failed differ, an unknown state is grey', () => {
+  assert.notEqual(FV.stateColour('done'), FV.stateColour('failed'))
+  assert.equal(FV.stateColour('lost'), FV.stateColour('lost'))
+  assert.equal(FV.stateColour('teleporting'), FV.UNKNOWN_COLOUR)
+})
+
+test('fleetView approveConfirm: names every real robot; a sim-only plan needs no confirmation', () => {
+  const robots = [bot('r1', false), bot('r2', true), bot('r3', undefined)]
+  assert.equal(FV.approveConfirm(plan([node('g1', W1, 'r1')]), robots), '')
+  const c = FV.approveConfirm(plan([node('g1', W1, 'r1'), node('g2', W2, 'r2'), node('g3', W2, 'r3')]), robots)
+  assert.match(c, /REAL robots: r2, r3\./)              // r3 does not say: real by default (SPEC)
+  assert.doesNotMatch(c, /r1/)
+})
+
+test('fleetView realRobotsOf: an unknown robot is real; a goal with no robot yet may go to any reachable robot', () => {
+  const robots = [bot('r1', false), bot('r2', true), bot('r4', true, 'lost')]
+  assert.deepEqual(FV.realRobotsOf(plan([node('g1', W1, 'ghost')]), robots), ['ghost'])
+  assert.deepEqual(FV.realRobotsOf(plan([node('g1', W1, 'r1'), node('g2', W2, null)]), robots), ['r2'])
+  assert.equal(FV.canApprove(plan([], 'awaiting_approval')), true)
+  for (const s of ['understanding', 'running', 'stopped', 'done']) assert.equal(FV.canApprove(plan([], s)), false)
+  assert.equal(FV.canApprove(null), false)
+})
+
+// regression shaped like the failure class: a Stop that did not stop must never read as a green tick
+test('fleetView stopLines: only a cancel that worked and cancelled something is ok; failed / empty / warned / errors warn', () => {
+  const lines = FV.stopLines([
+    { robot: 'r1', ok: true, cancelled: ['arm', 'base'], errors: {}, warning: '' },
+    { robot: 'r2', ok: true, cancelled: [], errors: {}, warning: '' },
+    { robot: 'r3', ok: false, cancelled: [], errors: { base: 'timeout' }, warning: 'robot did not answer' },
+    { robot: 'r4', ok: true, cancelled: ['arm'], errors: {}, warning: 'goal g2 was running' },
+  ])
+  assert.deepEqual(lines.map(l => l.level), ['ok', 'warning', 'warning', 'warning'])
+  assert.equal(lines[0].text, 'cancelled arm, base')
+  assert.match(lines[1].text, /nothing was cancelled/)
+  assert.match(lines[2].text, /robot did not answer; the cancel failed; errors: base: timeout/)
+  assert.match(lines[3].text, /goal g2 was running/)
+  assert.notEqual(FV.stopEmptyWarning([]), '')
+  assert.equal(FV.stopEmptyWarning([{ robot: 'r1', ok: true, cancelled: ['arm'], errors: {}, warning: '' }]), '')
+})
+
+test('fleetView lostRobots / refreshTargets / mergePlans', () => {
+  assert.deepEqual(FV.lostRobots([bot('r1', false), bot('r2', true, 'lost')]).map(r => r.id), ['r2'])
+  assert.deepEqual(FV.refreshTargets({ event: 'goal_state', plan_id: 'p1', goal_id: 'g1' }), { plan: 'p1', robots: false })
+  assert.deepEqual(FV.refreshTargets({ event: 'goal_state', plan_id: 'p1', robot: 'r1' }), { plan: 'p1', robots: true })
+  assert.deepEqual(FV.refreshTargets({ event: 'robot_lost', robot: 'r2' }), { plan: null, robots: true })
+  const a = plan([]), b = { ...plan([]), plan_id: 'p2' }
+  const merged = FV.mergePlans([a, b], [{ ...a, state: 'running' }, { ...a, plan_id: 'p3' }])
+  assert.deepEqual(merged.map(p => [p.plan_id, p.state]), [['p1', 'running'], ['p2', 'awaiting_approval'], ['p3', 'awaiting_approval']])
+})
+
+// ── fleet client ──────────────────────────────────────────────────────────────────────────────────────────
+const calls = []
+const fakeFetch = routes => async (url, init = {}) => {
+  const method = init.method ?? 'GET'
+  calls.push({ url, method, body: init.body ? JSON.parse(init.body) : undefined })
+  const [status, body] = routes(url, method) ?? [404, { detail: 'Not Found' }]
+  return new Response(JSON.stringify(body), { status })
+}
+const withFetch = async (routes, fn) => {
+  const orig = globalThis.fetch
+  calls.length = 0
+  globalThis.fetch = fakeFetch(routes)
+  try { await fn() } finally { globalThis.fetch = orig }
+}
+
+test('fleet _off / default: no stored URL -> http://localhost:8100', () => {
+  globalThis.localStorage = mkStore(); globalThis.sessionStorage = mkStore()
+  assert.equal(DEFAULT_FLEET_URL, 'http://localhost:8100')
+  assert.equal(fleet.getFleetUrl(), DEFAULT_FLEET_URL)
+})
+
+test('fleet URL belongs to one tab; the last one chosen seeds a new tab', () => {
+  globalThis.localStorage = mkStore()
+  globalThis.sessionStorage = mkStore()
+  fleet.setFleetUrl('http://mgr-a:8100/')
+  const tabA = globalThis.sessionStorage
+  globalThis.sessionStorage = mkStore()
+  assert.equal(fleet.getFleetUrl(), 'http://mgr-a:8100')
+  fleet.setFleetUrl('http://mgr-b:8100')
+  globalThis.sessionStorage = tabA
+  assert.equal(fleet.getFleetUrl(), 'http://mgr-a:8100')
+})
+
+// rule 6 shaped: what the tab reads when it opens is GET only, and a missing plan list does not hide the robots
+test('fleet snapshot / robots / plan: GET only; no plan list (404) is an empty list', async () => {
+  globalThis.sessionStorage = mkStore(); globalThis.localStorage = mkStore()
+  await withFetch((url, m) => (m === 'GET' && url.endsWith('/fleet/robots') ? [200, [bot('r1', false)]]
+    : m === 'GET' && url.endsWith('/fleet/plans/p%2F1') ? [200, plan([])] : null), async () => {
+    const s = await fleet.snapshot()
+    assert.deepEqual(s.robots.map(r => r.id), ['r1']); assert.deepEqual(s.plans, [])
+    assert.equal((await fleet.plan('p/1')).plan_id, 'p1')
+    assert.ok(calls.every(c => c.method === 'GET'), JSON.stringify(calls))
+    assert.ok(calls.every(c => c.url.startsWith('http://localhost:8100/fleet/')))
+  })
+})
+
+test('fleet lists: bare or wrapped ({robots}, {plans}, {results}); anything else is empty', async () => {
+  const res = [{ robot: 'r1', ok: true, cancelled: ['arm'], errors: {}, warning: '' }]
+  await withFetch((url, m) => (url.endsWith('/fleet/robots') ? [200, { robots: [bot('r1', true)] }]
+    : url.endsWith('/fleet/plans') ? [200, { plans: [plan([])] }]
+    : url.endsWith('/fleet/stop') && m === 'POST' ? [200, { results: res }] : null), async () => {
+    assert.equal((await fleet.robots()).length, 1)
+    assert.equal((await fleet.plans()).length, 1)
+    assert.deepEqual(await fleet.stopAll(), res)
+  })
+  await withFetch(url => (url.endsWith('/fleet/stop') ? [200, res] : [200, { nothing: 1 }]), async () => {
+    assert.deepEqual(await fleet.stopAll(), res)
+    assert.deepEqual(await fleet.robots(), [])
+  })
+})
+
+test('fleet writes: submit / approve / answer / stopAll / releaseLock are POSTs to the SPEC routes with their bodies', async () => {
+  await withFetch((url, m) => (m === 'POST' ? [200, url.endsWith('/fleet/requests') ? { plan_id: 'p1', state: 'understanding' } : []] : null), async () => {
+    assert.deepEqual(await fleet.submit('move the widget', 'en'), { plan_id: 'p1', state: 'understanding' })
+    await fleet.submit('move the widget')
+    await fleet.approve('p1', 'ana'); await fleet.answer('p1', 'the blue one'); await fleet.stopAll(); await fleet.releaseLock('bench/left')
+  })
+  assert.deepEqual(calls.map(c => [c.method, c.url.replace(DEFAULT_FLEET_URL, ''), c.body]), [
+    ['POST', '/fleet/requests', { text: 'move the widget', lang: 'en' }],
+    ['POST', '/fleet/requests', { text: 'move the widget' }],
+    ['POST', '/fleet/plans/p1/approve', { operator: 'ana' }],
+    ['POST', '/fleet/plans/p1/answer', { text: 'the blue one' }],
+    ['POST', '/fleet/stop', undefined],
+    ['POST', '/fleet/locks/bench%2Fleft/release', undefined],
+  ])
+})
+
+test('fleet: a refused approve (409) throws the manager\'s reason', async () => {
+  await withFetch(() => [409, { detail: 'plan p1 is running, not awaiting_approval' }], async () => {
+    await assert.rejects(fleet.approve('p1', 'ana'), /not awaiting_approval/)
+  })
+})
+
+test('fleet reconnectDelay: 1, 2, 4, 8 s, then 10 s', () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 9].map(reconnectDelay), [1000, 2000, 4000, 8000, 10000, 10000])
+})
+
+test('fleet subscribe: /ws/fleet events reach the caller, non-JSON is dropped, it reconnects until close()', async () => {
+  const sockets = []
+  globalThis.WebSocket = class { constructor(url) { this.url = url; this.closed = false; sockets.push(this) } close() { this.closed = true; this.onclose?.() } }
+  globalThis.sessionStorage = mkStore(); globalThis.localStorage = mkStore()
+  fleet.setFleetUrl('https://mgr:8100')
+  const events = [], status = []
+  const sub = fleet.subscribe(e => events.push(e), s => status.push(s), () => 0)
+  assert.equal(sockets[0].url, 'wss://mgr:8100/ws/fleet')
+  sockets[0].onopen(); sockets[0].onmessage({ data: '{"event":"goal_state","plan_id":"p1"}' }); sockets[0].onmessage({ data: 'hello' })
+  sockets[0].onmessage({ data: '{"no_event":1}' })
+  assert.deepEqual(events, [{ event: 'goal_state', plan_id: 'p1' }])
+  sockets[0].onclose()                                        // the manager restarted
+  await new Promise(r => setTimeout(r, 5))
+  assert.equal(sockets.length, 2)
+  sub.close()
+  await new Promise(r => setTimeout(r, 5))
+  assert.equal(sockets.length, 2, 'no reconnect after close()')
+  assert.deepEqual(status, ['connecting', 'open', 'closed', 'connecting', 'closed'])
+})

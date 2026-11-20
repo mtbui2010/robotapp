@@ -12,8 +12,9 @@ dashboard is **not** required to operate the robot.
 robotapp/
 ├── frontend/                 # Next.js 14 app
 │   ├── app/                  # routes (page.tsx = the dashboard)
-│   ├── components/           # DevicePanel, AgentPanel, ChatPanel, PlanPanel (+ PlanList), MapPanel, …
-│   ├── lib/api.ts            # the only HTTP / WebSocket client
+│   ├── components/           # DevicePanel, AgentPanel, ChatPanel, PlanPanel (+ PlanList), MapPanel, FleetPanel, …
+│   ├── lib/api.ts            # the only robot_agent HTTP / WebSocket client
+│   ├── lib/fleet.ts          # the only robot_fleet (fleet manager) client; types in lib/fleet_types.ts
 │   ├── lib/types.ts          # hand-written backend types (to be generated)
 │   ├── lib/generated/        # openapi.json (+ openapi.d.ts) from scripts/gen_types.sh
 │   └── out/                  # static export (deploy artifact, gitignored)
@@ -32,3 +33,5 @@ robotapp/
 - [kcare_robot](../../kcare_robot/CLAUDE.md): reference robot backend used in development. Boots on port 8001.
 - [robot_template](../../robot_template/CLAUDE.md): generator for new robot backends; every new project
   is dashboard-compatible by default (same `robot_agent` API).
+- robot_fleet (`../robot_fleet`, [SPEC](../../robot_fleet/docs/SPEC.md)): the fleet manager the Fleet tab talks to
+  (default `http://localhost:8100`); it drives several robot_agent robots.

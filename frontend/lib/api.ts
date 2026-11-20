@@ -169,8 +169,8 @@ async function mapPost(body: Record<string, unknown>) {
   return b
 }
 
-/** One JSON request; a non-2xx throws the backend's `detail`. */
-async function jsonCall<T = unknown>(url: string, method: string, body?: unknown): Promise<T> {
+/** One JSON request; a non-2xx throws the backend's `detail`. Also used by lib/fleet.ts (the fleet manager client). */
+export async function jsonCall<T = unknown>(url: string, method: string, body?: unknown): Promise<T> {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body !== undefined && { body: JSON.stringify(body) }) })
   if (!r.ok) {
     const b = await r.json().catch(() => ({}))

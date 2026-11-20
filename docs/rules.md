@@ -2,10 +2,15 @@
 
 The short form is in [../CLAUDE.md](../CLAUDE.md); the numbers match.
 
-## 1. Only call endpoints that are in robot_agent's OpenAPI
+## 1. Only call endpoints that are in robot_agent's or robot_fleet's OpenAPI
 
-And only from `frontend/lib/api.ts` (a `fetch` / `WebSocket` elsewhere takes its
-URL from an `api.` helper). Types for backend data are generated from OpenAPI /
+robot_agent's only from `frontend/lib/api.ts`, robot_fleet's (the fleet manager,
+`../robot_fleet/docs/SPEC.md` section 6) only from `frontend/lib/fleet.ts`; nothing
+else talks HTTP (a `fetch` / `WebSocket` elsewhere takes its URL from an `api.`
+helper). `scripts/lint.mjs` enforces it with `HTTP_ALLOWED` (these two files): do
+not grow it. The fleet types are hand-written in `frontend/lib/fleet_types.ts`
+until `make gen-types` can read the fleet OpenAPI; then `lint.mjs` also checks
+every `fleet.ts` URL against `frontend/lib/generated/fleet_openapi.json`. Types for backend data are generated from OpenAPI /
 the event schema (`make gen-types`), not written by hand; until the backend
 declares response models, keep hand-written types in `frontend/lib/types.ts` and
 list them in [backend_coupling.md](backend_coupling.md). A new endpoint in
@@ -13,7 +18,7 @@ robot_agent is reflected in `frontend/lib/` and in
 `frontend/lib/generated/openapi.json` (`make gen-types`).
 
 Why: the dashboard must work with every robot_agent-based backend; one client
-module and generated types keep it in step with the API.
+module per API and generated types keep it in step with that API.
 
 ## 2. Do not bundle robot data
 
@@ -50,7 +55,8 @@ A feature change updates its `docs/features/<feature>.md`
 Every `POST /skill/<name>` (and `POST /agent/<name>/send`) calls `begin_run()`,
 which clears a Stop / Cancel in progress. Read device state with
 `GET /agent/<name>/get` (the Map tab's pose), never by running a skill such as
-`mobile_pose`.
+`mobile_pose`. The Fleet tab reads the fleet manager with `GET` and `WS /ws/fleet`
+only; Submit, Approve, Answer, Release and Stop all are its only `POST`s.
 
 Why: a poll that runs a skill silently undoes the operator's Stop.
 
@@ -63,7 +69,8 @@ in any operator-facing UI that can move the robot.
 ## 8. Ask before motion on real robots
 
 Map clicks and similar one-click motion go through the `confirm_goal` check
-(`MAP.confirm_goal`).
+(`MAP.confirm_goal`). The Fleet tab's Approve (the only thing there that starts
+motion) asks first, naming the real robots, when the plan may move one.
 
 ## 9. Commit messages say what changed and why
 

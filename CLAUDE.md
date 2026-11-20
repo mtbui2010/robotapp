@@ -5,7 +5,7 @@ Full rules and reasons: [docs/rules.md](docs/rules.md). Docs index: [docs/README
 
 ## Rules
 
-1. Call only endpoints in robot_agent's OpenAPI, only through `frontend/lib/api.ts`; generate types (`make gen-types`).
+1. Call only robot_agent's OpenAPI, through `frontend/lib/api.ts`, and robot_fleet's OpenAPI, through `frontend/lib/fleet.ts` (nothing else); generate types (`make gen-types`); the lint's HTTP allowlist holds these two files only.
 2. Bundle no robot data; get it from the backend (do not grow the `scripts/lint.mjs` allowlist).
 3. Never work around backend bugs in the UI; fix them in the backend (`BACKEND-WORKAROUND(<id>)` needs a [backend_coupling](docs/backend_coupling.md) entry).
 4. Run `make ci` before every commit.

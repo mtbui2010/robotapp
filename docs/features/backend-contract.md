@@ -3,7 +3,8 @@
 <!-- Moved verbatim from CLAUDE.md (lines 34-59) on 2026-10-30; links rebased to docs/features/. -->
 
 The dashboard hits these `robot_agent` endpoints (full list in the agent's
-[api/](../../../robot_agent/robot_agent/api/) routers):
+[api/](../../../robot_agent/robot_agent/api/) routers). The Fleet tab's `robot_fleet` endpoints are in
+[fleet.md](fleet.md) (client `frontend/lib/fleet.ts`):
 
 | Endpoint | Used for |
 |---|---|

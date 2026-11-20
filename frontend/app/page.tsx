@@ -6,6 +6,7 @@ import CameraFeed   from '../components/CameraFeed'
 import TeleopBar    from '../components/TeleopBar'
 import RecorderBar  from '../components/RecorderBar'
 import DataPanel    from '../components/DataPanel'
+import FleetPanel   from '../components/FleetPanel'
 import { useRecorder } from '../lib/useRecorder'
 import { usePoses } from '../lib/usePoses'
 import { useTeleop } from '../lib/useTeleop'
@@ -72,7 +73,7 @@ export default function Home() {
   const [skillRefreshKey, setSkillRefreshKey] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(false)   // collapsed by default (2026-10-27); ▶ opens it
   const [planOpen, setPlanOpen]       = useState(true)
-  const [mainTab, setMainTab]         = useState<'cameras' | 'map' | 'data'>('cameras')
+  const [mainTab, setMainTab]         = useState<'cameras' | 'map' | 'data' | 'fleet'>('cameras')
   // Remote control + Record are only used to make data: hidden until the operator asks (kept in this browser); never hidden while recording or while teleop drives the arm
   const [dataTools, setDataTools]       = useState(false)
   useEffect(() => { try { setDataTools(localStorage.getItem('robotapp_data_tools') === '1') } catch { /* off */ } }, [])
@@ -911,11 +912,11 @@ export default function Home() {
             <div className="flex gap-1 mb-2 pb-1 border-b border-gray-200 items-center">
               {/* Cameras | Map as a two-icon switch (was two text tabs, about 120 px; now about 56 px) */}
               <div role="tablist" className="flex shrink-0 rounded overflow-hidden border border-gray-300 text-sm self-center">
-                {(recorder ? ['cameras', 'map', 'data'] as const : ['cameras', 'map'] as const).map(t => (
+                {(recorder ? ['cameras', 'map', 'data', 'fleet'] as const : ['cameras', 'map', 'fleet'] as const).map(t => (
                   <button key={t} role="tab" aria-selected={mainTab === t} onClick={() => setMainTab(t)}
-                          aria-label={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : 'Data'} title={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : 'Data: the recorded episodes'}
+                          aria-label={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : t === 'fleet' ? 'Fleet' : 'Data'} title={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : t === 'fleet' ? 'Fleet: several robots through the fleet manager' : 'Data: the recorded episodes'}
                           className={`px-2 py-0.5 leading-none ${mainTab === t ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'}`}>
-                    {t === 'cameras' ? '📷' : t === 'map' ? '🗺️' : '🗂️'}
+                    {t === 'cameras' ? '📷' : t === 'map' ? '🗺️' : t === 'fleet' ? '👥' : '🗂️'}
                   </button>
                 ))}
               </div>
@@ -955,6 +956,7 @@ export default function Home() {
             {mainTab === 'cameras' && showDataTools && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} poses={poseList} />}
             {mainTab === 'cameras'
               ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
+              : mainTab === 'fleet' ? <FleetPanel lang={lang === LANG_AUTO ? undefined : lang} />
               : mainTab === 'data' && recorder ? <DataPanel /> : <MapPanel clients={clients} running={running} />}
           </section>
 
