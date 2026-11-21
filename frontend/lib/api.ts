@@ -145,6 +145,17 @@ function setAgentUrl(url: string): void {
   setActiveRobot('default')
 }
 
+async function listClientsAt(baseUrl: string, signal?: AbortSignal, strict = false): Promise<ClientEntry[]> {
+  const r = await fetch(`${baseUrl}/connects`, signal ? { signal } : undefined)
+  if (!r.ok) { if (strict) throw new Error(`HTTP ${r.status}`); return [] }
+  const data = await r.json()
+  return Array.isArray(data) ? data : []
+}
+
+function cameraWsAt(baseUrl: string, clientId: string): WebSocket {
+  return new WebSocket(`${baseUrl.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/camera/${clientId}`)
+}
+
 function getWsBase(): string {
   return getAgentUrl().replace('https://', 'wss://').replace('http://', 'ws://')
 }
@@ -198,10 +209,11 @@ export const api = {
   },
 
   async listClients(): Promise<ClientEntry[]> {
-    const r = await fetch(`${getAgentUrl()}/connects`)
-    if (!r.ok) return []
-    const data = await r.json()
-    return Array.isArray(data) ? data : []
+    return listClientsAt(getAgentUrl())
+  },
+  /** Like listClients, for the robot at `baseUrl` (the Fleet tab reads each fleet robot's own cameras). A failure throws. */
+  async listClientsAt(baseUrl: string, signal?: AbortSignal): Promise<ClientEntry[]> {
+    return listClientsAt(baseUrl, signal, true)
   },
 
   async getStatus(fresh = false): Promise<Record<string, boolean>> {
@@ -842,6 +854,10 @@ export const api = {
   },
 
   cameraWs(clientId: string): WebSocket {
-    return new WebSocket(`${getWsBase()}/ws/camera/${clientId}`)
+    return cameraWsAt(getAgentUrl(), clientId)
+  },
+  /** Like cameraWs, for the robot at `baseUrl`. */
+  cameraWsAt(baseUrl: string, clientId: string): WebSocket {
+    return cameraWsAt(baseUrl, clientId)
   },
 }

@@ -24,6 +24,8 @@ globalThis.sessionStorage = mkStore()
 const FV = await load('fleetView')
 const FE_ = await load('fleetEdit')
 const FR = await load('fleetRegistry')
+const FC = await load('fleetCams')
+const { api } = await load('api')
 const { fleet, reconnectDelay, DEFAULT_FLEET_URL } = await load('fleet')
 
 const node = (goal_id, goal, robot, after = [], state = 'pending') => ({ goal_id, goal, robot, after, state })
@@ -311,4 +313,48 @@ test('syncFleet: an unreachable manager is "not synced", nothing else is sent', 
     assert.match(r.text, /^not synced/)
     assert.equal(n, 1)
   } finally { globalThis.fetch = orig }
+})
+
+// ── fleetCams: the camera grid ───────────────────────────────────────────────────────────────────────────
+const ent = (id, is_camera, name = '') => ({ id, name, is_camera, type: 'webrtc', config: {}, connected: true, is_active: false, error: '', last_checked: 0 })
+test('fleetCams: options keep only cameras, in order; default is the first, a remembered one wins only if it still exists', () => {
+  const o = FC.cameraOptions([ent('arm', false), ent('c1', true, 'Front'), ent('c2', true)])
+  assert.deepEqual(o, [{ id: 'c1', label: 'Front' }, { id: 'c2', label: 'c2' }])
+  assert.equal(FC.pickCamera(o), 'c1')
+  assert.equal(FC.pickCamera(o, 'c2'), 'c2')
+  assert.equal(FC.pickCamera(o, 'gone'), 'c1')
+  assert.equal(FC.pickCamera([], 'c2'), null)
+})
+test('fleetCams: tile states are plain, never loading for ever', () => {
+  assert.equal(FC.tileState(null, false), 'loading')
+  assert.equal(FC.tileState(null, true), 'unreachable')
+  assert.equal(FC.tileState([], false), 'no_camera')
+  assert.equal(FC.tileState([{ id: 'a', label: 'a' }], false), 'ready')
+  assert.match(FC.tileMessage('unreachable', 'http://r1'), /Cannot reach the robot at http:\/\/r1/)
+  assert.match(FC.tileMessage('no_camera', 'http://r1'), /no camera/)
+})
+test('fleetCams: choices are remembered per robot id; a broken store gives {}', () => {
+  FC.rememberChoice('r1', 'c2'); FC.rememberChoice('r2', 'c9')
+  assert.deepEqual(FC.loadChoices(), { r1: 'c2', r2: 'c9' })
+  sessionStorage.setItem(FC.LS_FLEET_CAMS, '[1]')
+  assert.deepEqual(FC.loadChoices(), {})
+  sessionStorage.setItem(FC.LS_FLEET_CAMS, 'not json')
+  assert.deepEqual(FC.loadChoices(), {})
+})
+test('api: listClientsAt / cameraWsAt use the given robot; listClients / cameraWs keep using the active robot', async () => {
+  const seen = []
+  const realFetch = globalThis.fetch, RealWS = globalThis.WebSocket
+  globalThis.fetch = async (u, init) => { seen.push([u, init]); return { ok: !String(u).startsWith('http://bad'), status: 503, json: async () => [ent('c1', true)] } }
+  globalThis.WebSocket = class { constructor(u) { seen.push(u) } }
+  try {
+    assert.equal((await api.listClientsAt('http://other:1')).length, 1)
+    assert.equal(seen[0][0], 'http://other:1/connects')
+    await assert.rejects(api.listClientsAt('http://bad:1'), /HTTP 503/)
+    assert.deepEqual(await api.listClients().then(() => 'ok'), 'ok')
+    assert.equal(seen[2][0], `${api.getAgentUrl()}/connects`)
+    assert.equal(seen[2][1], undefined)
+    api.cameraWsAt('https://other:1', 'c1'); api.cameraWs('c1')
+    assert.equal(seen[3], 'wss://other:1/ws/camera/c1')
+    assert.equal(seen[4], `${api.getAgentUrl().replace('http://', 'ws://')}/ws/camera/c1`)
+  } finally { globalThis.fetch = realFetch; globalThis.WebSocket = RealWS }
 })

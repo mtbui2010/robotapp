@@ -69,6 +69,23 @@ list and the manager is left alone).
   Contract with the manager (being built; not in SPEC section 6 yet): `GET /fleet/config` returns
   `{robots: [{id, url, real}], places, exclusive, policy}`; `PUT /fleet/robots/{id}` body `{url, real, places?}`.
 
+## Camera grid (2026-11-21)
+
+Under the lost-robot banners, above the robots table: one tile per fleet robot
+([FleetCameras.tsx](../../frontend/components/FleetCameras.tsx), [FleetCamTile.tsx](../../frontend/components/FleetCamTile.tsx)).
+Title = robot id + `REAL` / `sim` badge; a drop-down lists that robot's cameras (default its first; the choice is kept per
+robot id in the tab preference `robotapp_fleet_cams`, forgotten if the robot no longer has that camera).
+
+- **Each robot's own URL**, not the tab's active robot: `api.listClientsAt(url)` (`GET /connects`, entries with `is_camera`)
+  and `api.cameraWsAt(url, id)` (`WS /ws/camera/{id}`, then `{depth_mode: 'colored'}` like CameraCell). They are in
+  `lib/api.ts` (no new HTTP file); `listClients` / `cameraWs` call the same code with the active robot's URL (unit-tested).
+- **One stream per robot**, closed when the camera is changed, the robot leaves the list or the tab goes away.
+- **No endless spinner**: a camera list not read in 5 s or failing = "Cannot reach the robot at <url>."; no camera = "This
+  robot has no camera."; no frame in 8 s = "No image from this camera." (or the robot's own error).
+- Reading cameras and streaming never start a run (rule 6). A robot's own tab is unchanged.
+- Pure logic (options, default, tile state, remembered choices): [lib/fleetCams.ts](../../frontend/lib/fleetCams.ts); tests in
+  `scripts/test_fleet.mjs`. Not verified in a browser or against real robots.
+
 Backend: `GET /fleet/robots`, `GET /fleet/plans` (**not in the SPEC yet**: without it the tab shows the plans it
 submitted or saw on the WebSocket), `GET /fleet/plans/{id}`, `POST /fleet/requests`, `POST .../approve`,
 `POST .../answer`, `POST /fleet/stop` (a list of `CancelResult`, bare or as `{results}`),

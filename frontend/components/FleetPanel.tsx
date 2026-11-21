@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { fleet, type LiveStatus } from '../lib/fleet'
 import { afterText, approveConfirm, canApprove, goalLabel, groupByRobot, isReal, lostRobots, mergePlans, refreshTargets, stateColour, stopEmptyWarning, stopLines, type StopLine } from '../lib/fleetView'
 import type { FleetPlan, FleetRobot } from '../lib/fleet_types'
+import FleetCameras from './FleetCameras'
 import { readTabPref, writeTabPref } from '../lib/tabPref'
 
 // The Fleet tab: several robots driven by the robot_fleet manager (docs/features/fleet.md). Opening it only reads
@@ -80,6 +81,7 @@ export default function FleetPanel({ lang }: { lang?: string }) {
       {err && <div className="text-red-700">{err}</div>}
 
       {lostRobots(robots).map(r => <LostBanner key={r.id} robot={r} onDone={load} onError={m => setErr(m)} />)}
+      <FleetCameras robots={robots} badge={r => <RealBadge real={r.real !== false} />} />
       <RobotsTable robots={robots} />
 
       <div className="flex items-center gap-2">
