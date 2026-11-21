@@ -86,6 +86,30 @@ robot id in the tab preference `robotapp_fleet_cams`, forgotten if the robot no 
 - Pure logic (options, default, tile state, remembered choices): [lib/fleetCams.ts](../../frontend/lib/fleetCams.ts); tests in
   `scripts/test_fleet.mjs`. Not verified in a browser or against real robots.
 
+## Runs started by the fleet, in the robot's own tab (2026-11-21)
+
+When the fleet manager (or any other client) starts a run on a robot, that robot's own tab draws it like its own runs: the
+plan rows, the step logs and the step image (`log_image` of `step_log`) in the camera view. The tab subscribes, read-only, to
+the robot's `WS /ws/events` ([fleet_seams](../../../ra_merge/docs/fleet_seams.md); `api.eventsWs()` / `api.eventsWsAt(url)` in
+`lib/api.ts`). Hook [lib/useForeignRun.ts](../../frontend/lib/useForeignRun.ts); pure logic (what to show, own run id, retry delay)
+[lib/foreignRun.ts](../../frontend/lib/foreignRun.ts); the step rows come from `reduceSteps` in
+[lib/planSteps.ts](../../frontend/lib/planSteps.ts), which the tab's own run uses too (one reducer, same rendering).
+
+- **No double drawing**: every event of this tab's own `/ws/agent` socket carries `run_id`; those ids are remembered, and
+  events of them on `/ws/events` are ignored. While this tab has its own run in flight nothing from `/ws/events` is drawn.
+- **Badge** above the plan: "Run started by the fleet / another client", the `run_id`, running / ended
+  ([ForeignRunBadge.tsx](../../frontend/components/ForeignRunBadge.tsx)). **Cancel** is unchanged (`POST /agent/cancel`).
+- **Quiet**: a robot without `/ws/events` (404 / refuses) changes nothing and logs nothing; reconnect after 5, 10, 20, 40 s,
+  then every 60 s; a good `events_open` resets the delay. Closing the tab (or changing robot) closes the socket.
+- **Rule 6**: the socket sends nothing and never starts a run. Not drawn: voice, listen / speak, recording and dataset logging
+  (those belong to the client that started the run). Events before the connect are not replayed (`GET /runs/{id}?events=true`
+  could); only the newest 1000 events are kept.
+- **Step images need no option**: a skill puts `log_image` in its `log_data({...})` call and the robot sends it in `step_log` on
+  every run (`unified_agent._make_log_fn`). The run option `log_data` (first `/ws/agent` message, boolean) only turns on the
+  vision dataset capture (rgb / depth / results, `step_log.dataset`); with `log_mode: "frontend"` that capture is streamed too.
+  So the image shows only if the skill that ran logs one.
+- Tests: `scripts/test_fleet.mjs`. Not verified in a browser or on a robot.
+
 Backend: `GET /fleet/robots`, `GET /fleet/plans` (**not in the SPEC yet**: without it the tab shows the plans it
 submitted or saw on the WebSocket), `GET /fleet/plans/{id}`, `POST /fleet/requests`, `POST .../approve`,
 `POST .../answer`, `POST /fleet/stop` (a list of `CancelResult`, bare or as `{results}`),

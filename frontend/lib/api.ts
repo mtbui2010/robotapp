@@ -156,6 +156,10 @@ function cameraWsAt(baseUrl: string, clientId: string): WebSocket {
   return new WebSocket(`${baseUrl.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/camera/${clientId}`)
 }
 
+function eventsWsAt(baseUrl: string): WebSocket {
+  return new WebSocket(`${baseUrl.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/events`)
+}
+
 function getWsBase(): string {
   return getAgentUrl().replace('https://', 'wss://').replace('http://', 'ws://')
 }
@@ -851,6 +855,15 @@ export const api = {
 
   agentWs(): WebSocket {
     return new WebSocket(`${getWsBase()}/ws/agent`)
+  },
+
+  /** Read-only stream of every run event of this robot, runs started by others included (WS /ws/events). Sends nothing. */
+  eventsWs(): WebSocket {
+    return eventsWsAt(getAgentUrl())
+  },
+  /** Like eventsWs, for the robot at `baseUrl`. */
+  eventsWsAt(baseUrl: string): WebSocket {
+    return eventsWsAt(baseUrl)
   },
 
   cameraWs(clientId: string): WebSocket {

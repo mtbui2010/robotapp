@@ -19,6 +19,9 @@ import PlanPanel    from '../components/PlanPanel'
 import ButtonPanel  from '../components/ButtonPanel'
 import ChatPanel, { type ChatLine } from '../components/ChatPanel'
 import { api }      from '../lib/api'
+import { reduceSteps } from '../lib/planSteps'
+import { useForeignRun } from '../lib/useForeignRun'
+import ForeignRunBadge from '../components/ForeignRunBadge'
 import { useVoiceOutput, stillWorkingPhrase } from '../lib/useVoiceOutput'
 import { speakAndWait, recognizeOnce, recordPhrase, primeMic, playEarcon, playAlarm, stopRecording, abortRecognition } from '../lib/hriVoice'
 import { answerBy, createEchoGuard } from '../lib/chatMic'
@@ -160,6 +163,8 @@ export default function Home() {
     sendRun({ t: id ? 'listen' : 'answered' })
   }
   const runningRef = useRef(false)
+  // Runs started by someone else on this robot (the fleet manager ...) are drawn here too, from its read-only /ws/events
+  const { foreignRun, noteOwnEvent } = useForeignRun({ robotUrl: target?.url, ownRunning: () => runningRef.current, show: emit, showImage: setLogImage })
   // Stop was pressed for the run in flight: its late `speak` / `listen` events are ignored and its capture jobs do not post
   const stopReqRef = useRef(false)
   // HRI queue (speak / listen / alarm jobs, strictly in order). A new run and a Reset start a new EPOCH: jobs of an
@@ -339,6 +344,7 @@ export default function Home() {
     ws.onmessage = e => {
       const ev: AgentEvent = JSON.parse(e.data)
       ev._rx = Date.now()                  // receive time: the plan list shows step durations from it
+      noteOwnEvent(ev)                     // this run's id: its copy on /ws/events is not drawn again
       const newEvents = [...eventsRef.current, ev]
       let newSteps = stepsRef.current
 
@@ -507,13 +513,7 @@ export default function Home() {
         // SAGE events carry `index` / `action` / `object` instead of `step` / `total` / `task`
         const stepNo = ev.step ?? ev.index
         if (stepNo != null) curStep = stepNo
-        newSteps = [...newSteps, {
-          index: stepNo!,
-          total: ev.total!,
-          task: ev.task ?? [ev.action, ev.object].filter(Boolean).join(' '),
-          status: 'running' as const,
-          startedAt: Date.now(),
-        }]
+        newSteps = reduceSteps(newSteps, ev)
       } else if (ev.event === 'step_done') {
         const doneNo = ev.step ?? ev.index      // SAGE: `index`, reused after a recovery splice → the running row
         if (frontendLog && doneNo != null) {
@@ -521,20 +521,11 @@ export default function Home() {
           if (a.logAll || runFailed) writeBucket(doneNo, stepOutcome.get(doneNo)!)
           curStep = RUN_BUCKET
         }
-        let hit = -1
-        newSteps.forEach((s, i) => { if (s.index === doneNo && s.status === 'running') hit = i })
-        newSteps = newSteps.map((s, i) =>
-          i === hit
-            ? { ...s, status: (ev.result?.isdone ? 'done' : 'failed') as Step['status'], result: ev.result, endedAt: Date.now() }
-            : s
-        )
+        newSteps = reduceSteps(newSteps, ev)
       } else if (ev.event === 'step_log') {
-        const entry = { data: ev.data ?? {}, image: ev.log_image ?? undefined, ts: ev.ts ?? Date.now() / 1000 }
         const heard = (ev.data as { lang_detected?: { lang?: string } } | undefined)?.lang_detected?.lang   // Detect mode: the language the user was heard in
         if (typeof heard === 'string') { heardLangRef.current = heard; setHeardLang(heard); setVoiceLang(heard) }
-        newSteps = newSteps.map(s =>
-          s.index === ev.step ? { ...s, logs: [...(s.logs ?? []), entry] } : s
-        )
+        newSteps = reduceSteps(newSteps, ev)
         if (ev.log_image_reset && !ev.log_image) setLogImage(null)
         if (ev.log_image) {
           setLogImage(ev.log_image)
@@ -593,7 +584,7 @@ export default function Home() {
     }
     ws.onclose = gone
     ws.onerror = gone
-  }, [emit, speak, beginRecording, endRecording, setRecordingPrefix, stopNudge, sendRun])
+  }, [emit, noteOwnEvent, speak, beginRecording, endRecording, setRecordingPrefix, stopNudge, sendRun])
   useEffect(() => { fireRef.current = fire }, [fire])
 
   const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true, screenRec = true) => {
@@ -876,7 +867,8 @@ export default function Home() {
                 refreshKey={skillRefreshKey} />
             </div>
             <div className="p-4 flex-1 overflow-y-auto">
-              <PlanPanel events={agentEvents} steps={agentSteps} planMethod={runMethod} running={running} />
+              <ForeignRunBadge run={foreignRun} />
+              <PlanPanel events={agentEvents} steps={agentSteps} planMethod={runMethod} running={running || (!!foreignRun && !foreignRun.ended)} />
             </div>
           </div>
           <button

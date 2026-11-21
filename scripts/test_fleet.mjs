@@ -25,6 +25,8 @@ const FV = await load('fleetView')
 const FE_ = await load('fleetEdit')
 const FR = await load('fleetRegistry')
 const FC = await load('fleetCams')
+const FG = await load('foreignRun')
+const PS = await load('planSteps')
 const { api } = await load('api')
 const { fleet, reconnectDelay, DEFAULT_FLEET_URL } = await load('fleet')
 
@@ -357,4 +359,57 @@ test('api: listClientsAt / cameraWsAt use the given robot; listClients / cameraW
     assert.equal(seen[3], 'wss://other:1/ws/camera/c1')
     assert.equal(seen[4], `${api.getAgentUrl().replace('http://', 'ws://')}/ws/camera/c1`)
   } finally { globalThis.fetch = realFetch; globalThis.WebSocket = RealWS }
+})
+
+// ── runs started by someone else, seen on /ws/events (lib/foreignRun.ts, lib/planSteps.ts, api.eventsWs) ─────────────────
+const fev = (event, run_id, extra = {}) => ({ event, run_id, ...extra })
+test('foreignRun route: another client\'s run is shown, the first event of a run is fresh', () => {
+  const own = new Set()
+  assert.deepEqual(FG.route(own, null, fev('step_start', 'r9'), false), { show: true, fresh: true, ended: false })
+  assert.deepEqual(FG.route(own, 'r9', fev('step_log', 'r9'), false), { show: true, fresh: false, ended: false })
+  assert.deepEqual(FG.route(own, 'r9', fev('done', 'r9'), false), { show: true, fresh: false, ended: true })
+  assert.equal(FG.route(own, 'r9', fev('step_start', 'r10'), false).fresh, true)
+})
+test('foreignRun route: this tab\'s own run (noted from /ws/agent) is not shown twice, nor while it is in flight', () => {
+  const own = new Set()
+  FG.noteOwn(own, fev('plan_ready', 'mine'))
+  FG.noteOwn(own, { event: 'x' })
+  assert.equal(FG.route(own, null, fev('step_log', 'mine'), false).show, false)       // late copy after the run ended
+  assert.equal(FG.route(own, null, fev('step_log', 'theirs'), true).show, false)      // own run drawing now
+  assert.equal(FG.route(own, null, fev('step_log', 'theirs'), false).show, true)
+})
+test('foreignRun route: hello, refusals, run manager notices and events without run_id are not drawn', () => {
+  for (const e of [{ event: 'events_open', active: null }, fev('refused', 'r1'), fev('run_state', 'r1'), fev('run_refused', 'r1'), { event: 'step_log' }])
+    assert.equal(FG.route(new Set(), null, e, false).show, false, e.event)
+})
+test('foreignRun parseEvent / pushEvent / retryDelay', () => {
+  assert.equal(FG.parseEvent('nope'), null)
+  assert.equal(FG.parseEvent('{"a":1}'), null)
+  assert.equal(FG.parseEvent(new ArrayBuffer(1)), null)
+  assert.equal(FG.parseEvent('{"event":"done","run_id":"r"}').run_id, 'r')
+  let ev = []
+  for (let i = 0; i < FG.MAX_EVENTS + 5; i++) ev = FG.pushEvent(ev, { event: 'e', step: i })
+  assert.equal(ev.length, FG.MAX_EVENTS); assert.equal(ev[0].step, 5)
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 50].map(FG.retryDelay), [5000, 10000, 20000, 40000, 60000, 60000, 60000])
+})
+test('planSteps reduceSteps: start, log with an image, done (the rows the own run and a foreign run both draw)', () => {
+  let s = PS.reduceSteps([], { event: 'step_start', step: 1, total: 2, task: 'go dock' }, 100)
+  assert.deepEqual(s.map(x => [x.index, x.task, x.status, x.startedAt]), [[1, 'go dock', 'running', 100]])
+  s = PS.reduceSteps(s, { event: 'step_log', step: 1, data: { msg: 'm' }, log_image: 'QUJD', ts: 5 }, 200)
+  assert.deepEqual(s[0].logs, [{ data: { msg: 'm' }, image: 'QUJD', ts: 5 }])
+  s = PS.reduceSteps(s, { event: 'step_done', step: 1, result: { isdone: true } }, 300)
+  assert.deepEqual([s[0].status, s[0].endedAt], ['done', 300])
+  s = PS.reduceSteps(s, { event: 'step_start', index: 2, action: 'pick', object: 'cup' }, 400)   // SAGE naming
+  assert.equal(s[1].task, 'pick cup')
+  assert.equal(PS.reduceSteps(s, { event: 'step_done', step: 2, result: {} }, 500)[1].status, 'failed')
+  assert.equal(PS.reduceSteps(s, { event: 'plan_ready' }), s)
+})
+test('api.eventsWs(At) opens /ws/events only and sends nothing', () => {
+  const RealWS = globalThis.WebSocket, made = []
+  globalThis.WebSocket = class { constructor(u) { made.push(this); this.url = u } send() { throw new Error('must not send') } }
+  try {
+    api.eventsWsAt('https://other:1'); api.eventsWs()
+    assert.equal(made[0].url, 'wss://other:1/ws/events')
+    assert.equal(made[1].url, `${api.getAgentUrl().replace('http://', 'ws://')}/ws/events`)
+  } finally { globalThis.WebSocket = RealWS }
 })
