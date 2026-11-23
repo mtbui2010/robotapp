@@ -8,6 +8,7 @@ aliases, planner guides) predate the dated notes; see their docs.
 
 ## 2026-11-24
 
+- **Per-robot session follow-ups.** Hands-free `speaking` depends on the shown session only; with no registered robot the session takes the default agent url (idle Cancel no longer posts to the dashboard); microphone ownership is a unit-tested pure function; the e2e saves three screenshots and prints the drop-down marks. Doc [sessions](features/sessions.md).
 - **One session per robot in a tab (per-robot session).** A run keeps going while another robot is picked; the drop-down marks running robots; Cancel / Stop / Reset act on the shown robot's own URL (`api.cancelRunAt`); a running robot takes no second command from this tab. Store in `lib/robotSessions.ts`, end-to-end proof `scripts/e2e_sessions.py` on two sim robots. Doc [sessions](features/sessions.md).
 
 ## 2026-11-23

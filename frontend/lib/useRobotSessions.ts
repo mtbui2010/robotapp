@@ -48,7 +48,6 @@ export function useRobotSessions() {
     return next.shown === st.shown && next.sessions === st.sessions ? st : next
   }), [apply])
   const handles = useCallback((key: SessionKey): RunHandles => (hs.current[canon(key)] ??= newHandles()), [canon])
-  const anyBusy = useCallback(() => Object.values(hs.current).some(h => h.busy > 0 || Date.now() < h.speechUntil), [])
 
   /** Called with the registry list: drops the sessions of removed robots (closes the socket, best-effort cancel at the frozen url), moves the session
    *  of a renamed running robot to its new name, and points idle sessions at the urls their robots have now. */
@@ -89,5 +88,5 @@ export function useRobotSessions() {
   }, [anyRunning])
   useEffect(() => () => { Object.values(hs.current).forEach(closeHandles) }, [])
 
-  return { store, shown: shownOf(store), get, getStore, shownKey, put, set, apply, dispatch, choose, handles, anyBusy, reconcileRobots, sameKey }
+  return { store, shown: shownOf(store), get, getStore, shownKey, put, set, apply, dispatch, choose, handles, reconcileRobots, sameKey }
 }

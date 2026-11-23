@@ -35,7 +35,8 @@ one robot, which is unsafe. Stop it first."). Two clients driving one robot is u
 - Sessions live in the tab's memory: a reload drops them. A run still going on a robot is then seen only as a run started by someone else (the read-only `/ws/events` badge).
 - A robot removed from the list ends its session (its run gets a best-effort cancel). Every write of the list (add, rename, edit url, remove) fires `ROBOTS_CHANGED_EVENT`, so the page reconciles at once. A running robot renamed in place keeps its session under the new name (still one client per robot).
 - An idle session follows the url its robot has now; a busy one keeps the url of its run, so a Cancel reaches the robot that runs. After the run ends the session takes the edited url.
-- The browser has one microphone: a listen job's owner is remembered, and only that robot's Stop / answer ends the capture.
+- The browser has one microphone: a listen job's owner is remembered, and only that robot's Stop / answer ends the capture (`micMayEnd` in `lib/runHelpers.ts`, unit-tested). Hands-free `speaking` looks at the SHOWN session only (`handleBusy`), so a background run's speech does not block the shown robot's mic.
+- With no robot registered, the shown session takes the legacy default agent url (`sessionUrl`), so an idle Cancel / Map Stop never posts to the dashboard origin.
 - The screen recorder is one per tab: only the session that began it ends it.
 - Verified on two sim robots with `scripts/e2e_sessions.py`; not run on real robots.
 
@@ -43,4 +44,5 @@ one robot, which is unsafe. Stop it first."). Two clients driving one robot is u
 
 `scripts/e2e_sessions.py` (Playwright) starts its own dashboard on port 3017 and drives two sim agents (`A_URL` 8021, `B_URL` 8022, structured `wait::N`):
 a runs, b is free and a is marked running, b runs, Cancel on b leaves a running, Cancel on a stops a; both agents are cancelled at the end even on failure.
-It prints one PASS / FAIL line per step and exits 0 only when all pass.
+It prints one PASS / FAIL line per step (plus `PASS option_marks a=<text> b=<text>`, the drop-down texts at step 3) and exits 0 only when all pass.
+Screenshots go to `SHOTDIR`: `e2e_start.png` (a runs, a shown), `e2e_step3.png` (b shown, a running, robot list expanded) and `e2e_end.png`.

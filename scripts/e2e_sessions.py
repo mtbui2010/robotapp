@@ -4,7 +4,7 @@ What: starts (or reuses) its own dashboard `next dev -p 3017` from this worktree
       then drives the UI: a runs a long structured command, the person picks b, b is free and a is marked running, b runs a short command,
       Cancel while viewing b leaves a running, picking a and Cancel stops a. Agents are read over REST only to check (GET /runs).
 Why: Cancel used to go to "the robot picked now" and the controls stayed locked after a switch (owner, 2026-11-24).
-Env: A_URL (http://127.0.0.1:8021), B_URL (http://127.0.0.1:8022), PORT (3017), SHOT (screenshot path of step 3).
+Env: A_URL (http://127.0.0.1:8021), B_URL (http://127.0.0.1:8022), PORT (3017), SHOTDIR (folder of e2e_start.png, e2e_step3.png, e2e_end.png).
 Needs: sim robots a and b idle, `wait` skill on both (structured `wait::<seconds>`). Exit 0 only when every step passes.
 Switch off: run by hand only.
 """
@@ -22,7 +22,7 @@ A_URL = os.environ.get("A_URL", "http://127.0.0.1:8021")
 B_URL = os.environ.get("B_URL", "http://127.0.0.1:8022")
 PORT = int(os.environ.get("PORT", "3017"))
 DASH = f"http://localhost:{PORT}"
-SHOT = os.environ.get("SHOT", "/tmp/claude-1000/-media-keti-workdir-remote-dir-robotapp/48d51ba1-c910-4ee6-a30d-081f51a33057/scratchpad/sessions/e2e_step3.png")
+SHOTDIR = os.environ.get("SHOTDIR", "/tmp/claude-1000/-media-keti-workdir-remote-dir-robotapp/48d51ba1-c910-4ee6-a30d-081f51a33057/scratchpad/sessions")
 FRONTEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
 LONG_CMD, SHORT_CMD = "wait::90", "wait::12"          # a's run outlives every step; b's run is short but still running when Cancel is pressed
 ROBOTS = [{"name": "a", "url": A_URL}, {"name": "b", "url": B_URL}]
@@ -77,6 +77,17 @@ def option_text(pg, robot):
     return pg.locator(f'[data-testid="fleet-switch"] option[value="robot:{robot}"]').text_content() or ""
 
 
+def shot(pg, name, open_list=False):
+    """Screenshot; open_list shows the robot list (a native <select> popup is not drawn headless, so it is expanded as a list box)."""
+    sel = pg.locator('[data-testid="fleet-switch"]')
+    if open_list:
+        sel.evaluate("e => { e.dataset.size = e.size; e.size = Math.max(e.options.length, 3) }")
+    pg.wait_for_timeout(300)
+    pg.screenshot(path=os.path.join(SHOTDIR, name))
+    if open_list:
+        sel.evaluate("e => { e.size = Number(e.dataset.size) || 0 }")
+
+
 def run_cmd(pg, cmd):
     ta = pg.locator("textarea").first
     ta.fill(cmd)
@@ -108,8 +119,9 @@ def main():
                 pg.select_option('[data-testid="fleet-switch"]', value="robot:a")
                 pg.wait_for_timeout(1500)
             run_cmd(pg, LONG_CMD)
-            step("1 robot a runs", wait_for(lambda: bool(active(A_URL)), 20) and "running" in option_text(pg, "a"),
-                 f"a active={active(A_URL)} option={option_text(pg, 'a')!r}")
+            ok1 = wait_for(lambda: bool(active(A_URL)), 20) and "running" in option_text(pg, "a")
+            shot(pg, "e2e_start.png")
+            step("1 robot a runs", ok1, f"a active={active(A_URL)} option={option_text(pg, 'a')!r}")
 
             pg.select_option('[data-testid="fleet-switch"]', value="robot:b")
             pg.wait_for_timeout(1500)
@@ -120,7 +132,8 @@ def main():
             run_cmd(pg, SHORT_CMD)
             b_ok = wait_for(lambda: bool(active(B_URL)), 20)
             pg.wait_for_timeout(500)
-            pg.screenshot(path=SHOT)
+            shot(pg, "e2e_step3.png", open_list=True)
+            print(f"PASS option_marks a={option_text(pg, 'a')} b={option_text(pg, 'b')}", flush=True)
             step("3 both agents active, b shown", b_ok and bool(active(A_URL)) and "running" in option_text(pg, "b")
                  and pg.get_by_role("button", name="Run", exact=True).count() == 0,
                  f"a={active(A_URL)} b={active(B_URL)} b_option={option_text(pg, 'b')!r}")
@@ -135,6 +148,7 @@ def main():
             pg.wait_for_timeout(1500)
             pg.get_by_role("button", name="Cancel", exact=True).click()
             step("5 Cancel on a stops a", wait_for(lambda: not active(A_URL), 30), f"a={active(A_URL)}")
+            shot(pg, "e2e_end.png")
         finally:
             br.close()
     return started

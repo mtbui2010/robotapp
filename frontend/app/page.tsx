@@ -34,7 +34,7 @@ import { useHandsFree } from '../lib/useHandsFree'
 import { noteForListenReply, stopAction, stopLabel, canStop, canType, isLost, needsForce } from '../lib/chatRun'
 import { useRobotSessions } from '../lib/useRobotSessions'
 import { robotKey, cancelTarget, startBlock, statusMap, optionText, appendLine, settleHeard, closeLine, verdictOf, beginRun, endRun, patch, HEARD_PENDING, type SessionKey, type RunHandles } from '../lib/robotSessions'
-import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri } from '../lib/runHelpers'
+import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri, handleBusy, sessionUrl, micMayEnd } from '../lib/runHelpers'
 import { LS_PLANNER, PLANNER_EVENT, DEFAULT_PLANNER, LS_PLAN_ONLY, storedPlanOnly, storedPlanner, type PlannerMethod } from '../lib/planner'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
 import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
@@ -75,7 +75,7 @@ export default function Home() {
   const { running, events: agentEvents, steps: agentSteps, logImage, runMethod, trial, qaLog, listenId, choice, qaSkill, heardLang, run: rs } = sess.shown
   useEffect(() => { window.addEventListener(ROBOTS_CHANGED_EVENT, readRobotList); return () => window.removeEventListener(ROBOTS_CHANGED_EVENT, readRobotList) }, [readRobotList])   // add / rename / remove / edit url, from any panel
   useEffect(() => { sess.reconcileRobots([...robotList, { name: '' }]) }, [robotList, sess.reconcileRobots])   // a removed or renamed robot ends its session
-  useEffect(() => { sess.choose(robotKey(target?.robot ?? ''), target?.url ?? api.getAgentUrl()) }, [target, sess.choose])   // the shown session follows the robot the tab shows
+  useEffect(() => { sess.choose(robotKey(target?.robot ?? ''), sessionUrl(target?.url, api.getAgentUrl())) }, [target, sess.choose])   // the shown session follows the robot the tab shows
   const [fleetLog, setFleetLog]       = useState<ChatLine[]>([])   // the Fleet chat's log (the fleet manager is not a robot session)
   const [voiceOut, setVoiceOut]       = useState(true)   // speak milestones by default
   // 🔊 off = no sound at all (2026-10-27): milestones, and also the skills' own lines (announce / ask / qa
@@ -116,7 +116,7 @@ export default function Home() {
   const robotLangsRef = useRef<RobotLanguages | null>(null)   // the SHOWN robot's languages; a run freezes a copy in its handles
   const runLang = (h: RunHandles, l: string) => speechLanguage(l, h.langs, h.heard)
   const micOwnerRef = useRef<SessionKey | null>(null)         // the robot whose listen job holds the browser's one mic
-  const endMic = (key: SessionKey) => { if (micOwnerRef.current === null || sameKey(micOwnerRef.current, key)) { stopRecording(); abortRecognition() } }
+  const endMic = (key: SessionKey) => { if (micMayEnd(micOwnerRef.current, key, sameKey)) { stopRecording(); abortRecognition() } }
   const recOwnerRef = useRef<SessionKey | null>(null)         // ONE screen recorder per tab: only the session that began it ends it
   const endRec = (key: SessionKey, outcome?: 'succeed' | 'failed') => { if (recOwnerRef.current === key) { recOwnerRef.current = null; endRecording(outcome) } }
   const takeListen = (key: SessionKey, id: string | null) => {
@@ -544,7 +544,7 @@ export default function Home() {
     H(key).textAsk?.(null)
     set(key, { choice: null })
     if (!sameKey(shownKey(), key)) return
-    if (micOwnerRef.current === null || sameKey(micOwnerRef.current, key)) { stopRecording(); abortRecognition() }   // one mic: only its owner ends it
+    if (micMayEnd(micOwnerRef.current, key, sameKey)) { stopRecording(); abortRecognition() }   // one mic: only its owner ends it
     try { window.speechSynthesis.cancel() } catch { /* not supported */ }
   }, [H, set, shownKey, sameKey])
 
@@ -706,7 +706,7 @@ export default function Home() {
     snapshot: () => ({
       running: get(shownKey()).running,
       waiting: get(shownKey()).listenId !== null,
-      speaking: sess.anyBusy()
+      speaking: handleBusy(H(shownKey()), Date.now())
         || (typeof window !== 'undefined' && 'speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)),
     }),
     guard: echoGuard,

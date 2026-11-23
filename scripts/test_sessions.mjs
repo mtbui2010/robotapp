@@ -204,3 +204,33 @@ test('syncUrls: an idle session follows an edited url after its run ended; a bus
   st = S.syncUrls(st, [{ name: 'alpha', url: U2 }])
   assert.equal(S.cancelTarget(st).url, U2, 'after the run: the live url')
 })
+
+// ── lib/runHelpers.ts: shown-only speaking, default url, microphone ownership ──
+const outH = join(out, 'runHelpers.mjs')
+buildSync({ entryPoints: [join(FE, 'lib', 'runHelpers.ts')], outfile: outH, bundle: true, format: 'esm', platform: 'node', logLevel: 'error' })
+const H = await import(pathToFileURL(outH).href)
+
+test('speaking: only the SHOWN session counts; a background run speaking does not block the shown robot mic', () => {
+  const now = 1000
+  const quiet = S.newHandles(), loud = S.newHandles()
+  loud.busy = 1
+  assert.equal(H.handleBusy(quiet, now), false, 'beta is shown and quiet')
+  assert.equal(H.handleBusy(loud, now), true)
+  const tail = S.newHandles(); tail.speechUntil = now + 500
+  assert.equal(H.handleBusy(tail, now), true, 'just spoken: echo guard window')
+  assert.equal(H.handleBusy(tail, now + 600), false)
+})
+
+test('sessionUrl: an empty url (no registered robot) takes the default agent url; a real one is kept', () => {
+  assert.equal(H.sessionUrl('', 'http://host.test:8001'), 'http://host.test:8001')
+  assert.equal(H.sessionUrl(undefined, 'http://host.test:8001'), 'http://host.test:8001')
+  assert.equal(H.sessionUrl(B, 'http://host.test:8001'), B)
+})
+
+test('micMayEnd: beta cannot end or answer over the capture alpha owns; the owner can; nobody owns -> allowed', () => {
+  const same = (x, y) => x === y
+  assert.equal(H.micMayEnd(ka, kb, same), false)
+  assert.equal(H.micMayEnd(ka, ka, same), true)
+  assert.equal(H.micMayEnd(null, kb, same), true)
+  assert.equal(H.micMayEnd(ka, 'robot:alpha2', (x, y) => x === ka && y === 'robot:alpha2'), true, 'a renamed owner is still the owner')
+})
