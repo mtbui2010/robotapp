@@ -21,7 +21,7 @@ const HELP = 'Type a task ("put the apple on the counter") and the robot plans a
 export default function ChatPanel({
   log, state, langPicker, planner, onPlanner, planOnly, onPlanOnly,
   handsFree, onHandsFree, micSupported, micListening, micNote,
-  onSend, onStop, onReset, canStop, canType, lost, stuck, onClear, onClose, docked = false,
+  onSend, onStop, onReset, canStop, canType, lost, stuck, onClear, onClose, docked = false, blockedWhy = null,
 }: {
   log: ChatLine[]
   state: ChatState
@@ -44,6 +44,7 @@ export default function ChatPanel({
   stuck: boolean             // stopping for more than a few seconds: offer Force reset
   onClear: () => void
   onClose: () => void
+  blockedWhy?: string | null  // why this robot takes no second command from this tab (one client per robot); null = none
   docked?: boolean           // in the page flow under the Fleet view's camera grid (wide, covers nothing) instead of the floating card; it hides the planner and
                              // plan-only controls: a fleet request ignores both (the fleet manager plans, and a plan is approved in the chat)
 }) {
@@ -130,6 +131,7 @@ export default function ChatPanel({
         )}
         {micListening && <span className="ml-auto text-red-600 animate-pulse">🎤 listening…</span>}
       </div>
+      {blockedWhy && state !== 'waiting' && <p data-testid="chat-block" className="px-3 py-1 text-[10px] text-amber-700 bg-amber-50 border-t border-amber-100 leading-snug">{blockedWhy}</p>}
       <div className="flex gap-1.5 px-2 pb-1">
         <button onClick={() => onHandsFree(!handsFree)} disabled={!micSupported} data-testid="chat-mic"
           title={micSupported

@@ -136,7 +136,7 @@ function MapUpdater({ clients, current, onSaved }: { clients: ClientEntry[]; cur
     </span>)
 }
 
-export default function MapPanel({ clients, running }: { clients: ClientEntry[]; running: boolean }) {
+export default function MapPanel({ clients, running, onStop }: { clients: ClientEntry[]; running: boolean; onStop: () => void }) {   // onStop: the page's Stop of the robot on screen
   const [cfg, setCfg]           = useState<MapConfig | null>(null)
   const [cfgError, setCfgError] = useState<string | null>(null)
   const [frameSrc, setFrameSrc] = useState('')                 // latest camera frame (data URL)
@@ -481,7 +481,7 @@ export default function MapPanel({ clients, running }: { clients: ClientEntry[];
           <input className="w-16 border border-gray-300 rounded px-1 py-0.5" placeholder="auto" value={manualH} onChange={e => setManualH(e.target.value)} />m
         </label>
         <button className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40" disabled={!pose || busy} onClick={savePlace}>Save as place</button>
-        <button className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" onClick={() => { api.cancelRun(); setStatus('stop sent') }}>Stop</button>
+        <button className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" onClick={() => { onStop(); setStatus('stop sent') }}>Stop</button>
         <button className="text-blue-600 hover:underline" onClick={() => { setTrail([]); reload() }}>reload</button>
         <button className={`px-2 py-1 rounded border hover:bg-gray-50 ${showSettings ? 'border-blue-400 bg-blue-50' : 'border-gray-300'}`}
                 onClick={() => setShowSettings(v => !v)} title="The MAP config: robot pose, what a click / ← → / auto lift run">⚙ Settings</button>

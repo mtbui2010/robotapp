@@ -9,6 +9,7 @@ import FleetEditor from './FleetEditor'
 import { useFleets } from './useFleets'
 import { fleetsUsing, parseSelection, selectorOptions } from '../lib/fleetEdit'
 import { followRobot, forgetRobot } from '../lib/fleetRegistry'
+import { optionText, robotKey, type SessionStatus } from '../lib/robotSessions'
 import ServerListEditor, {
   KIND_DEFAULT_NAME, STATUS_DOT, defaultRows, rowsError, rowsFromConfig, rowsToConfig, type ServerRow,
 } from './ServerListEditor'
@@ -164,6 +165,7 @@ interface Props {
   onActiveChange?: (t: ActiveTarget) => void      // the robot / site this tab drives (shown by the Cameras / Map tabs)
   onFleetChosen?: (name: string) => void          // a fleet was picked in the robot / fleet drop-down (the Fleet tab opens)
   switchRef?: React.MutableRefObject<((name: string) => Promise<void>) | null>   // the page's tab-row drop-down switches the robot through this
+  marks?: Record<string, SessionStatus>           // robots whose session in this tab is not idle, by option value: the drop-down shows a running mark
 }
 
 function getHead(name: string): string {
@@ -189,7 +191,7 @@ interface WarmKind {
 const ICON_BTN = 'px-2 py-1 text-xs rounded leading-none whitespace-nowrap'
 const WARM_KINDS: [string, string][] = [['vlms', 'VLMs'], ['visions', 'Visions'], ['voices', 'Voices']]
 
-export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveChange, onFleetChosen, switchRef }: Props) {
+export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveChange, onFleetChosen, switchRef, marks }: Props) {
   const [clients, setClients]   = useState<ClientEntry[]>([])
   const [rosData, setRosData]   = useState<RosScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -379,7 +381,8 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
     if (!activeRobot) return
     const used = fleetsUsing(fl.fleets, activeRobot)
     const warn = used.length ? `\n\nIt is a member of ${used.map(n => `"${n}"`).join(', ')}: it will be removed from ${used.length > 1 ? 'those fleets' : 'that fleet'} (save the fleet to update its manager).` : ''
-    if (!confirm(`Remove robot "${activeRobot}"?${warn}`)) return
+    const busy = marks?.[robotKey(activeRobot)] ? '\n\nIts running command will be cancelled.' : ''
+    if (!confirm(`Remove robot "${activeRobot}"?${warn}${busy}`)) return
     api.removeRobot(activeRobot)
     forgetRobot(activeRobot)
     fl.reload()
@@ -911,7 +914,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
             {(['Robots', 'Fleets'] as const).map(g => {
               const opts = selectorOptions(robots, fl.fleets).filter(o => o.group === g)
               return opts.length > 0 && (
-                <optgroup key={g} label={g}>{opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</optgroup>
+                <optgroup key={g} label={g}>{opts.map(o => <option key={o.value} value={o.value}>{optionText(o.label, marks?.[o.value] ?? 'idle')}</option>)}</optgroup>
               )
             })}
           </select>

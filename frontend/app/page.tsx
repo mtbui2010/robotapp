@@ -30,7 +30,10 @@ import { useVoiceOutput, stillWorkingPhrase } from '../lib/useVoiceOutput'
 import { speakAndWait, recognizeOnce, recordPhrase, primeMic, playEarcon, playAlarm, stopRecording, abortRecognition } from '../lib/hriVoice'
 import { answerBy, createEchoGuard } from '../lib/chatMic'
 import { useHandsFree } from '../lib/useHandsFree'
-import { INITIAL_RUN, STOP_TIMEOUT_MS, noteForListenReply, stopAction, stopLabel, runReduce, canStop, canType, isLost, needsForce, type RunEvent, type RunState } from '../lib/chatRun'
+import { noteForListenReply, stopAction, stopLabel, canStop, canType, isLost, needsForce } from '../lib/chatRun'
+import { useRobotSessions } from '../lib/useRobotSessions'
+import { robotKey, cancelTarget, startBlock, statusMap, optionText, appendLine, settleHeard, closeLine, verdictOf, beginRun, endRun, patch, HEARD_PENDING, type SessionKey, type RunHandles } from '../lib/robotSessions'
+import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri } from '../lib/runHelpers'
 import { LS_PLANNER, PLANNER_EVENT, DEFAULT_PLANNER, LS_PLAN_ONLY, storedPlanOnly, storedPlanner, type PlannerMethod } from '../lib/planner'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
 import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
@@ -44,34 +47,6 @@ import { resolveLanguage, languageOptions, speechLanguage, supportedLanguages, t
 import LanguagePicker from '../components/LanguagePicker'
 import type { Step } from '../components/PlanPanel'
 
-// Filename-safe prefix from a task string, e.g. 'find::apple' → 'find_apple'.
-const sanitizeTask = (t: string): string =>
-  (t || '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'task'
-
-// Sequentially download a base64 JPEG to the browser Downloads folder.
-const downloadJpeg = (b64: string, name: string): void => {
-  const a = document.createElement('a')
-  a.href = `data:image/jpeg;base64,${b64}`
-  a.download = name
-  document.body.appendChild(a); a.click(); a.remove()
-}
-
-// Mirrors the backend's failure test (unified_agent._is_failure_event): a step
-// returning isdone False, a run-level error, or a SAGE symbolic violation.
-const isFailureEvent = (ev: AgentEvent): boolean => {
-  if (ev.event === 'error') return true
-  if (ev.event === 'step_done') {
-    if (ev.status === 'failed') return true
-    if (ev.result && (ev.result as { isdone?: unknown }).isdone === false) return true
-  }
-  if (ev.event === 'done') {
-    return ev.status != null ? !(ev.status === 'success' || ev.status === 'planned') : ev.success === false
-  }
-  if (ev.event === 'plan_step' && ev.phase === 'verified' && ev.ok === false) return true
-  if (ev.event === 'plan_step' && Array.isArray(ev.violations) && ev.violations.length > 0) return true
-  if (ev.event === 'replan') return true
-  return false
-}
 
 // Control-bar pickers (KO / 🎤 / 📷 / 🔁): no native ▾, so the bar fits one row of the w-72 column
 const PICK = 'appearance-none text-center text-xs border border-gray-300 rounded px-1 py-1 bg-white hover:border-gray-400 cursor-pointer disabled:opacity-50'
@@ -94,22 +69,18 @@ export default function Home() {
   useEffect(() => { try { setDataTools(localStorage.getItem('robotapp_data_tools') === '1') } catch { /* off */ } }, [])
   const toggleDataTools = () => setDataTools(v => { try { localStorage.setItem('robotapp_data_tools', v ? '0' : '1') } catch { /* per-viewer convenience */ } return !v })
   const [target, setTarget]           = useState<ActiveTarget | null>(null)   // robot + site this tab drives
-  const [running, setRunning]         = useState(false)
-  const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
-  const [agentSteps, setAgentSteps]   = useState<Step[]>([])
-  const [logImage, setLogImage]       = useState<string | null>(null)
-  const [runMethod, setRunMethod]     = useState('')   // 'grace' | 'direct' | 'sage' — planner used by the active run
-  const [trial, setTrial]             = useState(0)    // current iteration number while looping
+  const sess = useRobotSessions()   // one session per robot (run, socket, chat log, plan): lib/robotSessions.ts. The page draws the SHOWN one
+  const { get, put, set, apply, dispatch, handles: H, shownKey, getStore } = sess
+  const { running, events: agentEvents, steps: agentSteps, logImage, runMethod, trial, qaLog, listenId, choice, qaSkill, heardLang, run: rs } = sess.shown
+  useEffect(() => { sess.reconcileRobots([...robotList, { name: '' }]) }, [robotList, sess.reconcileRobots])   // a removed or renamed robot ends its session
+  useEffect(() => { sess.choose(robotKey(target?.robot ?? ''), target?.url ?? api.getAgentUrl()) }, [target, sess.choose])   // the shown session follows the robot the tab shows
+  const [fleetLog, setFleetLog]       = useState<ChatLine[]>([])   // the Fleet chat's log (the fleet manager is not a robot session)
   const [voiceOut, setVoiceOut]       = useState(true)   // speak milestones by default
   // 🔊 off = no sound at all (2026-10-27): milestones, and also the skills' own lines (announce / ask / qa
   // `speak`, a listen's prompt), the earcons and the alarm — read live, so unticking mid-run silences the rest
   const voiceOutRef = useRef(voiceOut)
   voiceOutRef.current = voiceOut
   const [voiceLang, setVoiceLang]     = useState('en')
-  const wsRef     = useRef<WebSocket | null>(null)
-  const eventsRef = useRef<AgentEvent[]>([])
-  const stepsRef  = useRef<Step[]>([])
-  const runStartRef = useRef<number>(0)
 
   // How fast the browser speaks: the robot's HRI_CONFIGS.speech_rate (Global Configs), read on mount and at
   // every run; a speak / listen event's own rate (HRI_CONFIGS at that moment, or a call's rate=) wins for that line.
@@ -138,131 +109,66 @@ export default function Home() {
     rate: voiceLang.toLowerCase().startsWith('en') && speechRates.en ? speechRates.en : speechRates.base })
   const { recordEnabled, toggleRecord, beginRecording, endRecording, manualRecording, toggleManualRecord, setRecordingPrefix } = useScreenRecorder()
 
-  const emit = useCallback((events: AgentEvent[], steps: Step[]) => {
-    eventsRef.current = events
-    stepsRef.current  = steps
-    setAgentEvents(events)
-    setAgentSteps(steps)
-  }, [])
+  const emit = useCallback((key: SessionKey, events: AgentEvent[], steps: Step[]) => set(key, { events, steps }), [set])
 
-  // Repeat controller: run the same plan N times / forever. `remaining` may be
-  // Infinity (forever); `active` gates chaining and is cleared by Stop.
-  const repeatRef = useRef<{ remaining: number; continueOnError: boolean; active: boolean }>(
-    { remaining: 1, continueOnError: false, active: false }
-  )
-  const argsRef = useRef<{ finalPrompt: string; direct: boolean; lang: string; planner: 'grace' | 'direct' | 'sage'; planOnly: boolean; logData: boolean; logTarget: 'backend' | 'frontend'; logAll: boolean; voice: boolean; screenRec: boolean } | null>(null)
-  const robotLangsRef = useRef<RobotLanguages | null>(null)   // the robot's languages, for the speech language of a Detect run
-  const heardLangRef = useRef<string | null>(null)             // the language heard last in a Detect run
-  const runLang = (l: string) => speechLanguage(l, robotLangsRef.current, heardLangRef.current)
-  // "Still working" nudge: while a step runs without new milestones, repeat a
-  // short phrase so a long-running task doesn't sound stalled.
-  const nudgeRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // The chat log (what the robot said / asked and what the user said or typed), and the pending
-  // typed answer: an input='text' listen waits on this resolver until the chat sends a line
-  // (or the run stops — then it resolves null and nothing is posted).
-  const [qaLog, setQaLog] = useState<ChatLine[]>([])
-  const textAskRef = useRef<((text: string | null) => void) | null>(null)
-  // The robot asked: the id of the pending `listen` (a message in the chat is its answer), in any input mode
-  const [listenId, setListenId] = useState<string | null>(null)
-  const listenIdRef = useRef<string | null>(null)
-  // Life cycle of the run for the chat (idle / running / waiting / stopping + "a run may still be alive"): lib/chatRun.ts
-  const [rs, setRs] = useState<RunState>(INITIAL_RUN)
-  const rsRef = useRef<RunState>(INITIAL_RUN)
-  const sendRun = useCallback((e: RunEvent) => { rsRef.current = runReduce(rsRef.current, e); setRs(rsRef.current) }, [])
-  const takeListen = (id: string | null) => {
-    listenIdRef.current = id; setListenId(id)
-    sendRun({ t: id ? 'listen' : 'answered' })
+  const robotLangsRef = useRef<RobotLanguages | null>(null)   // the SHOWN robot's languages; a run freezes a copy in its handles
+  const runLang = (h: RunHandles, l: string) => speechLanguage(l, h.langs, h.heard)
+  const recOwnerRef = useRef<SessionKey | null>(null)         // ONE screen recorder per tab: only the session that began it ends it
+  const endRec = (key: SessionKey, outcome?: 'succeed' | 'failed') => { if (recOwnerRef.current === key) { recOwnerRef.current = null; endRecording(outcome) } }
+  const takeListen = (key: SessionKey, id: string | null) => {
+    set(key, { listenId: id })
+    dispatch(key, { t: id ? 'listen' : 'answered' })
   }
-  const runningRef = useRef(false)
-  // Runs started by someone else on this robot (the fleet manager ...) are drawn here too, from its read-only /ws/events
-  const { foreignRun, noteOwnEvent } = useForeignRun({ robotUrl: target?.url, ownRunning: () => runningRef.current, show: emit, showImage: setLogImage })
-  // Stop was pressed for the run in flight: its late `speak` / `listen` events are ignored and its capture jobs do not post
-  const stopReqRef = useRef(false)
-  // HRI queue (speak / listen / alarm jobs, strictly in order). A new run and a Reset start a new EPOCH: jobs of an
-  // older epoch that have not started are dropped and cannot hold the queue.
-  const hriEpochRef = useRef(0)
-  const hriChainRef = useRef<Promise<void>>(Promise.resolve())
-  const newHriEpoch = () => { hriEpochRef.current++; hriChainRef.current = Promise.resolve(); hriBusyRef.current = 0; speechUntilRef.current = 0 }
-  // Only a run started from the chat card may open it; a Structured run never does (the Chat button pulses instead)
-  const nextRunChatRef = useRef(false)
-  const runFromChatRef = useRef(false)
+  // Runs started by someone else on this robot (the fleet manager ...) are drawn in the SHOWN robot's session, from its read-only /ws/events
+  const { foreignRun, noteOwnEvent } = useForeignRun({ robotUrl: target?.url, ownRunning: () => get(shownKey()).running,
+    show: (e, s) => emit(shownKey(), e, s), showImage: b => set(shownKey(), { logImage: b }) })
   const handsFreeRef = useRef(false)    // the chat's mic toggle, read by the listen handler (set below, from state)
-  // Robot speech for the hands-free mic: HRI jobs queued (set by fire), and the time until which a line the
-  // robot said (the browser or its own speaker, which we cannot hear end) is assumed to still be playing.
-  const hriBusyRef = useRef(0)
-  const speechUntilRef = useRef(0)
   const echoGuard = useRef(createEchoGuard()).current
-  // a line the robot says: robot bubble (even with 🔊 off), echo guard, speech-time estimate for the mic
-  const addQaLine = (who: ChatLine['who'], text: string, kind?: ChatLine['kind']) => {
+  // a line the robot says: robot bubble (even with 🔊 off), echo guard, speech-time estimate for the mic. key null = the Fleet chat
+  const addQaLine = (key: SessionKey | null, who: ChatLine['who'], text: string, kind?: ChatLine['kind']) => {
     if (who === 'robot') {
       echoGuard.note(text, Date.now())
-      speechUntilRef.current = Math.max(speechUntilRef.current, Date.now() + 400 + 90 * text.length)
+      if (key) { const h = H(key); h.speechUntil = Math.max(h.speechUntil, Date.now() + 400 + 90 * text.length) }
     }
-    setQaLog(l => {
-      const last = l[l.length - 1]
-      return who === 'robot' && last && last.who === 'robot' && last.text === text ? l : [...l, { who, text, ...(kind ? { kind } : {}) }]
-    })
+    if (key) put(key, s => ({ ...s, qaLog: appendLine(s.qaLog, who, text, kind) }))
+    else setFleetLog(l => appendLine(l, who, text, kind))
   }
-  // The user's spoken answer shows at once as "🎤 …" (in order, right after the question) and becomes the transcript when the speech
-  // server returns it (or is removed when there is none): without it the line appeared only after the robot had already moved on.
-  const HEARD_PENDING = '🎤 …'
-  const settleHeard = (text: string | null) => setQaLog(l => {
-    const i = l.map(x => x.who === 'user' && x.text === HEARD_PENDING).lastIndexOf(true)
-    if (i < 0) return l
-    const n = l.slice()
-    if (text) n[i] = { ...n[i], text }; else n.splice(i, 1)
-    return n
-  })
-  // kcare ask did not understand: its options as buttons (a helper clicks; the user is blind)
-  const [choice, setChoice] = useState<{ id: string; options: string[]; prompt: string } | null>(null)
-  // When the last click came: a listen queued before it is answered by the click — its prompt is cut and its mic
-  // not opened (2026-10-27: a click while the robot was still asking was acted on only after the whole question
-  // and a full listen window — recordPhrase starts with the stop flag cleared).
-  const choiceAtRef = useRef(0)
+  // kcare ask did not understand: its options as buttons (a helper clicks; the user is blind). When the last click came: a listen
+  // queued before it is answered by the click (h.choiceAt) — its prompt is cut and its mic not opened.
   const pickChoice = (opt: string) => {
-    if (!choice) return
-    const id = choice.id
-    setChoice(null)
-    choiceAtRef.current = Date.now()
+    const key = shownKey(), h = H(key), id = get(key).choice?.id
+    if (!id) return
+    set(key, { choice: null })
+    h.choiceAt = Date.now()
     stopRecording()                     // the click answers: end the recording in progress
-    textAskRef.current?.(null)          // or the typed answer being waited for
+    h.textAsk?.(null)                   // or the typed answer being waited for
     if (voiceOutRef.current) { try { window.speechSynthesis.cancel() } catch { /* not supported */ } }  // and the question
-    addQaLine('user', `${opt} (화면 선택)`)
-    takeListen(null)
-    api.answerListen(id, opt).catch(() => {})
+    addQaLine(key, 'user', `${opt} (화면 선택)`)
+    takeListen(key, null)
+    api.answerListenAt(get(key).url, id, opt).catch(() => {})
   }
-  const stopNudge = useCallback(() => {
-    if (nudgeRef.current) { clearInterval(nudgeRef.current); nudgeRef.current = null }
-  }, [])
-  useEffect(() => stopNudge, [stopNudge])   // never leave a timer running
-  const fireRef = useRef<() => void>(() => {})
-  const enqueueHri = (job: () => Promise<void>) => {
-    const ep = hriEpochRef.current
-    hriBusyRef.current++
-    hriChainRef.current = hriChainRef.current.then(() => ep === hriEpochRef.current ? job() : undefined).catch(() => {}).finally(() => {
-      if (ep !== hriEpochRef.current) return          // a Reset / new run zeroed the counter
-      hriBusyRef.current--
-      speechUntilRef.current = Math.max(speechUntilRef.current, Date.now())   // spoken to the end just now
-    })
-  }
+  const fireRef = useRef<(key: SessionKey) => void>(() => {})
 
   // One WS run of the current args. On completion it either chains the next
   // iteration (repeat) or finalizes (setRunning false).
-  const fire = useCallback(() => {
-    const a = argsRef.current
+  const fire = useCallback((key: SessionKey) => {
+    const h = H(key)
+    const a = h.args
     if (!a) return
-    setTrial(t => t + 1)            // count this iteration
-    wsRef.current?.close()
-    emit([], [])
-    heardLangRef.current = null
-    setHeardLang(null)
-    setVoiceLang(runLang(a.lang))
-    runStartRef.current = Date.now()
-    setRecordingPrefix('')          // reset; set from the first step's task below
+    const url = get(key).url         // frozen by beginRun: picking another robot cannot move this run
+    const live = () => shownKey() === key   // only the robot on screen speaks, opens the chat or the mic; a background run writes its own log
+    put(key, s => ({ ...s, trial: s.trial + 1 }))   // count this iteration
+    h.ws?.close()
+    emit(key, [], [])
+    h.heard = null
+    set(key, { heardLang: null })
+    if (live()) setVoiceLang(runLang(h, a.lang))
+    const runStart = Date.now()
+    if (a.screenRec) setRecordingPrefix('')          // reset; set from the first step's task below
     // Planner actually used: structured/explicit plans run directly; otherwise
     // it's the chosen planner ('grace' | 'direct').
-    setRunMethod(a.direct ? 'direct' : (a.planner ?? 'grace'))
-    if (a.screenRec) beginRecording()   // no-op unless screen recording is enabled; a quick-button run never starts one
+    set(key, { runMethod: a.direct ? 'direct' : (a.planner ?? 'grace') })
+    if (a.screenRec && live() && !recOwnerRef.current) { recOwnerRef.current = key; beginRecording() }   // no-op unless screen recording is enabled; a quick-button run never starts one
 
     // Only the backend target writes the dataset to disk on the server; the
     // frontend target keeps the backend hands-off and downloads log images here.
@@ -286,18 +192,18 @@ export default function Home() {
     // Milestones are narrated by useVoiceOutput, which speaks outside this queue: hriBusyRef (jobs queued) keeps a
     // `plan_ready` / `step_start` phrase from playing while the mic is open, and its speechSynthesis.cancel() from cutting
     // the skill's own question mid-sentence.
-    newHriEpoch()
-    stopReqRef.current = false
-    sendRun({ t: 'start' })
-    const epoch = hriEpochRef.current
-    const aborted = () => hriEpochRef.current !== epoch || stopReqRef.current   // Stop / Reset since this run began
+    newHriEpoch(h)
+    h.stopReq = false
+    dispatch(key, { t: 'start' })
+    const epoch = h.epoch
+    const aborted = () => h.epoch !== epoch || h.stopReq   // Stop / Reset since this run began
     // Stop a milestone that is already playing, just before the browser speaks
     // for the skill (a phrase queued before the HRI event still runs).
     // Not with 🔊 off: nothing of ours is playing then (unticking cancelled it), and a cancel here can cut the
     // speech of ANOTHER dashboard window on the same computer (2026-10-27: a muted window running qa — a cancel
     // before every listen — silenced the other window's lines).
     const silenceNarration = () => {
-      if (!voiceOutRef.current) return
+      if (!voiceOutRef.current || !live()) return
       try { window.speechSynthesis.cancel() } catch { /* not supported */ }
     }
 
@@ -343,8 +249,8 @@ export default function Home() {
       }
     }
 
-    const ws = api.agentWs()
-    wsRef.current = ws
+    const ws = api.agentWsAt(url)
+    h.ws = ws
 
     ws.onopen = () => ws.send(JSON.stringify({
       prompt: a.finalPrompt, lang: a.lang, direct: a.direct, planner: a.planner,
@@ -356,100 +262,98 @@ export default function Home() {
       const ev: AgentEvent = JSON.parse(e.data)
       ev._rx = Date.now()                  // receive time: the plan list shows step durations from it
       noteOwnEvent(ev)                     // this run's id: its copy on /ws/events is not drawn again
-      const newEvents = [...eventsRef.current, ev]
-      let newSteps = stepsRef.current
+      const cur = get(key)
+      const newEvents = [...cur.events, ev]
+      let newSteps = cur.steps
 
       // Speak the milestone phrase on the dashboard (no-op if voice output is
       // off, or for Button-panel shortcuts which run silently). Each milestone
       // also restarts the "still working" nudge, so it only fires when a step
       // goes quiet for a while.
       // BACKEND-WORKAROUND(hri-narrator-gate): no narration while an HRI speak / listen is queued
-      if (ev.say && ev.event !== 'done' && ev.event !== 'error') addQaLine('robot', ev.say, 'say')
-      if (a.voice && ev.say && hriBusyRef.current === 0) {
-        speak(ev.say, ev.say_lang, rateFor(ev.say_lang ?? runLang(a.lang)))
-        stopNudge()
+      if (ev.say && ev.event !== 'done' && ev.event !== 'error') addQaLine(key, 'robot', ev.say, 'say')
+      const talk = a.voice && ev.say && live()
+      if (talk && h.busy === 0) {
+        speak(ev.say!, ev.say_lang, rateFor(ev.say_lang ?? runLang(h, a.lang)))
+        stopNudge(h)
         if (ev.event !== 'done' && ev.event !== 'error') {
-          const nudgeLang = ev.say_lang ?? runLang(a.lang)      // "still working" in the language of the last phrase
-          nudgeRef.current = setInterval(() => speak(stillWorkingPhrase(nudgeLang), nudgeLang, rateFor(nudgeLang)), 15_000)
+          const nudgeLang = ev.say_lang ?? runLang(h, a.lang)      // "still working" in the language of the last phrase
+          h.nudge = setInterval(() => { if (live()) speak(stillWorkingPhrase(nudgeLang), nudgeLang, rateFor(nudgeLang)) }, 15_000)
         }
-      } else if (a.voice && ev.say && voiceOutRef.current) {
+      } else if (talk && voiceOutRef.current) {
         // The HRI queue is still talking (ask's read-back "…, 알겠습니다" is not
         // waited for, so the next step starts right away): this milestone used to
         // be dropped ("가운데 선반 이동…" after ask was never said). Say it after
         // the queue, in order — still never while the mic is open.
-        const line = ev.say
-        stopNudge()
-        const lineLang = ev.say_lang ?? runLang(a.lang)
-        enqueueHri(async () => { if (voiceOutRef.current) await speakAndWait(line, lineLang, rateFor(lineLang)) })
+        const line = ev.say!
+        stopNudge(h)
+        const lineLang = ev.say_lang ?? runLang(h, a.lang)
+        enqueueHri(h, async () => { if (voiceOutRef.current) await speakAndWait(line, lineLang, rateFor(lineLang)) })
       }
-      if (ev.qa_state) setQaSkill(!!ev.qa_state.active)
-      if (ev.choose) setChoice({ id: ev.choose.id, options: ev.choose.options, prompt: ev.choose.prompt ?? '' })
+      if (ev.qa_state) set(key, { qaSkill: !!ev.qa_state.active })
+      if (ev.choose) set(key, { choice: { id: ev.choose.id, options: ev.choose.options, prompt: ev.choose.prompt ?? '' } })
       if (ev.choose_close) {
         const closed = ev.choose_close
-        setChoice(c => (c && c.id === closed ? null : c))
+        put(key, s => (s.choice && s.choice.id === closed ? { ...s, choice: null } : s))
       }
-      if (ev.event === 'clarify' && ev.question) addQaLine('robot', String(ev.question))
+      if (ev.event === 'clarify' && ev.question) addQaLine(key, 'robot', String(ev.question))
       if (ev.event === 'done' || ev.event === 'error') {
-        const okEnd = ev.event === 'done' && (ev.status != null ? (ev.status === 'success' || ev.status === 'planned') : ev.success === true)
-        setQaLog(l => [...l, { who: 'system', text: ev.event === 'error' ? `✗ error: ${ev.msg ?? ''}`
-          : okEnd ? (ev.status === 'planned' ? '✓ planned (plan only: the robot did not move)' : '✓ done') + (ev.msg ? ` — ${ev.msg}` : '')
-          : `✗ failed${ev.msg ? ` — ${ev.msg}` : ''}` }])
-        setChoice(null)
-        setQaSkill(false)
-        stopNudge()
-        sendRun({ t: 'done' })
-        textAskRef.current?.(null)          // a typed question can no longer be asked
+        put(key, s => ({ ...s, qaLog: [...s.qaLog, closeLine(ev)], choice: null, qaSkill: false }))
+        stopNudge(h)
+        dispatch(key, { t: 'done' })
+        h.textAsk?.(null)          // a typed question can no longer be asked
       }
 
       // A skill is talking to the user through this browser. The "still
       // working" nudge must not speak over it — or into the open mic.
-      if (ev.speak || ev.listen || ev.alarm || ev.quiet) stopNudge()
+      if (ev.speak || ev.listen || ev.alarm || ev.quiet) stopNudge(h)
       if (ev.speak && !aborted()) {
         const line = ev.speak
-        const lang = ev.speak_lang ?? runLang(a.lang)
+        const lang = ev.speak_lang ?? runLang(h, a.lang)
         const rate = ev.speak_rate ?? rateFor(lang)
-        addQaLine('robot', line)
+        addQaLine(key, 'robot', line)
         const speakId = ev.speak_id
-        enqueueHri(async () => {
+        enqueueHri(h, async () => {
           silenceNarration()
-          if (voiceOutRef.current) await speakAndWait(line, lang, rate)
+          if (voiceOutRef.current && live()) await speakAndWait(line, lang, rate)
           // announce(wait=True): tell the skill the line has been spoken.
-          if (speakId) await api.answerListen(speakId, '').catch(() => {})
+          if (speakId) await api.answerListenAt(url, speakId, '').catch(() => {})
         })
       }
       if (ev.alarm && !aborted()) {
         // A (simulated) 119 call: the siren, after the line before it and before the one after it.
         const al = ev.alarm
-        enqueueHri(async () => {
+        enqueueHri(h, async () => {
           silenceNarration()
-          if (voiceOutRef.current) await playAlarm(al.volume ?? 0.6, al.cycles ?? 3)
+          if (voiceOutRef.current && live()) await playAlarm(al.volume ?? 0.6, al.cycles ?? 3)
         })
       }
       if (ev.listen && !aborted()) {
         const req = ev.listen
-        const lang = req.lang ?? runLang(a.lang)
+        const lang = req.lang ?? runLang(h, a.lang)
         const rate = req.rate ?? rateFor(lang)
-        if (req.prompt) addQaLine('robot', req.prompt)
-        textAskRef.current?.(null)          // an older question still waiting for typing is superseded, it cannot hold the queue
-        takeListen(req.id)
-        if (runFromChatRef.current) setChatOpen(true)   // a chat run opens the card; a Structured run only pulses the Chat button
-        const clearListen = () => { if (listenIdRef.current === req.id) takeListen(null) }
+        if (req.prompt) addQaLine(key, 'robot', req.prompt)
+        h.textAsk?.(null)          // an older question still waiting for typing is superseded, it cannot hold the queue
+        takeListen(key, req.id)
+        if (h.fromChat && live()) setChatOpen(true)   // a chat run opens the card; a Structured run only pulses the Chat button
+        const clearListen = () => { if (get(key).listenId === req.id) takeListen(key, null) }
         const queuedAt = Date.now()
-        const answeredByClick = () => aborted() || choiceAtRef.current >= queuedAt   // nothing to post: answered by a click, or stopped / reset
+        const answeredByClick = () => aborted() || h.choiceAt >= queuedAt   // nothing to post: answered by a click, or stopped / reset
         // Typed answer: no mic. The chat's Send answers directly (sendChat); this wait only holds the queue, with no
         // timeout of its own (the backend decides when to give up; a newer question, Stop and Reset end it).
         const waitTyped = async () => {
-          const typed = await new Promise<string | null>(resolve => { textAskRef.current = resolve })
-          textAskRef.current = null
-          if (typed !== null && !aborted()) await api.answerListen(req.id, typed).catch(() => {})
+          const typed = await new Promise<string | null>(resolve => { h.textAsk = resolve })
+          h.textAsk = null
+          if (typed !== null && !aborted()) await api.answerListenAt(url, req.id, typed).catch(() => {})
         }
+        const settle = (t: string | null) => put(key, s => ({ ...s, qaLog: settleHeard(s.qaLog, t) }))
         const listenJob = async () => {
           if (answeredByClick()) return
           silenceNarration()
-          if (req.prompt && voiceOutRef.current) await speakAndWait(req.prompt, lang, rate)
+          if (req.prompt && voiceOutRef.current && live()) await speakAndWait(req.prompt, lang, rate)
           if (answeredByClick()) return
-          if (answerBy({ runFromChat: runFromChatRef.current, micOn: handsFreeRef.current, listenMode: req.mode }) === 'typing') {
-            // no mic: the backend asked for text, or this is a chat run with the chat's mic off
+          if (!live() || answerBy({ runFromChat: h.fromChat, micOn: handsFreeRef.current, listenMode: req.mode }) === 'typing') {
+            // no mic: the backend asked for text, this is a chat run with the chat's mic off, or this robot is not the one on screen (one mic)
             await waitTyped()
             return
           }
@@ -465,21 +369,21 @@ export default function Home() {
             const rec = await recordPhrase(req.max_sec ?? 8, req.silence_sec ?? 1.5)
             if (answeredByClick()) return            // typed / clicked meanwhile: that answer stands
             if (rec.error) {                  // e.g. not-allowed: the skill falls back to typing
-              addQaLine('system', `⚠ microphone not available (${rec.error}): type your answer`)
-              await api.answerListen(req.id, '', rec.error, rec.note).catch(() => {})
+              addQaLine(key, 'system', `⚠ microphone not available (${rec.error}): type your answer`)
+              await api.answerListenAt(url, req.id, '', rec.error, rec.note).catch(() => {})
               return
             }
             if (rec.blob && ear > 0) playEarcon('heard', ear)
-            if (rec.blob) addQaLine('user', HEARD_PENDING)
-            const res = await api.answerListenAudio(req.id, rec.blob, rec.mime, rec.note)
-            settleHeard(res.text || null)
+            if (rec.blob) addQaLine(key, 'user', HEARD_PENDING)
+            const res = await api.answerListenAudioAt(url, req.id, rec.blob, rec.mime, rec.note)
+            settle(res.text || null)
             if (aborted()) return
             const goneNote = noteForListenReply(res)
-            if (goneNote) { addQaLine('system', goneNote); return }
+            if (goneNote) { addQaLine(key, 'system', goneNote); return }
             if (res.error) {
               // The speech server failed (down, out of GPU memory, HTTP 5xx). The backend still waits for this listen:
               // say so, and keep the question open for a typed answer (input enabled) instead of treating it as silence.
-              addQaLine('system', `⚠ speech recognition failed (${res.error}): type your answer`)
+              addQaLine(key, 'system', `⚠ speech recognition failed (${res.error}): type your answer`)
               await waitTyped()
               return
             }
@@ -492,12 +396,12 @@ export default function Home() {
             heard.text = ''
           }
           if (heard.text && ear > 0) playEarcon('heard', ear)
-          if (heard.text) addQaLine('user', heard.text)
-          else if (heard.error) addQaLine('system', `⚠ microphone / speech recognition not available (${heard.error}): type your answer`)
+          if (heard.text) addQaLine(key, 'user', heard.text)
+          else if (heard.error) addQaLine(key, 'system', `⚠ microphone / speech recognition not available (${heard.error}): type your answer`)
           else if (heard.note) console.info('[hri] nothing recognised:', heard.note)
-          await api.answerListen(req.id, heard.text, heard.error, heard.note).catch(() => {})
+          await api.answerListenAt(url, req.id, heard.text, heard.error, heard.note).catch(() => {})
         }
-        enqueueHri(() => listenJob().finally(clearListen))
+        enqueueHri(h, () => listenJob().finally(clearListen))
       }
 
       // Failed-case filter: once this run is known to have failed, flush the
@@ -519,7 +423,7 @@ export default function Home() {
           prefix = sanitizeTask(ev.task)
           // Same name datasetLog gives the capture folder, so the .webm and the
           // folder for one run sort next to each other.
-          setRecordingPrefix(dir())
+          if (recOwnerRef.current === key) setRecordingPrefix(dir())
         }
         // SAGE events carry `index` / `action` / `object` instead of `step` / `total` / `task`
         const stepNo = ev.step ?? ev.index
@@ -535,19 +439,19 @@ export default function Home() {
         newSteps = reduceSteps(newSteps, ev)
       } else if (ev.event === 'step_log') {
         const heard = (ev.data as { lang_detected?: { lang?: string } } | undefined)?.lang_detected?.lang   // Detect mode: the language the user was heard in
-        if (typeof heard === 'string') { heardLangRef.current = heard; setHeardLang(heard); setVoiceLang(heard) }
+        if (typeof heard === 'string') { h.heard = heard; set(key, { heardLang: heard }); if (live()) setVoiceLang(heard) }
         newSteps = reduceSteps(newSteps, ev)
-        if (ev.log_image_reset && !ev.log_image) setLogImage(null)
+        if (ev.log_image_reset && !ev.log_image) set(key, { logImage: null })
         if (ev.log_image) {
-          setLogImage(ev.log_image)
+          set(key, { logImage: ev.log_image })
           // Frontend logging: save the per-step debug image alongside the
           // dataset captures (skipped while a failed-only run still looks fine).
           // Buffered like the captures so it carries the same verdict suffix.
           if (frontendLog) bucket({ kind: 'image', b64: ev.log_image }, ev.step ?? curStep)
         }
       } else if (ev.event === 'done' || ev.event === 'error') {
-        ev.elapsed_ms = Date.now() - runStartRef.current
-        endRecording((runFailed || ev.event === 'error') ? 'failed' : 'succeed')
+        ev.elapsed_ms = Date.now() - runStart
+        endRec(key, (runFailed || ev.event === 'error') ? 'failed' : 'succeed')
         // Write the run summary next to the captures (all runs, or failures only).
         const runOutcome: Outcome =
           (runFailed || ev.event === 'error') ? 'failed' : 'succeed'
@@ -566,42 +470,46 @@ export default function Home() {
         // Decide whether to chain another iteration.
         const ok = ev.event === 'done' &&
           (ev.status != null ? (ev.status === 'success' || ev.status === 'planned') : ev.success === true)
-        const ctrl = repeatRef.current
+        const ctrl = h.repeat
         ctrl.remaining -= 1
         if (ctrl.active && ctrl.remaining > 0 && (ok || ctrl.continueOnError)) {
-          setTimeout(() => { if (repeatRef.current.active) fireRef.current() }, 0)
+          setTimeout(() => { if (h.repeat.active) fireRef.current(key) }, 0)
         } else {
           ctrl.active = false
-          setRunning(false)
+          apply(st => endRun(st, key, verdictOf(ev), Date.now()))
         }
       }
 
-      emit(newEvents, newSteps)
+      emit(key, newEvents, newSteps)
     }
 
     // Only finalize on socket teardown when the loop isn't chaining a next run.
     // (a socket that is no longer the run's — replaced by a new run or dropped by Reset — must not end the new run)
     const gone = () => {
-      if (wsRef.current !== ws) return
-      stopNudge()
+      if (h.ws !== ws) return
+      stopNudge(h)
       // closed between two iterations of a repeat (the run's `done` was already seen): the next one is about to start.
       // Closed anywhere else = the run ended or was lost: (before 2026-11-12 an active repeat kept `running` true forever
       // after a dropped socket, Stop being the only way out)
-      const between = rsRef.current.phase === 'idle' && repeatRef.current.active
-      sendRun({ t: 'ws-close' })
+      const between = get(key).run.phase === 'idle' && h.repeat.active
+      dispatch(key, { t: 'ws-close' })
       if (between) return
-      repeatRef.current.active = false
-      setRunning(false); endRecording()
+      h.repeat.active = false
+      apply(st => (st.sessions[key]?.running ? endRun(st, key, 'aborted', Date.now()) : st))   // a socket closing after its `done` keeps that verdict
+      endRec(key)
     }
     ws.onclose = gone
     ws.onerror = gone
-  }, [emit, noteOwnEvent, speak, beginRecording, endRecording, setRecordingPrefix, stopNudge, sendRun])
+  }, [get, put, set, apply, dispatch, H, shownKey, emit, noteOwnEvent, speak, beginRecording, endRecording, setRecordingPrefix])
   useEffect(() => { fireRef.current = fire }, [fire])
 
   const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true, screenRec = true) => {
-    if (!finalPrompt.trim() || running) return
-    runFromChatRef.current = nextRunChatRef.current
-    nextRunChatRef.current = false
+    if (!finalPrompt.trim()) return
+    const key = shownKey(), h = H(key)       // the run belongs to the robot on screen, whatever is picked later
+    const why = startBlock(getStore(), key)   // one client per robot (rule 7): a busy robot takes no second command from this tab
+    if (why) { addQaLine(key, 'system', why); return }
+    h.fromChat = h.nextFromChat
+    h.nextFromChat = false
     // A run that will listen through this browser (qa / ask / reply, unless on
     // the robot mic or typed): get the mic permission now, inside the click.
     // SAGE may ask the user a question (which shelf? where are you?) through the same `ask` skill.
@@ -613,83 +521,77 @@ export default function Home() {
         const why = err === 'insecure-context'
           ? 'this page is on http — open it over https (or localhost) to use the mic'
           : `microphone not available (${err}) — allow it in the browser's site settings`
-        addQaLine('robot', `🎤 ${why}; the robot will ask for typed input instead`)
-        if (runFromChatRef.current) setChatOpen(true)
+        addQaLine(key, 'robot', `🎤 ${why}; the robot will ask for typed input instead`)
+        if (h.fromChat && shownKey() === key) setChatOpen(true)
       })
     }
     loadSpeechRate()                  // Global Configs may have changed since the page loaded
-    argsRef.current = { finalPrompt, direct, lang, planner, planOnly, logData, logTarget, logAll, voice, screenRec }
-    repeatRef.current = { remaining: repeatTimes, continueOnError, active: true }
-    setTrial(0)                     // fire() bumps it to 1
-    setRunning(true)
-    fire()
-  }, [running, fire, loadSpeechRate])
+    h.args = { finalPrompt, direct, lang, planner, planOnly, logData, logTarget, logAll, voice, screenRec }
+    h.repeat = { remaining: repeatTimes, continueOnError, active: true }
+    h.langs = robotLangsRef.current   // this run speaks with the languages of its own robot
+    apply(st => beginRun(st, key, get(key).url || api.getAgentUrl(), Date.now()))   // freezes the url; fire() bumps the trial to 1
+    fire(key)
+  }, [get, apply, H, shownKey, getStore, fire, loadSpeechRate])
 
-  // End every capture in flight for the run: typed wait, mic recording, recogniser, speech, on-screen choice
-  const abortCaptures = useCallback(() => {
-    textAskRef.current?.(null)
+  // End every capture in flight for the run: typed wait, mic recording, recogniser, speech, on-screen choice.
+  // The mic and the speaker are the browser's one: only the robot on screen may end them.
+  const abortCaptures = useCallback((key: SessionKey) => {
+    H(key).textAsk?.(null)
+    set(key, { choice: null })
+    if (shownKey() !== key) return
     stopRecording(); abortRecognition()
     try { window.speechSynthesis.cancel() } catch { /* not supported */ }
-    setChoice(null)
-  }, [])
+  }, [H, set, shownKey])
 
-  // Hard reset: always works, whatever the backend does (stuck in an LLM call, socket dead, cancel not answered).
-  // Cancels (best effort), drops the run's socket, every pending listen, the HRI queue and the plan view; the chat is idle
+  // Hard reset of ONE session: always works, whatever the backend does (stuck in an LLM call, socket dead, cancel not answered).
+  // Cancels (best effort, at the session's own robot), drops the run's socket, every pending listen, the HRI queue and the plan view; the chat is idle
   // with the input enabled. The 🎤 toggle keeps what the user set (the hands-free loop reads the live state, so no
   // listener stays attached to the dead run).
-  const reset = useCallback((why = 'reset') => {
-    repeatRef.current.active = false
-    stopNudge()
-    stopReqRef.current = true
-    api.cancelRun().catch(() => {})
-    const ws = wsRef.current
-    wsRef.current = null
+  const reset = useCallback((key: SessionKey, why = 'reset') => {
+    const h = H(key)
+    h.repeat.active = false
+    stopNudge(h)
+    h.stopReq = true
+    api.cancelRunAt(get(key).url).catch(() => {})
+    const ws = h.ws
+    h.ws = null
     if (ws) { ws.onmessage = null; ws.onclose = null; ws.onerror = null; try { ws.close() } catch { /* closed */ } }
-    abortCaptures()
-    newHriEpoch()
-    takeListen(null)
-    setQaSkill(false)
-    emit([], [])
-    setLogImage(null)
-    setRunning(false)
-    endRecording()
-    sendRun({ t: 'reset' })
-    stopReqRef.current = false
-    setMicListening(false)
-    addQaLine('system', `■ ${why}: the run was dropped on this side (cancel sent); you can type a new task`)
+    abortCaptures(key)
+    newHriEpoch(h)
+    apply(st => endRun(patch(st, key, { events: [], steps: [], logImage: null }), key, 'aborted', Date.now()))
+    endRec(key)
+    dispatch(key, { t: 'reset' })
+    h.stopReq = false
+    if (shownKey() === key) setMicListening(false)
+    addQaLine(key, 'system', `■ ${why}: the run was dropped on this side (cancel sent); you can type a new task`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emit, endRecording, stopNudge, abortCaptures, sendRun])
+  }, [get, apply, dispatch, H, shownKey, abortCaptures])
 
   // Stop: tell the backend to cancel and wait for its `done` (the card shows "stopping…"; after STOP_TIMEOUT_MS it offers
   // Force reset). Pressed again while stuck, it is a Force reset. The socket stays open so the end of the run is seen.
-  const stop = useCallback(() => {
-    const cur = rsRef.current
-    if (stopAction(cur) === 'force-reset') { reset('force reset'); return }
-    repeatRef.current.active = false   // cancel any pending repeat
-    stopNudge()
-    stopReqRef.current = true
-    abortCaptures()
-    sendRun({ t: 'stop' })
+  const stop = useCallback((key: SessionKey) => {
+    const cur = get(key).run, h = H(key)
+    if (stopAction(cur) === 'force-reset') { reset(key, 'force reset'); return }
+    h.repeat.active = false   // cancel any pending repeat
+    stopNudge(h)
+    h.stopReq = true
+    abortCaptures(key)
+    dispatch(key, { t: 'stop' })
     // The backend runs the plan in its own thread, so the robot must be told to cancel explicitly (closing the socket alone
-    // does not reach it).
-    api.cancelRun().then(() => sendRun({ t: 'cancel-ack' })).catch(() => {})
-    if (!cur.ws) { setRunning(false); endRecording() }
-  }, [endRecording, stopNudge, abortCaptures, sendRun, reset])
-  useEffect(() => {
-    if (rs.phase !== 'stopping') return
-    const t = setTimeout(() => sendRun({ t: 'timeout' }), STOP_TIMEOUT_MS)
-    return () => clearTimeout(t)
-  }, [rs.phase, sendRun])
-  // Cancel: while the Fleet tab is open it is the fleet's Stop all (the open tab puts it in fleetStopRef); otherwise the robot's own Stop
-  const cancel = useCallback(() => { if (mainTab === 'fleet' && fleetStopRef.current) fleetStopRef.current(); else stop() }, [mainTab, stop])
+    // does not reach it). The url is the session's own, never "the robot picked now".
+    api.cancelRunAt(get(key).url).then(() => dispatch(key, { t: 'cancel-ack' })).catch(() => {})
+    if (!cur.ws) { apply(st => endRun(st, key, 'aborted', Date.now())); endRec(key) }
+  }, [get, apply, dispatch, H, abortCaptures, reset])
+  // Stop of the robot on screen (every Stop / Cancel button of a robot calls it). Cancel adds the Fleet tab: there it is the fleet's Stop all
+  const stopShown = useCallback(() => { const t = cancelTarget(getStore()); if (t) stop(t.key) }, [getStore, stop])
+  const cancel = useCallback(() => { if (mainTab === 'fleet' && fleetStopRef.current) fleetStopRef.current(); else stopShown() }, [mainTab, stopShown])
   const cancelTitle = mainTab === 'fleet' ? FLEET_STOP_HINT : 'Cancel every command in flight on the robot (arm, lift, head, base) and end the run'
 
   // A `qa` skill is running (its qa_state events) — as a step of a Structured plan: the "End Q&A" button ends
   // just that conversation, the plan goes on.
-  const [qaSkill, setQaSkill] = useState(false)
   const endQa = useCallback(() => {
-    api.endQa().catch(e => alert(`End Q&A: ${e instanceof Error ? e.message : e}`))
-  }, [])
+    api.endQaAt(get(shownKey()).url).catch(e => alert(`End Q&A: ${e instanceof Error ? e.message : e}`))
+  }, [get, shownKey])
   // One language for everything (chat and Structured runs): picked in the chat header or the control bar.
   // The languages come from the connected robot's manifest (GET /robot/languages): the picker's options, and the default
   // of a tab that has not chosen (or whose choice this robot does not talk in).
@@ -701,7 +603,6 @@ export default function Home() {
   const dataBusy = recorder?.state?.state === 'recording' || recorder?.state?.state === 'saving' || teleopFns.some(f => f.state?.state === 'active' || f.state?.state === 'hold')
   const showDataTools = dataTools || dataBusy
   robotLangsRef.current = robotLangs
-  const [heardLang, setHeardLang] = useState<string | null>(null)         // Detect: the language heard last in this run
   const [lang, setLang]         = useState<Lang>('en')
   const [chatOpen, setChatOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)   // the Guide dialog; opened from the ⋯ menu of the presets bar
@@ -754,10 +655,6 @@ export default function Home() {
     setPlanOnly(v)
     writeTabPref(LS_PLAN_ONLY, v ? '1' : '0')
   }
-  useEffect(() => {
-    runningRef.current = running
-    if (!running) { listenIdRef.current = null; setListenId(null); setQaSkill(false) }
-  }, [running])
   const chatSt = rs.phase
 
   // A chat message. Waiting (the robot asked): it is the ANSWER, through POST /agent/listen/<id> like a
@@ -766,33 +663,33 @@ export default function Home() {
   // asked: nothing (the card's input is disabled then).
   const fleetMode = !!fl.active && mainTab === 'fleet'                  // the chat talks to the fleet (lib/useFleetChat.ts)
   const fleetChat = useFleetChat(fleetMode, l => {                      // the fleet's lines: a bubble, and spoken like a single robot's (🔊), so the mic can answer
-    addQaLine(l.who, l.text, l.kind)
+    addQaLine(null, l.who, l.text, l.kind)
     if (l.who === 'robot' && voiceOutRef.current) speak(l.text, l.lang, rateFor(l.lang))
   }, lang === LANG_AUTO ? undefined : lang)
   const sendChat = useCallback((raw: string) => {
     const text = raw.trim()
     if (!text) return
-    if (fleetMode) { addQaLine('user', text); void fleetChat.send(text); return }
-    const id = listenIdRef.current
-    if (runningRef.current && id) {
-      addQaLine('user', text)
-      choiceAtRef.current = Date.now()   // a listen queued before this is answered: no prompt, no mic
+    if (fleetMode) { addQaLine(null, 'user', text); void fleetChat.send(text); return }
+    const key = shownKey(), cur = get(key), h = H(key), id = cur.listenId
+    if (cur.running && id) {
+      addQaLine(key, 'user', text)
+      h.choiceAt = Date.now()   // a listen queued before this is answered: no prompt, no mic
       stopRecording(); abortRecognition()
-      textAskRef.current?.(null)
+      h.textAsk?.(null)
       if (voiceOutRef.current) { try { window.speechSynthesis.cancel() } catch { /* not supported */ } }
-      takeListen(null)
-      api.answerListen(id, text).catch(() => {})
+      takeListen(key, null)
+      api.answerListenAt(cur.url, id, text).catch(() => {})
       return
     }
-    if (runningRef.current) return
-    addQaLine('user', text)
+    if (cur.running) return
+    addQaLine(key, 'user', text)
     let logData = true, logTarget: 'backend' | 'frontend' = 'frontend', logAll = false
     try {
       logData = localStorage.getItem('robotapp_log_data') !== '0'
       const lt = localStorage.getItem('robotapp_log_target'); if (lt === 'backend' || lt === 'frontend') logTarget = lt
       logAll = localStorage.getItem('robotapp_log_all') === '1'
     } catch { /* no storage */ }
-    nextRunChatRef.current = true
+    h.nextFromChat = true
     run(text, false, lang, planner, planOnly, logData, logTarget, 1, false, logAll, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, lang, planner, planOnly, fleetMode, fleetChat])
@@ -802,9 +699,9 @@ export default function Home() {
   useHandsFree({
     enabled: handsFree && micSupported, lang: speechLanguage(lang, robotLangs, heardLang),
     snapshot: () => ({
-      running: runningRef.current,
-      waiting: listenIdRef.current !== null,
-      speaking: hriBusyRef.current > 0 || Date.now() < speechUntilRef.current
+      running: get(shownKey()).running,
+      waiting: get(shownKey()).listenId !== null,
+      speaking: sess.anyBusy()
         || (typeof window !== 'undefined' && 'speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)),
     }),
     guard: echoGuard,
@@ -822,11 +719,14 @@ export default function Home() {
 
   // Latest backend vision-capture dir (emitted when log_data=backend) — shown in the panel.
   const backendLogDir = agentEvents.reduce((acc, e) => e.log_dir || acc, '')
+  const marks = statusMap(sess.store)                        // robots with a session that is not idle: the running mark of both drop-downs
+  const blockWhy = startBlock(sess.store, sess.shown.key)    // why this robot takes no second command from this tab (rule 7)
 
   const chatPanel = (docked: boolean) => (
         <ChatPanel
           docked={docked}
-          log={qaLog}
+          log={fleetMode ? fleetLog : qaLog}
+          blockedWhy={fleetMode ? null : blockWhy}
           state={fleetMode ? 'idle' : chatSt}
           langPicker={langPicker}
           planner={planner} onPlanner={pickPlanner}
@@ -835,10 +735,10 @@ export default function Home() {
           micSupported={micSupported} micListening={micListening}
           micNote={micError || (handsFree && chatSt !== 'idle' ? 'mic paused while the robot works' : '')}
           onSend={sendChat}
-          onStop={fleetMode ? cancel : stop}
-          onReset={() => reset('reset')}
+          onStop={fleetMode ? cancel : stopShown}
+          onReset={() => reset(shownKey(), 'reset')}
           canStop={fleetMode || canStop(rs)} canType={fleetMode || canType(rs)} lost={!fleetMode && isLost(rs)} stuck={!fleetMode && needsForce(rs)}
-          onClear={() => setQaLog([])}
+          onClear={() => { if (fleetMode) setFleetLog([]); else set(shownKey(), { qaLog: [] }) }}
           onClose={() => setChatOpen(false)}
         />
   )
@@ -853,7 +753,7 @@ export default function Home() {
         <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${sidebarOpen ? 'w-80' : 'w-0'}`}>
           <div className={`flex flex-col overflow-y-auto h-full ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} transition-opacity duration-150`}>
             <div className="p-4 border-b border-gray-200">
-              <DevicePanel switchRef={switchRobotRef} onClientsChange={setClients} onAgentConnect={() => setSkillRefreshKey(k => k + 1)} onActiveChange={setTarget} onFleetChosen={() => { setMainTab('fleet'); setFleetKey(k => k + 1); setChatOpen(true) }} />
+              <DevicePanel marks={marks} switchRef={switchRobotRef} onClientsChange={setClients} onAgentConnect={() => setSkillRefreshKey(k => k + 1)} onActiveChange={setTarget} onFleetChosen={() => { setMainTab('fleet'); setFleetKey(k => k + 1); setChatOpen(true) }} />
             </div>
             <div className="p-4 border-t border-gray-200">
               <SkillPanel refreshKey={skillRefreshKey} />
@@ -908,6 +808,7 @@ export default function Home() {
                 refreshKey={skillRefreshKey} />
             </div>
             <div className="p-4 flex-1 overflow-y-auto">
+              {blockWhy && !fleetMode && <div data-testid="start-block" className="mb-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">{blockWhy}</div>}
               <ForeignRunBadge run={foreignRun} />
               <PlanPanel events={agentEvents} steps={agentSteps} planMethod={runMethod} running={running || (!!foreignRun && !foreignRun.ended)} />
             </div>
@@ -938,7 +839,7 @@ export default function Home() {
               ⚠ no {voiceLang} voice
             </span>
           )}
-          </>} onOpenGuide={() => setGuideOpen(true)} running={running} lang={lang} onRun={run} onStop={stop} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
+          </>} onOpenGuide={() => setGuideOpen(true)} running={running} lang={lang} onRun={run} onStop={stopShown} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
           </section>
           <GuidePanel open={guideOpen} onOpenChange={setGuideOpen} hideTrigger />
 
@@ -981,7 +882,7 @@ export default function Home() {
                       {value === '' && <option value="">{fl.active ? `👥 ${fl.active}` : '(choose)'}</option>}
                       {(['Fleets', 'Robots'] as const).map(g => {
                         const opts = selectorOptions(robotList, fl.fleets).filter(o => o.group === g)
-                        return opts.length > 0 && <optgroup key={g} label={g}>{opts.map(o => <option key={o.value} value={o.value}>{g === 'Fleets' ? '👥 ' : '🤖 '}{o.label}</option>)}</optgroup>
+                        return opts.length > 0 && <optgroup key={g} label={g}>{opts.map(o => <option key={o.value} value={o.value}>{optionText(o.label, marks[o.value] ?? 'idle', g === 'Fleets' ? '👥 ' : '🤖 ')}</option>)}</optgroup>
                       })}
                     </select>
                     {badges?.mismatch && badges.location && (
@@ -1005,9 +906,9 @@ export default function Home() {
             {mainTab === 'cameras' && showDataTools && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} poses={poseList} onPosesChanged={refreshPoses} />}
             {mainTab === 'cameras' && showDataTools && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} poses={poseList} />}
             {mainTab === 'cameras'
-              ? <CameraFeed key={`cam-${robotEpoch}`} clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
+              ? <CameraFeed key={`cam-${robotEpoch}`} clients={clients} logImage={logImage} onClearLog={() => set(shownKey(), { logImage: null })} toolbarSlot={cameraSlot} />
               : mainTab === 'fleet' ? <><FleetPanel key={fleetKey} toolbarSlot={cameraSlot} stopRef={fleetStopRef} />{chatOpen && fleetMode && chatPanel(true)}</>
-              : mainTab === 'data' && recorder ? <DataPanel key={`data-${robotEpoch}`} /> : <MapPanel key={`map-${robotEpoch}`} clients={clients} running={running} />}
+              : mainTab === 'data' && recorder ? <DataPanel key={`data-${robotEpoch}`} /> : <MapPanel key={`map-${robotEpoch}`} clients={clients} running={running} onStop={stopShown} />}
           </section>
 
         </main>

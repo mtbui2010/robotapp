@@ -50,11 +50,12 @@ export interface RunHandles {
   stopReq: boolean; epoch: number; busy: number; speechUntil: number; choiceAt: number
   fromChat: boolean; nextFromChat: boolean
   langs: RobotLanguages | null; heard: string | null; recording: boolean
+  chain: Promise<void>         // this robot's speak / listen jobs, strictly in order
 }
 export const newHandles = (): RunHandles => ({
   ws: null, nudge: null, stopTimer: null, repeat: { remaining: 0, continueOnError: false, active: false },
   args: null, textAsk: null, stopReq: false, epoch: 0, busy: 0, speechUntil: 0, choiceAt: 0,
-  fromChat: false, nextFromChat: false, langs: null, heard: null, recording: false,
+  fromChat: false, nextFromChat: false, langs: null, heard: null, recording: false, chain: Promise.resolve(),
 })
 
 export const EMPTY_STORE: SessionStore = { shown: null, sessions: {} }
