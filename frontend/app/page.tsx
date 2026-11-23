@@ -34,7 +34,7 @@ import { useHandsFree } from '../lib/useHandsFree'
 import { noteForListenReply, stopAction, stopLabel, canStop, canType, isLost, needsForce } from '../lib/chatRun'
 import { useRobotSessions } from '../lib/useRobotSessions'
 import { robotKey, cancelTarget, startBlock, statusMap, optionText, appendLine, settleHeard, closeLine, verdictOf, beginRun, endRun, patch, HEARD_PENDING, type SessionKey, type RunHandles } from '../lib/robotSessions'
-import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri, handleBusy, handsFreeBusy, ownedByDropped, sessionUrl, micMayEnd } from '../lib/runHelpers'
+import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri, handsFreeBusy, ownedByDropped, sessionUrl, micMayEnd } from '../lib/runHelpers'
 import { LS_PLANNER, PLANNER_EVENT, DEFAULT_PLANNER, LS_PLAN_ONLY, storedPlanOnly, storedPlanner, type PlannerMethod } from '../lib/planner'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
 import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
@@ -532,7 +532,7 @@ export default function Home() {
           ? 'this page is on http — open it over https (or localhost) to use the mic'
           : `microphone not available (${err}) — allow it in the browser's site settings`
         addQaLine(tok, 'robot', `🎤 ${why}; the robot will ask for typed input instead`)
-        if (h.fromChat && sameKey(shownKey(), key)) setChatOpen(true)
+        if (h.fromChat && sameKey(shownKey(), tok)) setChatOpen(true)
       })
     }
     loadSpeechRate()                  // Global Configs may have changed since the page loaded
