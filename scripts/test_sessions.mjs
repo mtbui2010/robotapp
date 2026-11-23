@@ -234,3 +234,82 @@ test('micMayEnd: beta cannot end or answer over the capture alpha owns; the owne
   assert.equal(H.micMayEnd(null, kb, same), true)
   assert.equal(H.micMayEnd(ka, 'robot:alpha2', (x, y) => x === ka && y === 'robot:alpha2'), true, 'a renamed owner is still the owner')
 })
+
+// ── a run closure holds an IMMUTABLE id, not the registry name (rename / reuse of a name) ──
+// The model below mirrors useRobotSessions: handles per registry key, a store, and every write through resolveKey.
+const model = (st0) => {
+  const m = { st: st0, hs: {} }
+  m.tok = key => H.stableKey(m.hs, key)
+  m.apply = f => { m.st = f(m.st) }
+  m.at = (tok, f) => m.apply(st => f(st, H.resolveKey(m.hs, tok)))
+  m.get = tok => m.st.sessions[H.resolveKey(m.hs, tok)]
+  m.registry = (list, before) => {
+    const r = S.reconcile(m.st, list, before)
+    H.moveHandles(m.hs, r, () => {})
+    m.st = r.store
+    return r
+  }
+  return m
+}
+const finish = (m, tok, v = 'success') => { m.at(tok, (st, k) => S.applyRun(st, k, { t: 'reset' })); m.at(tok, (st, k) => S.endRun(st, k, v, 9)) }
+const startOn = (m, key, url) => {
+  const tok = m.tok(key)
+  m.apply(st => S.beginRun(st, key, url, 1)); m.apply(st => S.applyRun(st, key, { t: 'start' }))
+  return tok
+}
+
+test('rename then done: the run closure (stable id) still ends ITS session under the new name', () => {
+  const m = model(two()); const tok = startOn(m, ka, A)
+  m.registry([{ name: 'gamma', url: A }, { name: 'beta', url: B }])
+  assert.equal(H.resolveKey(m.hs, tok), S.robotKey('gamma'))
+  m.at(tok, (st, k) => S.patch(st, k, { events: [{ event: 'plan' }] }))
+  assert.equal(m.get(tok).events.length, 1, 'an event of the old run lands in the renamed session, not in a blank one')
+  finish(m, tok)
+  assert.equal(S.statusOf(m.st.sessions[S.robotKey('gamma')]), 'idle'); assert.equal(S.startBlock(m.st, S.robotKey('gamma')), null)
+  assert.equal(m.get(tok).url, A, 'the next repeat iteration still reads the url of its run, never an empty one')
+})
+
+test('reuse of an old name: a NEW robot called alpha does not receive the events of the renamed run', () => {
+  const U2 = 'http://robot-new.test:3'
+  const m = model(two()); const tok = startOn(m, ka, A)
+  m.registry([{ name: 'gamma', url: A }, { name: 'beta', url: B }])
+  m.apply(st => S.select(st, ka, U2))                                 // the new alpha (blank session, own url U2)
+  m.at(tok, (st, k) => S.patch(st, k, { trial: 5 }))
+  assert.equal(m.st.sessions[ka].trial, 0, 'the new alpha is untouched'); assert.equal(m.st.sessions[S.robotKey('gamma')].trial, 5)
+  finish(m, tok)
+  assert.equal(S.statusOf(m.st.sessions[S.robotKey('gamma')]), 'idle')
+  const t2 = m.tok(ka); assert.notEqual(t2, tok, 'the new alpha has its own id')
+  assert.equal(S.cancelTarget(S.select(m.st, S.robotKey('gamma'), A)).url, A, 'Cancel on gamma posts to the url of its run')
+})
+
+test('chained renames a->b->c and a->b->a keep the same id and the same session', () => {
+  const m = model(two()); const tok = startOn(m, ka, A)
+  m.registry([{ name: 'b2', url: A }, { name: 'beta', url: B }])
+  m.registry([{ name: 'c3', url: A }, { name: 'beta', url: B }])
+  assert.equal(H.resolveKey(m.hs, tok), S.robotKey('c3')); assert.equal(S.statusOf(m.get(tok)), 'running')
+  const m2 = model(two()); const t2 = startOn(m2, ka, A)
+  m2.registry([{ name: 'b2', url: A }, { name: 'beta', url: B }])
+  m2.registry([{ name: 'alpha', url: A }, { name: 'beta', url: B }])
+  assert.equal(H.resolveKey(m2.hs, t2), ka); assert.equal(S.statusOf(m2.get(t2)), 'running')
+  finish(m2, t2); assert.equal(S.statusOf(m2.st.sessions[ka]), 'idle')
+})
+
+test('a removed robot: its id resolves to nothing, late writes are harmless', () => {
+  const m = model(two()); const tok = startOn(m, ka, A)
+  m.registry([{ name: 'beta', url: B }])
+  const before = m.st
+  m.at(tok, (st, k) => S.endRun(st, k, 'success', 1)); assert.equal(m.st, before)
+  assert.equal(m.get(tok), undefined)
+})
+
+test('reconcile: two robots share a url, the running one is renamed: an idle sibling with its own session is never overwritten', () => {
+  let st = S.select(S.select(S.EMPTY_STORE, kb, A), ka, A)
+  st = S.patch(st, kb, { qaLog: S.appendLine([], 'user', 'beta chat') })
+  st = S.beginRun(st, ka, A, 1); st = S.applyRun(st, ka, { t: 'start' })
+  const r = S.reconcile(st, [{ name: 'beta', url: A }, { name: 'gamma', url: A }], [{ name: 'alpha', url: A }, { name: 'beta', url: A }])
+  assert.deepEqual(r.renamed, [[ka, S.robotKey('gamma')]], 'the name that is new to the list')
+  assert.equal(r.store.sessions[kb].qaLog.length, 1, 'beta keeps its chat log')
+  const r2 = S.reconcile(st, [{ name: 'beta', url: A }])
+  assert.deepEqual(r2.dropped, [ka], 'no free target: the run is dropped (the caller cancels it), beta is not taken over')
+  assert.equal(r2.store.sessions[kb].qaLog.length, 1)
+})

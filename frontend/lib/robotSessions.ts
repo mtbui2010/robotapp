@@ -51,8 +51,11 @@ export interface RunHandles {
   fromChat: boolean; nextFromChat: boolean
   langs: RobotLanguages | null; heard: string | null; recording: boolean
   chain: Promise<void>         // this robot's speak / listen jobs, strictly in order
+  sid: string                  // immutable id of this robot's run state: a run closure holds it, never the (renamable, reusable) registry name
 }
+let nextSid = 1
 export const newHandles = (): RunHandles => ({
+  sid: String(nextSid++),
   ws: null, nudge: null, stopTimer: null, repeat: { remaining: 0, continueOnError: false, active: false },
   args: null, textAsk: null, stopReq: false, epoch: 0, busy: 0, speechUntil: 0, choiceAt: 0,
   fromChat: false, nextFromChat: false, langs: null, heard: null, recording: false, chain: Promise.resolve(),
@@ -79,6 +82,7 @@ export function statusOf(s: RobotSession): SessionStatus {
   }
 }
 const isBusy = (s: RobotSession): boolean => statusOf(s) !== 'idle'
+const isBlank = (s: RobotSession): boolean => !isBusy(s) && !s.qaLog.length && !s.events.length && s.verdict === null
 
 // ── create / select / change ────────────────────────────────────────────────────────────────────
 /** Shows `key`; creates a blank session when there is none (no HTTP, no run). The url of a busy session stays frozen. */
@@ -119,19 +123,21 @@ export interface Listed { name: string; url?: string }
 /** A robot left the registry: its session is dropped (the caller closes the socket and cancels); a robot renamed in place (same url, new name,
  *  no live session under the new name) keeps its session under the new name (`renamed` = [from, to] pairs: the caller moves the handles).
  *  Fleet sessions are not robots. */
-export function reconcile(st: SessionStore, robots: Listed[]): { store: SessionStore; dropped: SessionKey[]; renamed: [SessionKey, SessionKey][] } {
-  const names = new Set(robots.map(r => r.name))
+export function reconcile(st: SessionStore, robots: Listed[], before: Listed[] = []): { store: SessionStore; dropped: SessionKey[]; renamed: [SessionKey, SessionKey][] } {
+  const names = new Set(robots.map(r => r.name)), old = new Set(before.map(r => r.name))
   const gone = Object.keys(st.sessions).filter(k => isRobotKey(k) && !names.has(nameOfKey(k)))
   const sessions: Record<SessionKey, RobotSession> = { ...st.sessions }
   const renamed: [SessionKey, SessionKey][] = [], dropped: SessionKey[] = []
   let shown = st.shown
   for (const k of gone) {
     const s = st.sessions[k]
+    // a target has no session of its own (a blank one from a pick does not count) and is not taken by another rename: a sibling's chat log is never overwritten
     const free = (r: Listed): boolean => {
       const t = sessions[robotKey(r.name)]
-      return !gone.includes(robotKey(r.name)) && !renamed.some(x => x[1] === robotKey(r.name)) && (!t || !isBusy(t))
+      return !gone.includes(robotKey(r.name)) && !renamed.some(x => x[1] === robotKey(r.name)) && (!t || isBlank(t))
     }
-    const to = s.url ? robots.find(r => r.url === s.url && free(r)) : undefined
+    const cands = s.url ? robots.filter(r => r.url === s.url && free(r)) : []
+    const to = cands.find(r => !old.has(r.name)) ?? cands[0]      // prefer a name that is new to the list
     if (to && isBusy(s)) {
       const nk = robotKey(to.name)
       delete sessions[k]; sessions[nk] = { ...s, key: nk }; renamed.push([k, nk])

@@ -71,7 +71,7 @@ export default function Home() {
   const toggleDataTools = () => setDataTools(v => { try { localStorage.setItem('robotapp_data_tools', v ? '0' : '1') } catch { /* per-viewer convenience */ } return !v })
   const [target, setTarget]           = useState<ActiveTarget | null>(null)   // robot + site this tab drives
   const sess = useRobotSessions()   // one session per robot (run, socket, chat log, plan): lib/robotSessions.ts. The page draws the SHOWN one
-  const { get, put, set, apply, dispatch, handles: H, shownKey, getStore, sameKey } = sess
+  const { get, put, set, apply, applyAt, dispatch, handles: H, shownKey, getStore, sameKey } = sess
   const { running, events: agentEvents, steps: agentSteps, logImage, runMethod, trial, qaLog, listenId, choice, qaSkill, heardLang, run: rs } = sess.shown
   useEffect(() => { window.addEventListener(ROBOTS_CHANGED_EVENT, readRobotList); return () => window.removeEventListener(ROBOTS_CHANGED_EVENT, readRobotList) }, [readRobotList])   // add / rename / remove / edit url, from any panel
   useEffect(() => { sess.reconcileRobots([...robotList, { name: '' }]) }, [robotList, sess.reconcileRobots])   // a removed or renamed robot ends its session
@@ -118,7 +118,7 @@ export default function Home() {
   const micOwnerRef = useRef<SessionKey | null>(null)         // the robot whose listen job holds the browser's one mic
   const endMic = (key: SessionKey) => { if (micMayEnd(micOwnerRef.current, key, sameKey)) { stopRecording(); abortRecognition() } }
   const recOwnerRef = useRef<SessionKey | null>(null)         // ONE screen recorder per tab: only the session that began it ends it
-  const endRec = (key: SessionKey, outcome?: 'succeed' | 'failed') => { if (recOwnerRef.current === key) { recOwnerRef.current = null; endRecording(outcome) } }
+  const endRec = (key: SessionKey, outcome?: 'succeed' | 'failed') => { if (recOwnerRef.current !== null && sameKey(recOwnerRef.current, key)) { recOwnerRef.current = null; endRecording(outcome) } }
   const takeListen = (key: SessionKey, id: string | null) => {
     set(key, { listenId: id })
     dispatch(key, { t: id ? 'listen' : 'answered' })
@@ -155,7 +155,8 @@ export default function Home() {
 
   // One WS run of the current args. On completion it either chains the next
   // iteration (repeat) or finalizes (setRunning false).
-  const fire = useCallback((key: SessionKey) => {
+  const fire = useCallback((regKey: SessionKey) => {
+    const key = sess.stable(regKey)   // from here on the run holds an immutable id: a rename or a reused name cannot redirect its events
     const h = H(key)
     const a = h.args
     if (!a) return
@@ -394,7 +395,8 @@ export default function Home() {
             }
             return
           }
-          const heard = await recognizeOnce(lang, req.max_sec ?? 8)
+          micOwnerRef.current = key       // the browser recogniser is the one mic too
+          const heard = await recognizeOnce(lang, req.max_sec ?? 8).finally(() => { if (micOwnerRef.current === key) micOwnerRef.current = null })
           if (answeredByClick()) return              // typed / clicked meanwhile: that answer stands
           if (heard.text && echoGuard.isEcho(heard.text, Date.now())) {
             console.info('[hri] dropped a transcript that echoes the robot:', heard.text)
@@ -428,7 +430,7 @@ export default function Home() {
           prefix = sanitizeTask(ev.task)
           // Same name datasetLog gives the capture folder, so the .webm and the
           // folder for one run sort next to each other.
-          if (recOwnerRef.current === key) setRecordingPrefix(dir())
+          if (recOwnerRef.current !== null && sameKey(recOwnerRef.current, key)) setRecordingPrefix(dir())
         }
         // SAGE events carry `index` / `action` / `object` instead of `step` / `total` / `task`
         const stepNo = ev.step ?? ev.index
@@ -481,7 +483,7 @@ export default function Home() {
           setTimeout(() => { if (h.repeat.active) fireRef.current(key) }, 0)
         } else {
           ctrl.active = false
-          apply(st => endRun(st, key, verdictOf(ev), Date.now()))
+          applyAt(key, (st, k) => endRun(st, k, verdictOf(ev), Date.now()))
         }
       }
 
@@ -500,12 +502,12 @@ export default function Home() {
       dispatch(key, { t: 'ws-close' })
       if (between) return
       h.repeat.active = false
-      apply(st => (st.sessions[key]?.running ? endRun(st, key, 'aborted', Date.now()) : st))   // a socket closing after its `done` keeps that verdict
+      applyAt(key, (st, k) => (st.sessions[k]?.running ? endRun(st, k, 'aborted', Date.now()) : st))   // a socket closing after its `done` keeps that verdict
       endRec(key)
     }
     ws.onclose = gone
     ws.onerror = gone
-  }, [get, put, set, apply, dispatch, H, shownKey, emit, noteOwnEvent, speak, beginRecording, endRecording, setRecordingPrefix])
+  }, [get, put, set, apply, applyAt, sess.stable, dispatch, H, shownKey, emit, noteOwnEvent, speak, beginRecording, endRecording, setRecordingPrefix])
   useEffect(() => { fireRef.current = fire }, [fire])
 
   const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true, screenRec = true) => {

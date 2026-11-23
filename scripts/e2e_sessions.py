@@ -2,7 +2,7 @@
 
 What: starts (or reuses) its own dashboard `next dev -p 3017` from this worktree, opens a fresh headless Chromium with robots a / b seeded,
       then drives the UI: a runs a long structured command, the person picks b, b is free and a is marked running, b runs a short command,
-      Cancel while viewing b leaves a running, picking a and Cancel stops a. Agents are read over REST only to check (GET /runs).
+      Cancel while viewing b leaves a running, picking a and Cancel stops a, then 5b: a is renamed in the robot editor during a run, still marked running, Cancel stops it. Agents are read over REST only to check (GET /runs).
 Why: Cancel used to go to "the robot picked now" and the controls stayed locked after a switch (owner, 2026-11-24).
 Env: A_URL (http://127.0.0.1:8021), B_URL (http://127.0.0.1:8022), PORT (3017), SHOTDIR (folder of e2e_start.png, e2e_step2.png, e2e_step3.png, e2e_end.png).
 Needs: sim robots a and b idle, `wait` skill on both (structured `wait::<seconds>`). Exit 0 only when every step passes.
@@ -150,6 +150,26 @@ def main():
             pg.get_by_role("button", name="Cancel", exact=True).click()
             step("5 Cancel on a stops a", wait_for(lambda: not active(A_URL), 30), f"a={active(A_URL)}")
             shot(pg, "e2e_end.png")
+
+            # 5b: rename the robot while its run is live (through the dashboard's own robot editor: the edit button, the name field, Save)
+            run_cmd(pg, LONG_CMD)
+            re_run = wait_for(lambda: bool(active(A_URL)), 20) and "running" in option_text(pg, "a")
+            # the sidebar header overlaps the small edit button for a real mouse click, so the click is dispatched on the element
+            pg.get_by_role("button", name="Edit the selected robot or fleet").evaluate("e => e.click()")
+            pg.get_by_placeholder("Name (e.g. kcare_lab, kcare_demo)").fill("a_renamed")
+            pg.get_by_placeholder("http://192.168.1.10:8001").press("Enter")   # Enter in the url field = Save (other "Save" buttons exist on the page)
+            pg.wait_for_timeout(1500)
+            marked = wait_for(lambda: "running" in option_text(pg, "a_renamed"), 10)
+            shot(pg, "e2e_step5b.png", open_list=True)
+            cancel_btn = pg.get_by_role("button", name="Cancel", exact=True)
+            if cancel_btn.count() == 1:
+                cancel_btn.click()
+            stopped = wait_for(lambda: not active(A_URL), 30)
+            idle_mark = wait_for(lambda: bool(option_text(pg, "a_renamed")) and "running" not in option_text(pg, "a_renamed"), 15)
+            run_again = pg.get_by_role("button", name="Run", exact=True)
+            step("5b rename while running: still running, Cancel stops it, idle, Run again",
+                 re_run and marked and stopped and idle_mark and run_again.count() == 1 and run_again.is_enabled(),
+                 f"run_started={re_run} marked={marked} stopped={stopped} idle_mark={idle_mark} option={option_text(pg, 'a_renamed')!r} runs={run_again.count()}")
         finally:
             br.close()
     return started
@@ -160,7 +180,7 @@ if __name__ == "__main__":
     try:
         proc = main()
     except Exception as e:                                   # a UI error is a failed step, not a crash without cleanup
-        step(f"error {type(e).__name__}", False, str(e)[:300])
+        step(f"error {type(e).__name__}", False, str(e)[:1500])
     finally:
         for u in (A_URL, B_URL):
             cancel_agent(u)

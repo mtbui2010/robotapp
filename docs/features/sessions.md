@@ -33,9 +33,9 @@ one robot, which is unsafe. Stop it first."). Two clients driving one robot is u
 ## Limits
 
 - Sessions live in the tab's memory: a reload drops them. A run still going on a robot is then seen only as a run started by someone else (the read-only `/ws/events` badge).
-- A robot removed from the list ends its session (its run gets a best-effort cancel). Every write of the list (add, rename, edit url, remove) fires `ROBOTS_CHANGED_EVENT`, so the page reconciles at once. A running robot renamed in place keeps its session under the new name (still one client per robot).
+- A robot removed from the list ends its session (its run gets a best-effort cancel). Every write of the list (add, rename, edit url, remove) fires `ROBOTS_CHANGED_EVENT`, so the page reconciles at once. A running robot renamed in place keeps its session under the new name (still one client per robot). A run closure holds an immutable id of its robot's run state (`stableKey` / `resolveKey` in `lib/runHelpers.ts`), never the registry name: after a rename its events, `done` and repeat iterations still reach its own session, and a NEW robot given the old name is a separate robot. A rename moves the session only to a name that has no session of its own (a sibling sharing the url keeps its chat log), preferring a name new to the list.
 - An idle session follows the url its robot has now; a busy one keeps the url of its run, so a Cancel reaches the robot that runs. After the run ends the session takes the edited url.
-- The browser has one microphone: a listen job's owner is remembered, and only that robot's Stop / answer ends the capture (`micMayEnd` in `lib/runHelpers.ts`, unit-tested). Hands-free `speaking` looks at the SHOWN session only (`handleBusy`), so a background run's speech does not block the shown robot's mic.
+- The browser has one microphone (Whisper recording and the browser recogniser alike): a listen job's owner is remembered, and only that robot's Stop / answer ends the capture (`micMayEnd` in `lib/runHelpers.ts`, unit-tested). Hands-free `speaking` looks at the SHOWN session only (`handleBusy`), so a background run's speech does not block the shown robot's mic.
 - With no robot registered, the shown session takes the legacy default agent url (`sessionUrl`), so an idle Cancel / Map Stop never posts to the dashboard origin.
 - The screen recorder is one per tab: only the session that began it ends it.
 - Verified on two sim robots with `scripts/e2e_sessions.py`; not run on real robots.
@@ -43,6 +43,6 @@ one robot, which is unsafe. Stop it first."). Two clients driving one robot is u
 ## End-to-end check
 
 `scripts/e2e_sessions.py` (Playwright) starts its own dashboard on port 3017 and drives two sim agents (`A_URL` 8021, `B_URL` 8022, structured `wait::N`):
-a runs, b is free and a is marked running, b runs, Cancel on b leaves a running, Cancel on a stops a; both agents are cancelled at the end even on failure.
+a runs, b is free and a is marked running, b runs, Cancel on b leaves a running, Cancel on a stops a, step 5b renames a through the robot editor while it runs (still marked running, Cancel stops it, Run works again); both agents are cancelled at the end even on failure.
 It prints one PASS / FAIL line per step (plus `PASS option_marks a=<text> b=<text>`, the drop-down texts at step 3) and exits 0 only when all pass.
 Screenshots go to `SHOTDIR`: `e2e_start.png` (a runs, a shown), `e2e_step3.png` (b shown, a running, robot list expanded) and `e2e_end.png`.
