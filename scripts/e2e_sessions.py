@@ -4,7 +4,7 @@ What: starts (or reuses) its own dashboard `next dev -p 3017` from this worktree
       then drives the UI: a runs a long structured command, the person picks b, b is free and a is marked running, b runs a short command,
       Cancel while viewing b leaves a running, picking a and Cancel stops a. Agents are read over REST only to check (GET /runs).
 Why: Cancel used to go to "the robot picked now" and the controls stayed locked after a switch (owner, 2026-11-24).
-Env: A_URL (http://127.0.0.1:8021), B_URL (http://127.0.0.1:8022), PORT (3017), SHOTDIR (folder of e2e_start.png, e2e_step3.png, e2e_end.png).
+Env: A_URL (http://127.0.0.1:8021), B_URL (http://127.0.0.1:8022), PORT (3017), SHOTDIR (folder of e2e_start.png, e2e_step2.png, e2e_step3.png, e2e_end.png).
 Needs: sim robots a and b idle, `wait` skill on both (structured `wait::<seconds>`). Exit 0 only when every step passes.
 Switch off: run by hand only.
 """
@@ -126,6 +126,7 @@ def main():
             pg.select_option('[data-testid="fleet-switch"]', value="robot:b")
             pg.wait_for_timeout(1500)
             run_btn = pg.get_by_role("button", name="Run", exact=True)
+            shot(pg, "e2e_step2.png", open_list=True)        # the key moment: b is shown and free (Run usable) while a is marked running
             step("2 b free, a marked running", run_btn.count() == 1 and run_btn.is_enabled() and "running" in option_text(pg, "a")
                  and "running" not in option_text(pg, "b"), f"run buttons={run_btn.count()} a={option_text(pg, 'a')!r} b={option_text(pg, 'b')!r}")
 
