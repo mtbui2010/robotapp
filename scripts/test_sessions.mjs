@@ -179,3 +179,28 @@ test('newHandles: each call is a fresh object (no sharing between robots)', () =
   const h1 = S.newHandles(), h2 = S.newHandles()
   assert.notEqual(h1, h2); assert.notEqual(h1.repeat, h2.repeat); assert.equal(h1.ws, null)
 })
+
+const busyAlpha = () => { let st = S.beginRun(two(), ka, A, 1); return S.applyRun(st, ka, { t: 'start' }) }
+
+test('reconcile: a running robot renamed in place keeps its session under the new name (one client per robot still holds)', () => {
+  const st = S.select(busyAlpha(), S.robotKey('alpha2'), A)   // the page already made a blank session for the new name
+  const r = S.reconcile(st, [{ name: 'alpha2', url: A }, { name: 'beta', url: B }])
+  assert.deepEqual(r.renamed, [[ka, S.robotKey('alpha2')]]); assert.deepEqual(r.dropped, [])
+  assert.equal(S.statusOf(r.store.sessions[S.robotKey('alpha2')]), 'running')
+  assert.ok(S.startBlock(r.store, S.robotKey('alpha2')), 'a second command on the renamed robot is refused')
+  assert.equal(r.store.sessions[ka], undefined); assert.equal(r.store.shown, S.robotKey('alpha2'))
+})
+
+test('reconcile: a removed running robot is dropped so the caller cancels it', () => {
+  const r = S.reconcile(busyAlpha(), [{ name: 'beta', url: B }])
+  assert.deepEqual(r.dropped, [ka]); assert.deepEqual(r.renamed, [])
+})
+
+test('syncUrls: an idle session follows an edited url after its run ended; a busy one keeps the url of its run', () => {
+  const U2 = 'http://robot-a.test:9'
+  let st = busyAlpha()
+  assert.equal(S.syncUrls(st, [{ name: 'alpha', url: U2 }]).sessions[ka].url, A, 'busy: frozen')
+  st = S.endRun(S.applyRun(st, ka, { t: 'reset' }), ka, 'success', 5)
+  st = S.syncUrls(st, [{ name: 'alpha', url: U2 }])
+  assert.equal(S.cancelTarget(st).url, U2, 'after the run: the live url')
+})

@@ -33,7 +33,9 @@ one robot, which is unsafe. Stop it first."). Two clients driving one robot is u
 ## Limits
 
 - Sessions live in the tab's memory: a reload drops them. A run still going on a robot is then seen only as a run started by someone else (the read-only `/ws/events` badge).
-- A robot removed or renamed in the list ends its session.
+- A robot removed from the list ends its session (its run gets a best-effort cancel). Every write of the list (add, rename, edit url, remove) fires `ROBOTS_CHANGED_EVENT`, so the page reconciles at once. A running robot renamed in place keeps its session under the new name (still one client per robot).
+- An idle session follows the url its robot has now; a busy one keeps the url of its run, so a Cancel reaches the robot that runs. After the run ends the session takes the edited url.
+- The browser has one microphone: a listen job's owner is remembered, and only that robot's Stop / answer ends the capture.
 - The screen recorder is one per tab: only the session that began it ends it.
 - Verified on two sim robots with `scripts/e2e_sessions.py`; not run on real robots.
 

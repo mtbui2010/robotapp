@@ -43,9 +43,13 @@ function readRobots(): Robot[] {
   return []
 }
 
+/** Fired (on window) after every write of the robot list (add, rename, edit url, remove): what keeps a per-robot session (page) must follow. */
+export const ROBOTS_CHANGED_EVENT = 'robotapp:robots-changed'
+
 function writeRobots(list: Robot[]): void {
-  if (typeof window !== 'undefined')
-    localStorage.setItem(LS_ROBOTS, JSON.stringify(list))
+  if (typeof window === 'undefined') return
+  localStorage.setItem(LS_ROBOTS, JSON.stringify(list))
+  window.dispatchEvent(new Event(ROBOTS_CHANGED_EVENT))
 }
 
 function listRobots(): Robot[] {

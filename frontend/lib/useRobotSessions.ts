@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { STOP_TIMEOUT_MS, type RunEvent } from './chatRun'
 import {
-  EMPTY_STORE, applyRun, newHandles, newSession, patch, reconcile, select, shownOf, statusOf, update,
+  EMPTY_STORE, applyRun, newHandles, newSession, patch, reconcile, select, shownOf, statusOf, syncUrls, update, type Listed,
   type RobotSession, type RunHandles, type SessionKey, type SessionStore,
 } from './robotSessions'
 
@@ -23,6 +23,9 @@ export function useRobotSessions() {
   const [store, setStore] = useState<SessionStore>(EMPTY_STORE)
   const ref = useRef<SessionStore>(store)
   const hs = useRef<Record<SessionKey, RunHandles>>({})
+  const alias = useRef<Record<SessionKey, SessionKey>>({})   // old key -> new key of a renamed robot: the sockets of its run still say the old one
+  const robots = useRef<Listed[]>([])
+  const canon = useCallback((key: SessionKey): SessionKey => { let k = key; for (let i = 0; i < 8 && alias.current[k]; i++) k = alias.current[k]; return k }, [])
 
   /** Synchronous: the ref first (the next `get` sees it), then the render. */
   const apply = useCallback((f: (st: SessionStore) => SessionStore) => {
@@ -31,30 +34,40 @@ export function useRobotSessions() {
     ref.current = next
     setStore(next)
   }, [])
-  const put = useCallback((key: SessionKey, f: (s: RobotSession) => RobotSession) => apply(st => update(st, key, f)), [apply])
-  const set = useCallback((key: SessionKey, p: Partial<Omit<RobotSession, 'key'>>) => apply(st => patch(st, key, p)), [apply])
-  const dispatch = useCallback((key: SessionKey, e: RunEvent) => apply(st => applyRun(st, key, e)), [apply])
+  const put = useCallback((key: SessionKey, f: (s: RobotSession) => RobotSession) => apply(st => update(st, canon(key), f)), [apply, canon])
+  const set = useCallback((key: SessionKey, p: Partial<Omit<RobotSession, 'key'>>) => apply(st => patch(st, canon(key), p)), [apply, canon])
+  const dispatch = useCallback((key: SessionKey, e: RunEvent) => apply(st => applyRun(st, canon(key), e)), [apply, canon])
   const get = useCallback((key: SessionKey): RobotSession => ref.current.sessions[key] ?? newSession(key, ''), [])
   const getStore = useCallback(() => ref.current, [])
   const shownKey = useCallback(() => ref.current.shown ?? '', [])
+  const sameKey = useCallback((a: SessionKey, b: SessionKey) => canon(a) === canon(b), [canon])
   /** The session of the robot the tab shows (created blank by the first pick; no HTTP, no run). */
   const choose = useCallback((key: SessionKey, url: string) => apply(st => {
+    delete alias.current[key]   // a robot added under an old name is a new robot
     const next = select(st, key, url)
     return next.shown === st.shown && next.sessions === st.sessions ? st : next
   }), [apply])
-  const handles = useCallback((key: SessionKey): RunHandles => (hs.current[key] ??= newHandles()), [])
+  const handles = useCallback((key: SessionKey): RunHandles => (hs.current[canon(key)] ??= newHandles()), [canon])
   const anyBusy = useCallback(() => Object.values(hs.current).some(h => h.busy > 0 || Date.now() < h.speechUntil), [])
 
-  /** Drops the sessions of robots that left the registry: closes their sockets and sends a best-effort cancel to their frozen url. */
-  const reconcileRobots = useCallback((robots: { name: string }[]) => {
-    const r = reconcile(ref.current, robots)
+  /** Called with the registry list: drops the sessions of removed robots (closes the socket, best-effort cancel at the frozen url), moves the session
+   *  of a renamed running robot to its new name, and points idle sessions at the urls their robots have now. */
+  const reconcileRobots = useCallback((list: Listed[]) => {
+    robots.current = list
+    const r = reconcile(ref.current, list)
     for (const k of r.dropped) {
       const s = ref.current.sessions[k]
       if (s && statusOf(s) !== 'idle') api.cancelRunAt(s.url).catch(() => {})
       if (hs.current[k]) { closeHandles(hs.current[k]); delete hs.current[k] }
     }
-    apply(() => r.store)
+    for (const [from, to] of r.renamed) {
+      if (hs.current[to]) { closeHandles(hs.current[to]); delete hs.current[to] }
+      if (hs.current[from]) { hs.current[to] = hs.current[from]; delete hs.current[from] }
+      alias.current[from] = to; delete alias.current[to]
+    }
+    apply(() => syncUrls(r.store, list))
   }, [apply])
+  useEffect(() => { apply(st => syncUrls(st, robots.current)) }, [store.sessions, apply])   // a run ended: its session takes the url its robot has now
 
   // the stop timer is per session: a stopping background run must offer "Force reset" too
   useEffect(() => {
@@ -76,5 +89,5 @@ export function useRobotSessions() {
   }, [anyRunning])
   useEffect(() => () => { Object.values(hs.current).forEach(closeHandles) }, [])
 
-  return { store, shown: shownOf(store), get, getStore, shownKey, put, set, apply, dispatch, choose, handles, anyBusy, reconcileRobots }
+  return { store, shown: shownOf(store), get, getStore, shownKey, put, set, apply, dispatch, choose, handles, anyBusy, reconcileRobots, sameKey }
 }

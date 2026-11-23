@@ -115,13 +115,40 @@ export const beginRun = (st: SessionStore, key: SessionKey, url: string, now: nu
 export const endRun = (st: SessionStore, key: SessionKey, verdict: Verdict, now: number): SessionStore =>
   patch(st, key, { running: false, verdict, endedAt: now, listenId: null, choice: null, qaSkill: false })
 
-/** Drops the robot sessions whose robot left the registry (the caller closes their sockets); fleet sessions are not robots. */
-export function reconcile(st: SessionStore, robots: { name: string }[]): { store: SessionStore; dropped: SessionKey[] } {
+export interface Listed { name: string; url?: string }
+/** A robot left the registry: its session is dropped (the caller closes the socket and cancels); a robot renamed in place (same url, new name,
+ *  no live session under the new name) keeps its session under the new name (`renamed` = [from, to] pairs: the caller moves the handles).
+ *  Fleet sessions are not robots. */
+export function reconcile(st: SessionStore, robots: Listed[]): { store: SessionStore; dropped: SessionKey[]; renamed: [SessionKey, SessionKey][] } {
   const names = new Set(robots.map(r => r.name))
-  const dropped = Object.keys(st.sessions).filter(k => isRobotKey(k) && !names.has(nameOfKey(k)))
-  if (!dropped.length) return { store: st, dropped }
-  const sessions = Object.fromEntries(Object.entries(st.sessions).filter(([k]) => !dropped.includes(k)))
-  return { store: { shown: st.shown !== null && dropped.includes(st.shown) ? null : st.shown, sessions }, dropped }
+  const gone = Object.keys(st.sessions).filter(k => isRobotKey(k) && !names.has(nameOfKey(k)))
+  const sessions: Record<SessionKey, RobotSession> = { ...st.sessions }
+  const renamed: [SessionKey, SessionKey][] = [], dropped: SessionKey[] = []
+  let shown = st.shown
+  for (const k of gone) {
+    const s = st.sessions[k]
+    const free = (r: Listed): boolean => {
+      const t = sessions[robotKey(r.name)]
+      return !gone.includes(robotKey(r.name)) && !renamed.some(x => x[1] === robotKey(r.name)) && (!t || !isBusy(t))
+    }
+    const to = s.url ? robots.find(r => r.url === s.url && free(r)) : undefined
+    if (to && isBusy(s)) {
+      const nk = robotKey(to.name)
+      delete sessions[k]; sessions[nk] = { ...s, key: nk }; renamed.push([k, nk])
+      if (shown === k) shown = nk
+    } else { delete sessions[k]; dropped.push(k); if (shown === k) shown = null }
+  }
+  if (!renamed.length && !dropped.length) return { store: st, dropped, renamed }
+  return { store: { shown, sessions }, dropped, renamed }
+}
+/** An idle session follows the url its robot has now (a busy one keeps the url of its run: a Cancel must reach the robot that runs). */
+export function syncUrls(st: SessionStore, robots: Listed[]): SessionStore {
+  let sessions = st.sessions
+  for (const r of robots) {
+    const k = robotKey(r.name), s = sessions[k]
+    if (s && r.url && s.url !== r.url && !isBusy(s)) sessions = { ...sessions, [k]: { ...s, url: r.url } }
+  }
+  return sessions === st.sessions ? st : { ...st, sessions }
 }
 
 // ── what the operator sees ──────────────────────────────────────────────────────────────────────

@@ -22,7 +22,8 @@ import GuidePanel   from '../components/GuidePanel'
 import PlanPanel    from '../components/PlanPanel'
 import ButtonPanel  from '../components/ButtonPanel'
 import ChatPanel, { type ChatLine } from '../components/ChatPanel'
-import { api }      from '../lib/api'
+import { api, ROBOTS_CHANGED_EVENT } from '../lib/api'
+import type { Robot } from '../lib/api'
 import { reduceSteps } from '../lib/planSteps'
 import { useForeignRun } from '../lib/useForeignRun'
 import ForeignRunBadge from '../components/ForeignRunBadge'
@@ -61,7 +62,7 @@ export default function Home() {
   const fleetStopRef = useRef<(() => void) | null>(null)   // the open Fleet tab puts its Stop all here; Cancel calls it
   const switchRobotRef = useRef<((name: string) => Promise<void>) | null>(null)   // DevicePanel's robot switch, for the tab-row drop-down
   const fl = useFleets(() => { setMainTab('fleet'); setFleetKey(k => k + 1); setChatOpen(true) })   // this tab's fleet and the fleets of the drop-down
-  const [robotList, setRobotList] = useState<{ name: string }[]>([])
+  const [robotList, setRobotList] = useState<Robot[]>([])
   const readRobotList = useCallback(() => setRobotList(api.listRobots()), [])
   useEffect(() => { readRobotList() }, [readRobotList, fl.active, fl.fleets])
   // Remote control + Record are only used to make data: hidden until the operator asks (kept in this browser); never hidden while recording or while teleop drives the arm
@@ -70,8 +71,9 @@ export default function Home() {
   const toggleDataTools = () => setDataTools(v => { try { localStorage.setItem('robotapp_data_tools', v ? '0' : '1') } catch { /* per-viewer convenience */ } return !v })
   const [target, setTarget]           = useState<ActiveTarget | null>(null)   // robot + site this tab drives
   const sess = useRobotSessions()   // one session per robot (run, socket, chat log, plan): lib/robotSessions.ts. The page draws the SHOWN one
-  const { get, put, set, apply, dispatch, handles: H, shownKey, getStore } = sess
+  const { get, put, set, apply, dispatch, handles: H, shownKey, getStore, sameKey } = sess
   const { running, events: agentEvents, steps: agentSteps, logImage, runMethod, trial, qaLog, listenId, choice, qaSkill, heardLang, run: rs } = sess.shown
+  useEffect(() => { window.addEventListener(ROBOTS_CHANGED_EVENT, readRobotList); return () => window.removeEventListener(ROBOTS_CHANGED_EVENT, readRobotList) }, [readRobotList])   // add / rename / remove / edit url, from any panel
   useEffect(() => { sess.reconcileRobots([...robotList, { name: '' }]) }, [robotList, sess.reconcileRobots])   // a removed or renamed robot ends its session
   useEffect(() => { sess.choose(robotKey(target?.robot ?? ''), target?.url ?? api.getAgentUrl()) }, [target, sess.choose])   // the shown session follows the robot the tab shows
   const [fleetLog, setFleetLog]       = useState<ChatLine[]>([])   // the Fleet chat's log (the fleet manager is not a robot session)
@@ -113,6 +115,8 @@ export default function Home() {
 
   const robotLangsRef = useRef<RobotLanguages | null>(null)   // the SHOWN robot's languages; a run freezes a copy in its handles
   const runLang = (h: RunHandles, l: string) => speechLanguage(l, h.langs, h.heard)
+  const micOwnerRef = useRef<SessionKey | null>(null)         // the robot whose listen job holds the browser's one mic
+  const endMic = (key: SessionKey) => { if (micOwnerRef.current === null || sameKey(micOwnerRef.current, key)) { stopRecording(); abortRecognition() } }
   const recOwnerRef = useRef<SessionKey | null>(null)         // ONE screen recorder per tab: only the session that began it ends it
   const endRec = (key: SessionKey, outcome?: 'succeed' | 'failed') => { if (recOwnerRef.current === key) { recOwnerRef.current = null; endRecording(outcome) } }
   const takeListen = (key: SessionKey, id: string | null) => {
@@ -140,7 +144,7 @@ export default function Home() {
     if (!id) return
     set(key, { choice: null })
     h.choiceAt = Date.now()
-    stopRecording()                     // the click answers: end the recording in progress
+    endMic(key)                         // the click answers: end the recording in progress
     h.textAsk?.(null)                   // or the typed answer being waited for
     if (voiceOutRef.current) { try { window.speechSynthesis.cancel() } catch { /* not supported */ } }  // and the question
     addQaLine(key, 'user', `${opt} (화면 선택)`)
@@ -156,7 +160,7 @@ export default function Home() {
     const a = h.args
     if (!a) return
     const url = get(key).url         // frozen by beginRun: picking another robot cannot move this run
-    const live = () => shownKey() === key   // only the robot on screen speaks, opens the chat or the mic; a background run writes its own log
+    const live = () => sameKey(shownKey(), key)   // only the robot on screen speaks, opens the chat or the mic; a background run writes its own log
     put(key, s => ({ ...s, trial: s.trial + 1 }))   // count this iteration
     h.ws?.close()
     emit(key, [], [])
@@ -366,7 +370,8 @@ export default function Home() {
           }
           if (req.capture === 'whisper') {
             // Record only; the robot transcribes it with Whisper (stt connection).
-            const rec = await recordPhrase(req.max_sec ?? 8, req.silence_sec ?? 1.5)
+            micOwnerRef.current = key
+            const rec = await recordPhrase(req.max_sec ?? 8, req.silence_sec ?? 1.5).finally(() => { if (micOwnerRef.current === key) micOwnerRef.current = null })
             if (answeredByClick()) return            // typed / clicked meanwhile: that answer stands
             if (rec.error) {                  // e.g. not-allowed: the skill falls back to typing
               addQaLine(key, 'system', `⚠ microphone not available (${rec.error}): type your answer`)
@@ -522,7 +527,7 @@ export default function Home() {
           ? 'this page is on http — open it over https (or localhost) to use the mic'
           : `microphone not available (${err}) — allow it in the browser's site settings`
         addQaLine(key, 'robot', `🎤 ${why}; the robot will ask for typed input instead`)
-        if (h.fromChat && shownKey() === key) setChatOpen(true)
+        if (h.fromChat && sameKey(shownKey(), key)) setChatOpen(true)
       })
     }
     loadSpeechRate()                  // Global Configs may have changed since the page loaded
@@ -538,10 +543,10 @@ export default function Home() {
   const abortCaptures = useCallback((key: SessionKey) => {
     H(key).textAsk?.(null)
     set(key, { choice: null })
-    if (shownKey() !== key) return
-    stopRecording(); abortRecognition()
+    if (!sameKey(shownKey(), key)) return
+    if (micOwnerRef.current === null || sameKey(micOwnerRef.current, key)) { stopRecording(); abortRecognition() }   // one mic: only its owner ends it
     try { window.speechSynthesis.cancel() } catch { /* not supported */ }
-  }, [H, set, shownKey])
+  }, [H, set, shownKey, sameKey])
 
   // Hard reset of ONE session: always works, whatever the backend does (stuck in an LLM call, socket dead, cancel not answered).
   // Cancels (best effort, at the session's own robot), drops the run's socket, every pending listen, the HRI queue and the plan view; the chat is idle
@@ -562,7 +567,7 @@ export default function Home() {
     endRec(key)
     dispatch(key, { t: 'reset' })
     h.stopReq = false
-    if (shownKey() === key) setMicListening(false)
+    if (sameKey(shownKey(), key)) setMicListening(false)
     addQaLine(key, 'system', `■ ${why}: the run was dropped on this side (cancel sent); you can type a new task`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [get, apply, dispatch, H, shownKey, abortCaptures])
@@ -674,7 +679,7 @@ export default function Home() {
     if (cur.running && id) {
       addQaLine(key, 'user', text)
       h.choiceAt = Date.now()   // a listen queued before this is answered: no prompt, no mic
-      stopRecording(); abortRecognition()
+      endMic(key)
       h.textAsk?.(null)
       if (voiceOutRef.current) { try { window.speechSynthesis.cancel() } catch { /* not supported */ } }
       takeListen(key, null)
