@@ -45,4 +45,4 @@ one robot, which is unsafe. Stop it first."). Two clients driving one robot is u
 `scripts/e2e_sessions.py` (Playwright) starts its own dashboard on port 3017 and drives two sim agents (`A_URL` 8021, `B_URL` 8022, structured `wait::N`):
 a runs, b is free and a is marked running, b runs, Cancel on b leaves a running, Cancel on a stops a, step 5b renames a through the robot editor while it runs (still marked running, Cancel stops it, Run works again); both agents are cancelled at the end even on failure.
 It prints one PASS / FAIL line per step (plus `PASS option_marks a=<text> b=<text>`, the drop-down texts at step 3) and exits 0 only when all pass.
-Screenshots go to `SHOTDIR`: `e2e_start.png` (a runs, a shown), `e2e_step3.png` (b shown, a running, robot list expanded) and `e2e_end.png`.
+Screenshots go to `SHOTDIR`: `e2e_start.png` (a runs, a shown), `e2e_step2.png` (b shown and free, a marked running), `e2e_step3.png` (b shown, a running, robot list expanded), `e2e_step5b.png` (a renamed during its run) and `e2e_end.png`.

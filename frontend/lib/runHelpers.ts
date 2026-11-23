@@ -51,6 +51,13 @@ export const enqueueHri = (h: RunHandles, job: () => Promise<void>): void => {
 /** True while one session's own speech / listen jobs run (or just ended). The hands-free mic of the SHOWN robot asks only its session. */
 export const handleBusy = (h: RunHandles, now: number): boolean => h.busy > 0 || now < h.speechUntil
 
+/** Hands-free yields while another (background) session holds the browser's one mic; otherwise the shown session's own speech / listen rule. */
+export const handsFreeBusy = (owner: string | null, shown: string, same: (a: string, b: string) => boolean, h: RunHandles, now: number): boolean =>
+  (owner !== null && !same(owner, shown)) || handleBusy(h, now)
+
+/** True when the screen recorder's owner token is one of the dropped robots (its socket is closed silently, so nobody else would end the recording). */
+export const ownedByDropped = (owner: string | null, droppedTokens: string[]): boolean => owner !== null && droppedTokens.includes(owner)
+
 /** The url a session uses: the registry's, or (no robot registered) the legacy default agent url the caller names. Pure, no HTTP. */
 export const sessionUrl = (url: string | null | undefined, fallback: string): string => url || fallback
 

@@ -56,7 +56,7 @@ export function useRobotSessions() {
 
   /** Called with the registry list: drops the sessions of removed robots (closes the socket, best-effort cancel at the frozen url), moves the session
    *  of a renamed running robot to its new name, and points idle sessions at the urls their robots have now. */
-  const reconcileRobots = useCallback((list: Listed[]) => {
+  const reconcileRobots = useCallback((list: Listed[], onDropped?: (tokens: string[]) => void) => {
     const before = robots.current
     robots.current = list
     const r = reconcile(ref.current, list, before)
@@ -64,7 +64,9 @@ export function useRobotSessions() {
       const s = ref.current.sessions[k]
       if (s && statusOf(s) !== 'idle') api.cancelRunAt(s.url).catch(() => {})
     }
+    const toks = r.dropped.map(k => stableKey(hs.current, k))   // immutable ids, taken before the handles go
     moveHandles(hs.current, r, closeHandles)
+    if (toks.length) onDropped?.(toks)
     apply(() => syncUrls(r.store, list))
   }, [apply])
   useEffect(() => { apply(st => syncUrls(st, robots.current)) }, [store.sessions, apply])   // a run ended: its session takes the url its robot has now
@@ -74,7 +76,7 @@ export function useRobotSessions() {
     for (const [k, s] of Object.entries(store.sessions)) {
       const h = hs.current[k]
       if (!h) continue
-      if (s.run.phase === 'stopping' && !h.stopTimer) h.stopTimer = setTimeout(() => { h.stopTimer = null; dispatch(k, { t: 'timeout' }) }, STOP_TIMEOUT_MS)
+      if (s.run.phase === 'stopping' && !h.stopTimer) { const tok = stableKey(hs.current, k); h.stopTimer = setTimeout(() => { h.stopTimer = null; dispatch(tok, { t: 'timeout' }) }, STOP_TIMEOUT_MS) }
       else if (s.run.phase !== 'stopping' && h.stopTimer) { clearTimeout(h.stopTimer); h.stopTimer = null }
     }
   }, [store, dispatch])

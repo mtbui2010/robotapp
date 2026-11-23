@@ -4,7 +4,7 @@ What: starts (or reuses) its own dashboard `next dev -p 3017` from this worktree
       then drives the UI: a runs a long structured command, the person picks b, b is free and a is marked running, b runs a short command,
       Cancel while viewing b leaves a running, picking a and Cancel stops a, then 5b: a is renamed in the robot editor during a run, still marked running, Cancel stops it. Agents are read over REST only to check (GET /runs).
 Why: Cancel used to go to "the robot picked now" and the controls stayed locked after a switch (owner, 2026-11-24).
-Env: A_URL (http://127.0.0.1:8021), B_URL (http://127.0.0.1:8022), PORT (3017), SHOTDIR (folder of e2e_start.png, e2e_step2.png, e2e_step3.png, e2e_end.png).
+Env: A_URL (http://127.0.0.1:8021), B_URL (http://127.0.0.1:8022), PORT (3017), SHOTDIR (folder of e2e_start.png, e2e_step2.png, e2e_step3.png, e2e_step5b.png, e2e_end.png).
 Needs: sim robots a and b idle, `wait` skill on both (structured `wait::<seconds>`). Exit 0 only when every step passes.
 Switch off: run by hand only.
 """

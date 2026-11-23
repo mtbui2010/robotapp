@@ -34,7 +34,7 @@ import { useHandsFree } from '../lib/useHandsFree'
 import { noteForListenReply, stopAction, stopLabel, canStop, canType, isLost, needsForce } from '../lib/chatRun'
 import { useRobotSessions } from '../lib/useRobotSessions'
 import { robotKey, cancelTarget, startBlock, statusMap, optionText, appendLine, settleHeard, closeLine, verdictOf, beginRun, endRun, patch, HEARD_PENDING, type SessionKey, type RunHandles } from '../lib/robotSessions'
-import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri, handleBusy, sessionUrl, micMayEnd } from '../lib/runHelpers'
+import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri, handleBusy, handsFreeBusy, ownedByDropped, sessionUrl, micMayEnd } from '../lib/runHelpers'
 import { LS_PLANNER, PLANNER_EVENT, DEFAULT_PLANNER, LS_PLAN_ONLY, storedPlanOnly, storedPlanner, type PlannerMethod } from '../lib/planner'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
 import { saveDataset, saveRunSummary, runFolder } from '../lib/datasetLog'
@@ -74,7 +74,8 @@ export default function Home() {
   const { get, put, set, apply, applyAt, dispatch, handles: H, shownKey, getStore, sameKey } = sess
   const { running, events: agentEvents, steps: agentSteps, logImage, runMethod, trial, qaLog, listenId, choice, qaSkill, heardLang, run: rs } = sess.shown
   useEffect(() => { window.addEventListener(ROBOTS_CHANGED_EVENT, readRobotList); return () => window.removeEventListener(ROBOTS_CHANGED_EVENT, readRobotList) }, [readRobotList])   // add / rename / remove / edit url, from any panel
-  useEffect(() => { sess.reconcileRobots([...robotList, { name: '' }]) }, [robotList, sess.reconcileRobots])   // a removed or renamed robot ends its session
+  const dropRecRef = useRef<(toks: string[]) => void>(() => {})   // a dropped robot that owns the screen recorder releases it (its socket closes silently)
+  useEffect(() => { sess.reconcileRobots([...robotList, { name: '' }], t => dropRecRef.current(t)) }, [robotList, sess.reconcileRobots])   // a removed or renamed robot ends its session
   useEffect(() => { sess.choose(robotKey(target?.robot ?? ''), sessionUrl(target?.url, api.getAgentUrl())) }, [target, sess.choose])   // the shown session follows the robot the tab shows
   const [fleetLog, setFleetLog]       = useState<ChatLine[]>([])   // the Fleet chat's log (the fleet manager is not a robot session)
   const [voiceOut, setVoiceOut]       = useState(true)   // speak milestones by default
@@ -119,6 +120,7 @@ export default function Home() {
   const endMic = (key: SessionKey) => { if (micMayEnd(micOwnerRef.current, key, sameKey)) { stopRecording(); abortRecognition() } }
   const recOwnerRef = useRef<SessionKey | null>(null)         // ONE screen recorder per tab: only the session that began it ends it
   const endRec = (key: SessionKey, outcome?: 'succeed' | 'failed') => { if (recOwnerRef.current !== null && sameKey(recOwnerRef.current, key)) { recOwnerRef.current = null; endRecording(outcome) } }
+  dropRecRef.current = toks => { if (ownedByDropped(recOwnerRef.current, toks)) { recOwnerRef.current = null; endRecording() } }
   const takeListen = (key: SessionKey, id: string | null) => {
     set(key, { listenId: id })
     dispatch(key, { t: id ? 'listen' : 'answered' })
@@ -517,6 +519,7 @@ export default function Home() {
     if (why) { addQaLine(key, 'system', why); return }
     h.fromChat = h.nextFromChat
     h.nextFromChat = false
+    const tok = sess.stable(key)      // a rename while the permission prompt is open must not lose the line
     // A run that will listen through this browser (qa / ask / reply, unless on
     // the robot mic or typed): get the mic permission now, inside the click.
     // SAGE may ask the user a question (which shelf? where are you?) through the same `ask` skill.
@@ -528,7 +531,7 @@ export default function Home() {
         const why = err === 'insecure-context'
           ? 'this page is on http — open it over https (or localhost) to use the mic'
           : `microphone not available (${err}) — allow it in the browser's site settings`
-        addQaLine(key, 'robot', `🎤 ${why}; the robot will ask for typed input instead`)
+        addQaLine(tok, 'robot', `🎤 ${why}; the robot will ask for typed input instead`)
         if (h.fromChat && sameKey(shownKey(), key)) setChatOpen(true)
       })
     }
@@ -708,7 +711,7 @@ export default function Home() {
     snapshot: () => ({
       running: get(shownKey()).running,
       waiting: get(shownKey()).listenId !== null,
-      speaking: handleBusy(H(shownKey()), Date.now())
+      speaking: handsFreeBusy(micOwnerRef.current, shownKey(), sameKey, H(shownKey()), Date.now())
         || (typeof window !== 'undefined' && 'speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)),
     }),
     guard: echoGuard,

@@ -137,7 +137,7 @@ export function reconcile(st: SessionStore, robots: Listed[], before: Listed[] =
       return !gone.includes(robotKey(r.name)) && !renamed.some(x => x[1] === robotKey(r.name)) && (!t || isBlank(t))
     }
     const cands = s.url ? robots.filter(r => r.url === s.url && free(r)) : []
-    const to = cands.find(r => !old.has(r.name)) ?? cands[0]      // prefer a name that is new to the list
+    const to = cands.find(r => !old.has(r.name))      // only a name that is new to the list may receive a run (an old idle sibling must not)
     if (to && isBusy(s)) {
       const nk = robotKey(to.name)
       delete sessions[k]; sessions[nk] = { ...s, key: nk }; renamed.push([k, nk])

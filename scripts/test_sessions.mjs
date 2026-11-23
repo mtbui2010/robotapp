@@ -313,3 +313,28 @@ test('reconcile: two robots share a url, the running one is renamed: an idle sib
   assert.deepEqual(r2.dropped, [ka], 'no free target: the run is dropped (the caller cancels it), beta is not taken over')
   assert.equal(r2.store.sessions[kb].qaLog.length, 1)
 })
+
+test('remove alpha while an idle sibling shares the url: alpha is dropped (cancelled), beta stays idle', () => {
+  let st = S.select(S.select(S.EMPTY_STORE, ka, A), kb, A)
+  st = S.beginRun(st, ka, A, 1); st = S.applyRun(st, ka, { t: 'start' })
+  const list = [{ name: 'alpha', url: A }, { name: 'beta', url: A }]
+  const r = S.reconcile(st, [{ name: 'beta', url: A }], list)
+  assert.deepEqual(r.renamed, [], 'a name that was already listed never receives a run')
+  assert.deepEqual(r.dropped, [ka])
+  assert.equal(S.statusOf(r.store.sessions[kb]), 'idle')
+})
+
+test('recorder owner: released when its robot is dropped, kept otherwise', () => {
+  assert.equal(H.ownedByDropped('sid:3', ['sid:3', 'sid:4']), true)
+  assert.equal(H.ownedByDropped('sid:3', ['sid:4']), false)
+  assert.equal(H.ownedByDropped(null, ['sid:4']), false)
+})
+
+test('hands-free: busy while a BACKGROUND run holds the mic; the shown robot keeps the old rule', () => {
+  const quiet = S.newHandles(), same = (a, b) => a === b
+  assert.equal(H.handsFreeBusy('alpha', 'beta', same, quiet, 1000), true)
+  assert.equal(H.handsFreeBusy(null, 'beta', same, quiet, 1000), false)
+  assert.equal(H.handsFreeBusy('beta', 'beta', same, quiet, 1000), false)
+  const loud = S.newHandles(); loud.busy = 1
+  assert.equal(H.handsFreeBusy('beta', 'beta', same, loud, 1000), true)
+})
