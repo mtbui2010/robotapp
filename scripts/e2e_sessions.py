@@ -1,0 +1,160 @@
+"""End-to-end proof of per-robot sessions in the dashboard, against two REAL sim agents (no mocks).
+
+What: starts (or reuses) its own dashboard `next dev -p 3017` from this worktree, opens a fresh headless Chromium with robots a / b seeded,
+      then drives the UI: a runs a long structured command, the person picks b, b is free and a is marked running, b runs a short command,
+      Cancel while viewing b leaves a running, picking a and Cancel stops a. Agents are read over REST only to check (GET /runs).
+Why: Cancel used to go to "the robot picked now" and the controls stayed locked after a switch (owner, 2026-11-24).
+Env: A_URL (http://127.0.0.1:8021), B_URL (http://127.0.0.1:8022), PORT (3017), SHOT (screenshot path of step 3).
+Needs: sim robots a and b idle, `wait` skill on both (structured `wait::<seconds>`). Exit 0 only when every step passes.
+Switch off: run by hand only.
+"""
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+import urllib.request
+
+from playwright.sync_api import sync_playwright
+
+A_URL = os.environ.get("A_URL", "http://127.0.0.1:8021")
+B_URL = os.environ.get("B_URL", "http://127.0.0.1:8022")
+PORT = int(os.environ.get("PORT", "3017"))
+DASH = f"http://localhost:{PORT}"
+SHOT = os.environ.get("SHOT", "/tmp/claude-1000/-media-keti-workdir-remote-dir-robotapp/48d51ba1-c910-4ee6-a30d-081f51a33057/scratchpad/sessions/e2e_step3.png")
+FRONTEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+LONG_CMD, SHORT_CMD = "wait::90", "wait::12"          # a's run outlives every step; b's run is short but still running when Cancel is pressed
+ROBOTS = [{"name": "a", "url": A_URL}, {"name": "b", "url": B_URL}]
+SEED = ("if(!localStorage.getItem('__seeded')){localStorage.setItem('robotapp_robots',%s);localStorage.setItem('robotapp_active_robot','a');"
+        "localStorage.setItem('__seeded','1')}" % json.dumps(json.dumps(ROBOTS)))
+results = []
+
+
+def runs(url):
+    with urllib.request.urlopen(url + "/runs", timeout=5) as r:
+        return json.load(r)
+
+
+def active(url):
+    try:
+        return runs(url).get("active")
+    except Exception:
+        return "unreachable"
+
+
+def cancel_agent(url):
+    try:
+        req = urllib.request.Request(url + "/agent/cancel", data=b"{}", method="POST", headers={"content-type": "application/json"})
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception as e:
+        print(f"note: cancel of {url} failed: {e}", flush=True)
+
+
+def wait_for(fn, timeout, every=0.5):
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if fn():
+            return True
+        time.sleep(every)
+    return False
+
+
+def step(name, ok, detail=""):
+    results.append(ok)
+    print(f"{'PASS' if ok else 'FAIL'} step {name}{' :: ' + detail if detail and not ok else ''}", flush=True)
+
+
+def dash_up():
+    try:
+        urllib.request.urlopen(DASH, timeout=3).read(1)
+        return True
+    except Exception:
+        return False
+
+
+def option_text(pg, robot):
+    return pg.locator(f'[data-testid="fleet-switch"] option[value="robot:{robot}"]').text_content() or ""
+
+
+def run_cmd(pg, cmd):
+    ta = pg.locator("textarea").first
+    ta.fill(cmd)
+    pg.get_by_role("button", name="Run", exact=True).click()
+
+
+def main():
+    started = None
+    if not dash_up():
+        started = subprocess.Popen(["npx", "next", "dev", "-p", str(PORT)], cwd=FRONTEND, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   start_new_session=True)
+        if not wait_for(dash_up, 120, 1):
+            step("0 dashboard up", False, "next dev did not answer in 120 s")
+            return started
+    pre = [active(A_URL), active(B_URL)]
+    if any(pre):
+        step("0 agents idle", False, f"a / b active before start: {pre}")
+        return started
+    with sync_playwright() as p:
+        br = p.chromium.launch(headless=True)
+        try:
+            ctx = br.new_context(viewport={"width": 1600, "height": 900})
+            ctx.add_init_script(SEED)
+            pg = ctx.new_page()
+            pg.goto(DASH, wait_until="networkidle", timeout=120000)
+            pg.wait_for_timeout(2500)
+            sw = pg.locator('[data-testid="fleet-switch"]')
+            if sw.input_value() != "robot:a":
+                pg.select_option('[data-testid="fleet-switch"]', value="robot:a")
+                pg.wait_for_timeout(1500)
+            run_cmd(pg, LONG_CMD)
+            step("1 robot a runs", wait_for(lambda: bool(active(A_URL)), 20) and "running" in option_text(pg, "a"),
+                 f"a active={active(A_URL)} option={option_text(pg, 'a')!r}")
+
+            pg.select_option('[data-testid="fleet-switch"]', value="robot:b")
+            pg.wait_for_timeout(1500)
+            run_btn = pg.get_by_role("button", name="Run", exact=True)
+            step("2 b free, a marked running", run_btn.count() == 1 and run_btn.is_enabled() and "running" in option_text(pg, "a")
+                 and "running" not in option_text(pg, "b"), f"run buttons={run_btn.count()} a={option_text(pg, 'a')!r} b={option_text(pg, 'b')!r}")
+
+            run_cmd(pg, SHORT_CMD)
+            b_ok = wait_for(lambda: bool(active(B_URL)), 20)
+            pg.wait_for_timeout(500)
+            pg.screenshot(path=SHOT)
+            step("3 both agents active, b shown", b_ok and bool(active(A_URL)) and "running" in option_text(pg, "b")
+                 and pg.get_by_role("button", name="Run", exact=True).count() == 0,
+                 f"a={active(A_URL)} b={active(B_URL)} b_option={option_text(pg, 'b')!r}")
+
+            a_id = active(A_URL)
+            pg.get_by_role("button", name="Cancel", exact=True).click()
+            b_stopped = wait_for(lambda: not active(B_URL), 30)
+            step("4 Cancel on b leaves a running", b_stopped and active(A_URL) == a_id and a_id is not None,
+                 f"a={active(A_URL)} (was {a_id}) b={active(B_URL)}")
+
+            pg.select_option('[data-testid="fleet-switch"]', value="robot:a")
+            pg.wait_for_timeout(1500)
+            pg.get_by_role("button", name="Cancel", exact=True).click()
+            step("5 Cancel on a stops a", wait_for(lambda: not active(A_URL), 30), f"a={active(A_URL)}")
+        finally:
+            br.close()
+    return started
+
+
+if __name__ == "__main__":
+    proc = None
+    try:
+        proc = main()
+    except Exception as e:                                   # a UI error is a failed step, not a crash without cleanup
+        step(f"error {type(e).__name__}", False, str(e)[:300])
+    finally:
+        for u in (A_URL, B_URL):
+            cancel_agent(u)
+        idle = wait_for(lambda: not active(A_URL) and not active(B_URL), 30)
+        step("6 both agents idle", idle, f"a={active(A_URL)} b={active(B_URL)}")
+        if proc is not None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)          # only the dashboard this script started
+            except Exception:
+                pass
+    print(f"== e2e sessions: {results.count(False)} FAIL of {len(results)}", flush=True)
+    sys.exit(0 if results and all(results) else 1)

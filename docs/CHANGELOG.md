@@ -6,6 +6,10 @@ in `CLAUDE.md`, mixed with the specs. The full text of each entry is still in th
 line, link. Undated features (Cancel / Stop, camera streaming, Robot State, plan skills, skill and location
 aliases, planner guides) predate the dated notes; see their docs.
 
+## 2026-11-24
+
+- **One session per robot in a tab (per-robot session).** A run keeps going while another robot is picked; the drop-down marks running robots; Cancel / Stop / Reset act on the shown robot's own URL (`api.cancelRunAt`); a running robot takes no second command from this tab. Store in `lib/robotSessions.ts`, end-to-end proof `scripts/e2e_sessions.py` on two sim robots. Doc [sessions](features/sessions.md).
+
 ## 2026-11-23
 
 - **Chat: docked under the camera grid in the Fleet view; the floating card's log is half as high.** The docked card covers no camera; other views keep the floating card with a `h-32` log (was `h-64`). `components/ChatPanel.tsx` (`docked`), `app/page.tsx`, doc [chat](features/chat.md).
