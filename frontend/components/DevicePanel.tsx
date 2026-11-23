@@ -163,6 +163,7 @@ interface Props {
   onAgentConnect?: () => void
   onActiveChange?: (t: ActiveTarget) => void      // the robot / site this tab drives (shown by the Cameras / Map tabs)
   onFleetChosen?: (name: string) => void          // a fleet was picked in the robot / fleet drop-down (the Fleet tab opens)
+  switchRef?: React.MutableRefObject<((name: string) => Promise<void>) | null>   // the page's tab-row drop-down switches the robot through this
 }
 
 function getHead(name: string): string {
@@ -188,7 +189,7 @@ interface WarmKind {
 const ICON_BTN = 'px-2 py-1 text-xs rounded leading-none whitespace-nowrap'
 const WARM_KINDS: [string, string][] = [['vlms', 'VLMs'], ['visions', 'Visions'], ['voices', 'Voices']]
 
-export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveChange, onFleetChosen }: Props) {
+export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveChange, onFleetChosen, switchRef }: Props) {
   const [clients, setClients]   = useState<ClientEntry[]>([])
   const [rosData, setRosData]   = useState<RosScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -226,7 +227,6 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
   const [robotNameInput, setRobotNameInput] = useState('')
   const [robotUrlInput,  setRobotUrlInput]  = useState('')
   const [robotEditorError, setRobotEditorError] = useState<string | null>(null)
-  const [agentConnecting, setAgentConnecting] = useState(false)
   const [agentStatus, setAgentStatus] = useState<{ ok: boolean; skills: number; error?: string } | null>(null)
   const [connSearch, setConnSearch] = useState('')
   const [rosSearch, setRosSearch] = useState('')
@@ -287,7 +287,6 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
   }, [reloadRobots, reloadLocations])
 
   const connectActiveRobot = async () => {
-    setAgentConnecting(true)
     setAgentStatus(null)
     try {
       const skills = await api.listSkills()
@@ -299,10 +298,17 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
     } catch {
       setAgentStatus({ ok: false, skills: 0, error: 'Unreachable' })
       return false
-    } finally {
-      setAgentConnecting(false)
     }
   }
+
+  // There is no Connect button: the panel connects when it opens, a robot pick connects (switchActiveRobot), and while the active
+  // robot does not answer it tries again every 5 s, so a robot that comes up later is picked up without a click or a refresh.
+  useEffect(() => { if (api.getActiveRobotName()) void connectActiveRobot() }, [])        // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!activeRobot || !agentStatus || agentStatus.ok) return
+    const t = setTimeout(() => { void connectActiveRobot() }, 5000)
+    return () => clearTimeout(t)
+  }, [activeRobot, agentStatus])                                                            // eslint-disable-line react-hooks/exhaustive-deps
 
   // Switch active robot transactionally: commit to localStorage only if the
   // target is reachable. On failure, roll back to whatever was active before
@@ -311,6 +317,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
   const switchActiveRobot = async (name: string) => {
     const previous = api.getActiveRobotName() ?? ''
     if (name === previous) return
+    setClients([]); onClientsChange([])      // the old robot's cameras and devices are not shown (or opened) for the new one
     api.setActiveRobot(name)
     setActiveRobotState(name)
     setAgentStatus(null)
@@ -328,6 +335,7 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
       if (previous) void connectActiveRobot()  // restore badge + clients
     }
   }
+  useEffect(() => { if (switchRef) { switchRef.current = switchActiveRobot; return () => { if (switchRef.current === switchActiveRobot) switchRef.current = null } } })
 
   const openAddRobot = () => {
     setRobotEditor({ mode: 'add' })
@@ -907,14 +915,6 @@ export default function DevicePanel({ onClientsChange, onAgentConnect, onActiveC
               )
             })}
           </select>
-          <button
-            onClick={() => void connectActiveRobot()}
-            disabled={agentConnecting || !activeRobot}
-            className="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded whitespace-nowrap"
-            title="Test connection to the active robot"
-          >
-            {agentConnecting ? '…' : 'Connect'}
-          </button>
           <button onClick={openAddRobot} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 text-gray-700`} title="Add a robot" aria-label="Add a robot">＋</button>
           <button onClick={() => fl.openEditor(null)} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 text-gray-700`} title="Add a fleet" aria-label="Add a fleet">👥</button>
           <button onClick={fl.active ? () => fl.openEditor(fl.active) : openEditRobot} disabled={!activeRobot && !fl.active} className={`${ICON_BTN} bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-gray-700`}

@@ -7,6 +7,10 @@ import TeleopBar    from '../components/TeleopBar'
 import RecorderBar  from '../components/RecorderBar'
 import DataPanel    from '../components/DataPanel'
 import FleetPanel   from '../components/FleetPanel'
+import { useFleets } from '../components/useFleets'
+import { useFleetChat } from '../lib/useFleetChat'
+import { parseSelection, selectorOptions } from '../lib/fleetEdit'
+import { FLEET_STOP_HINT } from '../lib/fleetView'
 import { useRecorder } from '../lib/useRecorder'
 import { usePoses } from '../lib/usePoses'
 import { useTeleop } from '../lib/useTeleop'
@@ -34,6 +38,7 @@ import type { Outcome } from '../lib/datasetLog'
 import { pinTabPref, readTabPref, writeTabPref } from '../lib/tabPref'
 import type { ClientEntry, AgentEvent, Lang } from '../lib/types'
 import { useRobotLanguages } from '../lib/useRobotLanguages'
+import { useRobotEpoch } from '../lib/useRobotEpoch'
 import { mismatchTitle, targetBadges, targetTitle } from '../lib/targetBadge'
 import { resolveLanguage, languageOptions, speechLanguage, supportedLanguages, toggleLanguage, LANG_AUTO, type RobotLanguages } from '../lib/robotLanguages'
 import LanguagePicker from '../components/LanguagePicker'
@@ -78,6 +83,12 @@ export default function Home() {
   const [planOpen, setPlanOpen]       = useState(true)
   const [mainTab, setMainTab]         = useState<'cameras' | 'map' | 'data' | 'fleet'>('cameras')
   const [fleetKey, setFleetKey]       = useState(0)   // a fleet chosen in the selector: the Fleet tab starts over on its manager
+  const fleetStopRef = useRef<(() => void) | null>(null)   // the open Fleet tab puts its Stop all here; Cancel calls it
+  const switchRobotRef = useRef<((name: string) => Promise<void>) | null>(null)   // DevicePanel's robot switch, for the tab-row drop-down
+  const fl = useFleets(() => { setMainTab('fleet'); setFleetKey(k => k + 1); setChatOpen(true) })   // this tab's fleet and the fleets of the drop-down
+  const [robotList, setRobotList] = useState<{ name: string }[]>([])
+  const readRobotList = useCallback(() => setRobotList(api.listRobots()), [])
+  useEffect(() => { readRobotList() }, [readRobotList, fl.active, fl.fleets])
   // Remote control + Record are only used to make data: hidden until the operator asks (kept in this browser); never hidden while recording or while teleop drives the arm
   const [dataTools, setDataTools]       = useState(false)
   useEffect(() => { try { setDataTools(localStorage.getItem('robotapp_data_tools') === '1') } catch { /* off */ } }, [])
@@ -669,6 +680,9 @@ export default function Home() {
     const t = setTimeout(() => sendRun({ t: 'timeout' }), STOP_TIMEOUT_MS)
     return () => clearTimeout(t)
   }, [rs.phase, sendRun])
+  // Cancel: while the Fleet tab is open it is the fleet's Stop all (the open tab puts it in fleetStopRef); otherwise the robot's own Stop
+  const cancel = useCallback(() => { if (mainTab === 'fleet' && fleetStopRef.current) fleetStopRef.current(); else stop() }, [mainTab, stop])
+  const cancelTitle = mainTab === 'fleet' ? FLEET_STOP_HINT : 'Cancel every command in flight on the robot (arm, lift, head, base) and end the run'
 
   // A `qa` skill is running (its qa_state events) — as a step of a Structured plan: the "End Q&A" button ends
   // just that conversation, the plan goes on.
@@ -680,6 +694,7 @@ export default function Home() {
   // The languages come from the connected robot's manifest (GET /robot/languages): the picker's options, and the default
   // of a tab that has not chosen (or whose choice this robot does not talk in).
   const [robotLangs, setRobotLangs] = useRobotLanguages()
+  const robotEpoch = useRobotEpoch()   // goes up when another robot is picked: the camera and map panels are rebuilt for it (key below)
   const [poseList, refreshPoses] = usePoses()           // the "Go to" poses the operator edits
   const [recorder, refreshRecorder] = useRecorder()   // raw VLA episode recording (none on most robots: nothing is drawn)
   const [teleopFns, refreshTeleop] = useTeleop()   // the robot's teleop functions (none on most robots: nothing is drawn)
@@ -749,9 +764,15 @@ export default function Home() {
   // spoken one, and it ends the capture in progress (mic recording / recogniser / typed wait). Idle: it
   // starts a NEW RUN of the text as an unstructured command with the chosen planner. Running and not
   // asked: nothing (the card's input is disabled then).
+  const fleetMode = !!fl.active && mainTab === 'fleet'                  // the chat talks to the fleet (lib/useFleetChat.ts)
+  const fleetChat = useFleetChat(fleetMode, l => {                      // the fleet's lines: a bubble, and spoken like a single robot's (🔊), so the mic can answer
+    addQaLine(l.who, l.text, l.kind)
+    if (l.who === 'robot' && voiceOutRef.current) speak(l.text, l.lang, rateFor(l.lang))
+  }, lang === LANG_AUTO ? undefined : lang)
   const sendChat = useCallback((raw: string) => {
     const text = raw.trim()
     if (!text) return
+    if (fleetMode) { addQaLine('user', text); void fleetChat.send(text); return }
     const id = listenIdRef.current
     if (runningRef.current && id) {
       addQaLine('user', text)
@@ -774,7 +795,7 @@ export default function Home() {
     nextRunChatRef.current = true
     run(text, false, lang, planner, planOnly, logData, logTarget, 1, false, logAll, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run, lang, planner, planOnly])
+  }, [run, lang, planner, planOnly, fleetMode, fleetChat])
   const sendChatRef = useRef(sendChat); sendChatRef.current = sendChat
 
   // Hands-free: one-shot recognitions, only while idle and silent (lib/chatMic.ts, lib/useHandsFree.ts)
@@ -802,6 +823,26 @@ export default function Home() {
   // Latest backend vision-capture dir (emitted when log_data=backend) — shown in the panel.
   const backendLogDir = agentEvents.reduce((acc, e) => e.log_dir || acc, '')
 
+  const chatPanel = (docked: boolean) => (
+        <ChatPanel
+          docked={docked}
+          log={qaLog}
+          state={fleetMode ? 'idle' : chatSt}
+          langPicker={langPicker}
+          planner={planner} onPlanner={pickPlanner}
+          planOnly={planOnly} onPlanOnly={pickPlanOnly}
+          handsFree={handsFree} onHandsFree={v => { void toggleHandsFree(v) }}
+          micSupported={micSupported} micListening={micListening}
+          micNote={micError || (handsFree && chatSt !== 'idle' ? 'mic paused while the robot works' : '')}
+          onSend={sendChat}
+          onStop={fleetMode ? cancel : stop}
+          onReset={() => reset('reset')}
+          canStop={fleetMode || canStop(rs)} canType={fleetMode || canType(rs)} lost={!fleetMode && isLost(rs)} stuck={!fleetMode && needsForce(rs)}
+          onClear={() => setQaLog([])}
+          onClose={() => setChatOpen(false)}
+        />
+  )
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
 
@@ -812,7 +853,7 @@ export default function Home() {
         <aside className={`relative flex-shrink-0 border-r border-gray-200 flex flex-col bg-white transition-all duration-200 ${sidebarOpen ? 'w-80' : 'w-0'}`}>
           <div className={`flex flex-col overflow-y-auto h-full ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} transition-opacity duration-150`}>
             <div className="p-4 border-b border-gray-200">
-              <DevicePanel onClientsChange={setClients} onAgentConnect={() => setSkillRefreshKey(k => k + 1)} onActiveChange={setTarget} onFleetChosen={() => { setMainTab('fleet'); setFleetKey(k => k + 1) }} />
+              <DevicePanel switchRef={switchRobotRef} onClientsChange={setClients} onAgentConnect={() => setSkillRefreshKey(k => k + 1)} onActiveChange={setTarget} onFleetChosen={() => { setMainTab('fleet'); setFleetKey(k => k + 1); setChatOpen(true) }} />
             </div>
             <div className="p-4 border-t border-gray-200">
               <SkillPanel refreshKey={skillRefreshKey} />
@@ -840,8 +881,8 @@ export default function Home() {
             {/* one row in the w-72 column (2026-10-27): smaller Cancel / Chat, the pickers without their native ▾
                 (appearance-none — each keeps its title), wrapping only when ⏹ End Q&A is added */}
             <div className="px-3 pt-3 pb-2 border-b border-gray-200 flex-shrink-0 flex flex-wrap items-center gap-1">
-              <button onClick={stop}
-                title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
+              <button onClick={cancel}
+                title={cancelTitle}
                 className="px-2 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded shadow-sm whitespace-nowrap">
                 {rs.phase === 'stopping' ? stopLabel(rs, '■ Cancel') : '■ Cancel'}
               </button>
@@ -905,11 +946,11 @@ export default function Home() {
             <div className="flex gap-1 mb-2 pb-1 border-b border-gray-200 items-center">
               {/* Cameras | Map as a two-icon switch (was two text tabs, about 120 px; now about 56 px) */}
               <div role="tablist" className="flex shrink-0 rounded overflow-hidden border border-gray-300 text-sm self-center">
-                {(recorder ? ['cameras', 'map', 'data', 'fleet'] as const : ['cameras', 'map', 'fleet'] as const).map(t => (
+                {(recorder ? ['cameras', 'map', 'data'] as const : ['cameras', 'map'] as const).map(t => (
                   <button key={t} role="tab" aria-selected={mainTab === t} onClick={() => setMainTab(t)}
-                          aria-label={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : t === 'fleet' ? 'Fleet' : 'Data'} title={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : t === 'fleet' ? 'Fleet: several robots through the fleet manager' : 'Data: the recorded episodes'}
+                          aria-label={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : 'Data'} title={t === 'cameras' ? 'Cameras' : t === 'map' ? 'Map' : 'Data: the recorded episodes'}
                           className={`px-2 py-0.5 leading-none ${mainTab === t ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-100'}`}>
-                    {t === 'cameras' ? '📷' : t === 'map' ? '🗺️' : t === 'fleet' ? '👥' : '🗂️'}
+                    {t === 'cameras' ? '📷' : t === 'map' ? '🗺️' : '🗂️'}
                   </button>
                 ))}
               </div>
@@ -920,14 +961,30 @@ export default function Home() {
                     className={`self-center px-2 py-0.5 leading-none rounded border text-sm ${showDataTools ? 'bg-red-50 border-red-300 text-red-600' : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-100'} disabled:cursor-default`}>⏺</button>
                 )
               })()}
-              {/* which robot and site this tab drives (two tabs may drive two robots) */}
-              {target?.robot && (() => {
-                const badges = targetBadges(target.robot, target.location)
+              {/* which robot or fleet this tab drives (two tabs may drive two robots): one drop-down for both. A fleet opens the Fleet view
+                  (there is no Fleet tab button); a robot leaves it. With a fleet chosen but another tab open, the drop-down shows the fleet as
+                  its placeholder, and picking the fleet again returns to the Fleet view. */}
+              {(fl.active || target?.robot || robotList.length > 0 || fl.fleets.length > 0) && (() => {
+                const badges = target?.robot && !fl.active ? targetBadges(target.robot, target.location) : null
+                const value = fl.active ? (mainTab === 'fleet' ? `fleet:${fl.active}` : '') : target?.robot ? `robot:${target.robot}` : ''
                 return (
                   <span className="self-center ml-2 flex items-center gap-1 text-xs text-gray-600 min-w-0"
-                    title={targetTitle(target.robot, target.location, target.url, target.host)}>
-                    <span className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium truncate max-w-[9rem]">🤖 {badges.robot}</span>
-                    {badges.mismatch && badges.location && (
+                    title={fl.active ? 'The fleet this tab drives: pick a fleet or a robot' : target?.robot ? targetTitle(target.robot, target.location, target.url, target.host) : 'Pick a robot or a fleet'}>
+                    <select data-testid="fleet-switch" aria-label="robot or fleet" value={value}
+                      onFocus={readRobotList} onMouseDown={readRobotList}
+                      onChange={e => {
+                        const s = parseSelection(e.target.value)
+                        if (s?.kind === 'fleet') fl.choose(s.name)                                   // opens the Fleet view
+                        else if (s) { fl.clear(); if (mainTab === 'fleet') setMainTab('cameras'); void switchRobotRef.current?.(s.name) }
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-gray-100 border border-gray-200 font-medium text-xs truncate max-w-[12rem]">
+                      {value === '' && <option value="">{fl.active ? `👥 ${fl.active}` : '(choose)'}</option>}
+                      {(['Fleets', 'Robots'] as const).map(g => {
+                        const opts = selectorOptions(robotList, fl.fleets).filter(o => o.group === g)
+                        return opts.length > 0 && <optgroup key={g} label={g}>{opts.map(o => <option key={o.value} value={o.value}>{g === 'Fleets' ? '👥 ' : '🤖 '}{o.label}</option>)}</optgroup>
+                      })}
+                    </select>
+                    {badges?.mismatch && badges.location && (
                       <span className="px-1 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-600 leading-none"
                         title={mismatchTitle(badges.robot, badges.location)}>⚠</span>
                     )}
@@ -939,8 +996,8 @@ export default function Home() {
               {/* Always live, unlike the Agent panel's Stop: a skill run from the
                   CLI or another client can be moving the robot while this tab
                   shows nothing running. */}
-              <button onClick={stop}
-                title="Cancel every command in flight on the robot (arm, lift, head, base) and end the run"
+              <button onClick={cancel}
+                title={cancelTitle}
                 className={`ml-2 self-center px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded shrink-0`}>
                 {stopLabel(rs, 'Cancel')}
               </button>
@@ -948,9 +1005,9 @@ export default function Home() {
             {mainTab === 'cameras' && showDataTools && <TeleopBar functions={teleopFns} runInFlight={running} onChanged={refreshTeleop} poses={poseList} onPosesChanged={refreshPoses} />}
             {mainTab === 'cameras' && showDataTools && <RecorderBar status={recorder} runInFlight={running} onChanged={() => { refreshRecorder(); refreshTeleop() }} poses={poseList} />}
             {mainTab === 'cameras'
-              ? <CameraFeed clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
-              : mainTab === 'fleet' ? <FleetPanel key={fleetKey} lang={lang === LANG_AUTO ? undefined : lang} />
-              : mainTab === 'data' && recorder ? <DataPanel /> : <MapPanel clients={clients} running={running} />}
+              ? <CameraFeed key={`cam-${robotEpoch}`} clients={clients} logImage={logImage} onClearLog={() => setLogImage(null)} toolbarSlot={cameraSlot} />
+              : mainTab === 'fleet' ? <><FleetPanel key={fleetKey} toolbarSlot={cameraSlot} stopRef={fleetStopRef} />{chatOpen && fleetMode && chatPanel(true)}</>
+              : mainTab === 'data' && recorder ? <DataPanel key={`data-${robotEpoch}`} /> : <MapPanel key={`map-${robotEpoch}`} clients={clients} running={running} />}
           </section>
 
         </main>
@@ -973,24 +1030,7 @@ export default function Home() {
           </div>
         </div>
       )}
-      {chatOpen && (
-        <ChatPanel
-          log={qaLog}
-          state={chatSt}
-          langPicker={langPicker}
-          planner={planner} onPlanner={pickPlanner}
-          planOnly={planOnly} onPlanOnly={pickPlanOnly}
-          handsFree={handsFree} onHandsFree={v => { void toggleHandsFree(v) }}
-          micSupported={micSupported} micListening={micListening}
-          micNote={micError || (handsFree && chatSt !== 'idle' ? 'mic paused while the robot works' : '')}
-          onSend={sendChat}
-          onStop={stop}
-          onReset={() => reset('reset')}
-          canStop={canStop(rs)} canType={canType(rs)} lost={isLost(rs)} stuck={needsForce(rs)}
-          onClear={() => setQaLog([])}
-          onClose={() => setChatOpen(false)}
-        />
-      )}
+      {chatOpen && !fleetMode && chatPanel(false)}
     </div>
   )
 }

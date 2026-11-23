@@ -27,6 +27,7 @@ const FR = await load('fleetRegistry')
 const FC = await load('fleetCams')
 const FG = await load('foreignRun')
 const PS = await load('planSteps')
+const FCH = await load('fleetChat')
 const { api } = await load('api')
 const { fleet, reconnectDelay, DEFAULT_FLEET_URL } = await load('fleet')
 
@@ -327,6 +328,15 @@ test('fleetCams: options keep only cameras, in order; default is the first, a re
   assert.equal(FC.pickCamera(o, 'gone'), 'c1')
   assert.equal(FC.pickCamera([], 'c2'), null)
 })
+test('fleetCams: default = a camera that views the robot from outside, else head_rgb, else the first; a remembered choice still wins', () => {
+  const o = FC.cameraOptions([ent('head_rgb', true), ent('arm_rgb', true), ent('sim_overview', true), ent('sim_topdown', true)])
+  assert.equal(FC.pickCamera(o), 'sim_overview')
+  assert.equal(FC.pickCamera(o, 'arm_rgb'), 'arm_rgb')
+  assert.equal(FC.pickCamera(o, 'gone'), 'sim_overview')
+  assert.equal(FC.pickCamera(FC.cameraOptions([ent('x', true, 'Robot Overview')])), 'x')   // the label counts too
+  assert.equal(FC.pickCamera(FC.cameraOptions([ent('arm_rgb', true), ent('head_rgb', true)])), 'head_rgb')   // no outside view: head_rgb, not the first
+  assert.equal(FC.pickCamera(FC.cameraOptions([ent('arm_rgb', true), ent('wrist', true)])), 'arm_rgb')       // neither: the first
+})
 test('fleetCams: tile states are plain, never loading for ever', () => {
   assert.equal(FC.tileState(null, false), 'loading')
   assert.equal(FC.tileState(null, true), 'unreachable')
@@ -342,6 +352,17 @@ test('fleetCams: choices are remembered per robot id; a broken store gives {}', 
   assert.deepEqual(FC.loadChoices(), {})
   sessionStorage.setItem(FC.LS_FLEET_CAMS, 'not json')
   assert.deepEqual(FC.loadChoices(), {})
+})
+test('fleetCams: robots per row defaults to 2, stays in 1..6, is remembered, and a broken value reads as the default', () => {
+  assert.equal(FC.COLS_DEFAULT, 2)
+  assert.equal(FC.loadCols(), 2)                                                   // nothing saved yet
+  for (const [v, want] of [[1, 1], [3, 3], [6, 6], [7, 6], [100, 6], [0, 2], [-2, 2], ['x', 2], [null, 2], [undefined, 2], [2.4, 2], ['4', 4]]) {
+    assert.equal(FC.clampCols(v), want, String(v))
+  }
+  FC.saveCols(4); assert.equal(FC.loadCols(), 4)
+  FC.saveCols(99); assert.equal(FC.loadCols(), 6)
+  sessionStorage.setItem(FC.LS_FLEET_COLS, 'many'); assert.equal(FC.loadCols(), 2)
+  sessionStorage.setItem(FC.LS_FLEET_COLS, '1'); assert.equal(FC.loadCols(), 1)
 })
 test('api: listClientsAt / cameraWsAt use the given robot; listClients / cameraWs keep using the active robot', async () => {
   const seen = []
@@ -412,4 +433,68 @@ test('api.eventsWs(At) opens /ws/events only and sends nothing', () => {
     assert.equal(made[0].url, 'wss://other:1/ws/events')
     assert.equal(made[1].url, `${api.getAgentUrl().replace('http://', 'ws://')}/ws/events`)
   } finally { globalThis.WebSocket = RealWS }
+})
+
+// ── fleetChat ─────────────────────────────────────────────────────────────────────────────────────────────
+test('fleetChat lineOfEvent: only say events speak; a robot id is a prefix; empty text and other events give null', () => {
+  assert.deepEqual(FCH.lineOfEvent({ event: 'say', speaker: 'fleet', text: 'Plan ready.' }), { who: 'robot', text: 'Plan ready.', kind: 'say' })
+  assert.deepEqual(FCH.lineOfEvent({ event: 'say', speaker: 'bot_a', text: 'At the dock.' }), { who: 'robot', text: '[bot_a] At the dock.', kind: 'say' })
+  assert.deepEqual(FCH.lineOfEvent({ event: 'say', speaker: 'fleet', text: '  hello  \n' }), { who: 'robot', text: 'hello', kind: 'say' })
+  assert.equal(FCH.lineOfEvent({ event: 'say', speaker: 'fleet', text: '   ' }), null)
+  assert.equal(FCH.lineOfEvent({ event: 'say', speaker: 'fleet' }), null)
+  assert.equal(FCH.lineOfEvent({ event: 'plan_ready', text: 'x' }), null)
+})
+test('fleetChat isYes: every token must be a yes token (en, ko, vi); anything else is not yes', () => {
+  const yes = ['yes', 'Yes!', 'YES', 'yes, go ahead', 'ok start now', 'Okay.', 'sure', 'y', 'do it please', 'go ahead!', 'approve', '네', '네, 시작', '좋아요!', '해줘', '진행', 'có', 'vâng, bắt đầu nhé', 'đồng ý ạ', 'yes。']
+  for (const t of yes) assert.equal(FCH.isYes(t), true, t)
+  const notYes = ['', '   ', '?!', 'ok go to the kitchen', 'yes but only the first', 'maybe', 'no', 'yes no', 'start the widget move', '네 하지만 먼저', 'có nhưng chỉ cái đầu', 'ok go to dock']
+  for (const t of notYes) assert.equal(FCH.isYes(t), false, t)
+})
+test('fleetChat isNo: the first token must be a no token (en, ko, vi)', () => {
+  const no = ['no', 'No.', 'NO!', 'no, only the first one', 'nope', 'cancel that', "don't", 'Dont do it', 'stop', 'never mind', '아니요', '취소', '하지마', '아니, 첫 번째만', 'không', 'hủy đi', 'thôi']
+  for (const t of no) assert.equal(FCH.isNo(t), true, t)
+  const notNo = ['', 'yes', 'ok', 'please stop', 'go ahead', '네', 'có', 'now no']
+  for (const t of notNo) assert.equal(FCH.isNo(t), false, t)
+})
+const fp = (plan_id, state, questions = []) => ({ plan_id, text: 'move the widget', state, goals: [], questions, warnings: [] })
+test('fleetChat chatAction: awaiting_approval takes yes / no and never submits a new request', () => {
+  const plans = [fp('p1', 'awaiting_approval')]
+  assert.deepEqual(FCH.chatAction('yes, go ahead', plans), { do: 'approve', planId: 'p1' })
+  assert.deepEqual(FCH.chatAction('  Yes!  ', plans), { do: 'approve', planId: 'p1' })
+  assert.deepEqual(FCH.chatAction('no', plans), { do: 'reject', planId: 'p1' })
+  assert.deepEqual(FCH.chatAction('no, only the first one', plans), { do: 'reject', planId: 'p1' })
+  const hint = { do: 'hint', line: { who: 'system', text: 'The fleet is waiting for you: answer yes to start the plan or no to drop it.' } }
+  assert.deepEqual(FCH.chatAction('ok go to the kitchen', plans), hint)
+  assert.deepEqual(FCH.chatAction('yes but only the first', plans), hint)
+  // a message that is not yes / no and does not open like a yes is a NEW request: the waiting plan is dropped (nothing had moved), never started
+  assert.deepEqual(FCH.chatAction('bring the crate to the dock', plans), { do: 'replace', planId: 'p1', text: 'bring the crate to the dock' })
+  assert.deepEqual(FCH.chatAction('place banana on the table and give me the spoon', plans), { do: 'replace', planId: 'p1', text: 'place banana on the table and give me the spoon' })
+})
+test('fleetChat planSummary names the plan and which robot does which goal', () => {
+  const p = { plan_id: 'p7', text: 'bring the crate', state: 'awaiting_approval', warnings: [], questions: [],
+    goals: [{ goal_id: 'g1', goal: { type: 'on', object: 'crate', from: 'dock', to: 'shelf' }, state: 'ready', robot: 'r1', after: [] }] }
+  const s = FCH.planSummary(p)
+  assert.match(s, /p7/); assert.match(s, /bring the crate/); assert.match(s, /r1/); assert.match(s, /crate/); assert.match(s, /yes to start it or no to drop it/)
+  assert.match(FCH.planSummary({ ...p, goals: [] }), /no goals/)
+})
+test('fleetChat lineOfEvent keeps the language of a fleet line', () => {
+  assert.equal(FCH.lineOfEvent({ event: 'say', speaker: 'fleet', text: 'hello', lang: 'ko' }).lang, 'ko')
+  assert.equal('lang' in FCH.lineOfEvent({ event: 'say', speaker: 'fleet', text: 'hello' }), false)
+})
+test('fleetChat chatAction: understanding with questions is answered; without questions it submits', () => {
+  assert.deepEqual(FCH.chatAction(' the red one ', [fp('p2', 'understanding', ['Which widget?'])]), { do: 'answer', planId: 'p2', text: 'the red one' })
+  assert.deepEqual(FCH.chatAction('yes', [fp('p2', 'understanding', ['Which widget?'])]), { do: 'answer', planId: 'p2', text: 'yes' })
+  assert.deepEqual(FCH.chatAction('move the widget', [fp('p2', 'understanding')]), { do: 'submit', text: 'move the widget' })
+})
+test('fleetChat chatAction: no open plan submits; only the newest plan counts; empty text is a hint', () => {
+  for (const st of ['running', 'done', 'failed', 'stopped', 'refused'])
+    assert.deepEqual(FCH.chatAction('go to the dock', [fp('p1', st)]), { do: 'submit', text: 'go to the dock' }, st)
+  assert.deepEqual(FCH.chatAction('yes', [fp('p1', 'done')]), { do: 'submit', text: 'yes' })
+  assert.deepEqual(FCH.chatAction('go to the dock', []), { do: 'submit', text: 'go to the dock' })
+  assert.deepEqual(FCH.chatAction('next job', [fp('p1', 'awaiting_approval'), fp('p2', 'running')]), { do: 'submit', text: 'next job' })
+  assert.deepEqual(FCH.chatAction('next job', [fp('p1', 'understanding', ['Where?']), fp('p2', 'done')]), { do: 'submit', text: 'next job' })
+  assert.deepEqual(FCH.chatAction('yes', [fp('p1', 'running'), fp('p2', 'awaiting_approval')]), { do: 'approve', planId: 'p2' })
+  const empty = { do: 'hint', line: { who: 'system', text: 'Type a request for the fleet.' } }
+  assert.deepEqual(FCH.chatAction('   ', [fp('p1', 'awaiting_approval')]), empty)
+  assert.deepEqual(FCH.chatAction('', []), empty)
 })

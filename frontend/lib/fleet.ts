@@ -123,6 +123,10 @@ export const fleet = {
   approve(id: string, operator: string): Promise<unknown> {
     return jsonCall(`${getFleetUrl()}/fleet/plans/${enc(id)}/approve`, 'POST', { operator })
   },
+  /** The person says no at the read-back: the plan is dropped, nothing had moved (a changed request is a new request). */
+  reject(id: string, operator: string): Promise<unknown> {
+    return jsonCall(`${getFleetUrl()}/fleet/plans/${enc(id)}/reject`, 'POST', { operator })
+  },
   answer(id: string, text: string): Promise<unknown> {
     return jsonCall(`${getFleetUrl()}/fleet/plans/${enc(id)}/answer`, 'POST', { text })
   },

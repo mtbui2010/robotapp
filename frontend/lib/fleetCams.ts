@@ -4,6 +4,17 @@ import type { ClientEntry } from './types'
 import { readTabPref, writeTabPref } from './tabPref'
 
 export const LS_FLEET_CAMS = 'robotapp_fleet_cams'
+export const LS_FLEET_COLS = 'robotapp_fleet_cols'
+
+/** How many robot tiles the Fleet tab shows on one row: 1 to COLS_MAX, default 2 (anything else reads as the default). */
+export const COLS_DEFAULT = 2
+export const COLS_MAX = 6
+export const clampCols = (v: unknown): number => {
+  const n = Math.round(Number(v))
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, COLS_MAX) : COLS_DEFAULT
+}
+export const loadCols = (): number => clampCols(readTabPref(LS_FLEET_COLS))
+export const saveCols = (n: number): void => writeTabPref(LS_FLEET_COLS, String(clampCols(n)))
 
 export interface CamOption { id: string; label: string }
 
@@ -11,9 +22,17 @@ export interface CamOption { id: string; label: string }
 export const cameraOptions = (clients: ClientEntry[]): CamOption[] =>
   clients.filter(c => c.is_camera).map(c => ({ id: c.id, label: c.name || c.id }))
 
-/** The remembered camera when the robot still has it, else its first camera, else null. */
+/** The Fleet tab's default view (owner, 2026-11-23): a camera that shows the robot from outside (its id or name says "overview"), else the
+ *  head camera `head_rgb`, else the robot's first camera. These are naming conventions of the camera list, not robot facts: a robot without
+ *  such a name keeps its own first camera. */
+const OUTSIDE_VIEW = /overview/i
+const HEAD_VIEW = 'head_rgb'
+const defaultCamera = (opts: CamOption[]): CamOption | undefined =>
+  opts.find(o => OUTSIDE_VIEW.test(o.id) || OUTSIDE_VIEW.test(o.label)) ?? opts.find(o => o.id === HEAD_VIEW) ?? opts[0]
+
+/** The remembered camera when the robot still has it, else the default view (outside, then head_rgb, then the first camera), else null. */
 export const pickCamera = (opts: CamOption[], saved?: string | null): string | null =>
-  (saved && opts.some(o => o.id === saved) ? saved : opts[0]?.id) ?? null
+  (saved && opts.some(o => o.id === saved) ? saved : defaultCamera(opts)?.id) ?? null
 
 export type TileState = 'loading' | 'unreachable' | 'no_camera' | 'ready'
 

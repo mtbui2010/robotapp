@@ -10,7 +10,7 @@ import type { FleetRobot } from '../lib/fleet_types'
 const READ_MS = 5000
 const FRAME_MS = 8000
 
-export default function FleetCamTile({ robot, saved, badge }: { robot: FleetRobot; saved?: string; badge: React.ReactNode }) {
+export default function FleetCamTile({ robot, saved, badge, info }: { robot: FleetRobot; saved?: string; badge: React.ReactNode; info?: React.ReactNode }) {
   const [opts, setOpts] = useState<CamOption[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [cam, setCam] = useState<string | null>(null)
@@ -19,13 +19,14 @@ export default function FleetCamTile({ robot, saved, badge }: { robot: FleetRobo
 
   useEffect(() => {                                       // the robot's camera list
     const ac = new AbortController()
-    const timer = setTimeout(() => ac.abort(), READ_MS)
+    let live = true                                       // false once this effect is cleaned up: its answer, or its abort, is not news
+    const timer = setTimeout(() => ac.abort(), READ_MS)   // the timeout is an abort too, and it IS a failure (live stays true)
     setOpts(null); setFailed(false)
     api.listClientsAt(robot.url, ac.signal)
-      .then(cs => { const o = cameraOptions(cs); setOpts(o); setCam(pickCamera(o, saved)) })
-      .catch(() => setFailed(true))
+      .then(cs => { if (!live) return; const o = cameraOptions(cs); setOpts(o); setCam(pickCamera(o, saved)) })
+      .catch(() => { if (live) setFailed(true) })
       .finally(() => clearTimeout(timer))
-    return () => { clearTimeout(timer); ac.abort() }
+    return () => { live = false; clearTimeout(timer); ac.abort() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [robot.url])
 
@@ -66,6 +67,7 @@ export default function FleetCamTile({ robot, saved, badge }: { robot: FleetRobo
           : <span className={streamErr ? 'text-amber-700' : ''}>{streamErr || 'Waiting for the first image...'}</span>}
       </div>
       {state === 'ready' && src && streamErr && <div className="text-amber-700">{streamErr}</div>}
+      {info}
     </div>
   )
 }

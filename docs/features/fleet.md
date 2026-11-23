@@ -1,6 +1,6 @@
 # Fleet tab: several robots through the fleet manager (2026-11-21)
 
-A fourth tab (👥) next to Cameras, Map and Data, always shown. It talks to the **robot_fleet** manager
+The Fleet view (since 2026-11-23 it has no tab button: it opens when a fleet is chosen in the robot / fleet drop-down). It talks to the **robot_fleet** manager
 ([SPEC section 6](../../../robot_fleet/docs/SPEC.md)), not to a robot: the manager decides which robot does which
 goal and when; each robot plans and recovers its own goal. Component
 [FleetPanel.tsx](../../frontend/components/FleetPanel.tsx); client [lib/fleet.ts](../../frontend/lib/fleet.ts) (the
@@ -23,24 +23,29 @@ only file that calls the fleet API, rule 1); types [lib/fleet_types.ts](../../fr
   (when the manager lists the robot's `locks`; not in the SPEC) and a free place-name box call
   `POST /fleet/locks/{resource}/release` after an inline "Check first that the robot is not there: a goal
   waiting for it may then start on another robot. Yes / No".
-- **Request box + Submit**: `POST /fleet/requests {text, lang}` (`lang` = the tab's language; left out when it is
-  Detect). The manager has one robot understand the request; nothing moves.
-- **Plan view** (the plan just submitted, else the newest; a drop-down when there are several): text, state,
-  who approved, warnings, then the goals grouped by robot (goals with no robot yet last): goal id, the goal in its
-  own words (`on cup from shelf to table`), state, what it waits for (`starts first` or
-  `after g1 (pick cup on a)`), and the outcome code / message.
-- **Questions**: when the robot asked the person (`questions`), they are shown with an answer box
-  (`POST /fleet/plans/{id}/answer {text}`).
-- **Approve** (only while the plan is `awaiting_approval`; needs the operator's name, kept per tab): the ONLY
-  control that starts motion (`POST /fleet/plans/{id}/approve {operator}`). When the plan may move a REAL robot
-  (one of its robots, or any reachable robot when a goal has no robot yet; an unknown robot counts as real) a
-  dialog names them and asks "Approve and start" / "Do not start" (rule 8). The dialog approves the plan it was
-  opened for, even when a newer plan arrives meanwhile.
+- **Request box, plan view, questions, Approve (2026-11-23)**: the tab no longer has its own request box, plan
+  selector or plan panel with Approve and the operator-name box. They moved to the chat, see
+  [Requests, approval and questions are in the chat](#requests-approval-and-questions-are-in-the-chat-2026-11-23).
 - **Live updates**: `WS /ws/fleet`; an event re-reads the plan it names (`GET /fleet/plans/{id}`) and the robots
   when it names a robot. The socket reconnects (1, 2, 4, 8, then every 10 s); while it is down the tab reads
   every 5 s (GET only) and says "live updates off".
 - **Reading never starts anything** (rule 6): opening the tab, the WebSocket, the 5 s reads and ↻ are `GET` only.
-  The POSTs are Submit, Approve, Answer, Release and Stop all, each on a click.
+  The POSTs from the dashboard are request, answer, approve, reject (all from the chat), Stop all (Cancel) and Release,
+  each on a person's action.
+
+## Requests, approval and questions are in the chat (2026-11-23)
+
+While a fleet is chosen and the Fleet view is open, the CHAT card talks to the fleet
+([chat.md](chat.md#chat-in-the-fleet-view-2026-11-23), word lists in [lib/fleetChat.ts](../../frontend/lib/fleetChat.ts)):
+
+- A typed message is a request: `POST /fleet/requests`. A robot's question is answered by typing in the chat:
+  `POST /fleet/plans/{id}/answer`.
+- When the plan is `awaiting_approval`, "yes" starts it (`POST .../approve`, by the operator name kept in the tab
+  preference, else "chat") and "no" drops it (`POST .../reject`; a changed request is a new request). Only a
+  message made entirely of yes-words counts as yes; anything else gets a hint and sends nothing, so a wrong word
+  never moves a real robot (rule 8: nothing moves before the person says yes).
+- Cancel (both buttons) stays the fleet's Stop all. Reading the tab (GET and `/ws/fleet`) never starts a plan.
+- Not verified in a browser or against real robots.
 
 ## Robot / fleet selector and fleet editor (2026-11-21)
 
@@ -73,13 +78,15 @@ list and the manager is left alone).
 
 Under the lost-robot banners, above the robots table: one tile per fleet robot
 ([FleetCameras.tsx](../../frontend/components/FleetCameras.tsx), [FleetCamTile.tsx](../../frontend/components/FleetCamTile.tsx)).
-Title = robot id + `REAL` / `sim` badge; a drop-down lists that robot's cameras (default its first; the choice is kept per
+Title = robot id + `REAL` / `sim` badge; a drop-down lists that robot's cameras (default: a camera whose id or name contains "overview", which views the robot from outside, else `head_rgb`, else its first; the choice is kept per
 robot id in the tab preference `robotapp_fleet_cams`, forgotten if the robot no longer has that camera).
 
+- **Layout (2026-11-23)**: no row of its own. Reload, `live` and "Robots per row" (1 to 6, default 2, a tab preference `robotapp_fleet_cols`) are drawn on the page's tab row (`toolbarSlot`, like the Cameras tab's camera chips); there is no manager address box (the manager of a fleet is set in the fleet editor; the buttons' tooltips name it). There is no Fleet tab button: next to the tabs (Cameras, Map, Data) a small drop-down (`data-testid="fleet-switch"`, in every tab, in place of the old robot chip) lists the fleets and the robots. Picking a fleet opens the Fleet view on that fleet's manager (a fleet chosen in the sidebar selector does the same); picking a robot leaves the fleet (from the Fleet view it opens that robot's Cameras tab). With a fleet chosen but another tab open, the drop-down shows the fleet as its placeholder and picking it returns to the Fleet view. **Cancel is Stop all** while this tab is open: the tab puts its stop in `stopRef`, both Cancel buttons call it, and the result lines appear at the top of the tab (a failed Stop all says to stop each robot with its own Stop). The tiles use the full width, `cols` to a row; under each camera: the robot's state, its active goal and its URL (the table of robots is gone). The old Stop all text is the Cancel tooltip.
 - **Each robot's own URL**, not the tab's active robot: `api.listClientsAt(url)` (`GET /connects`, entries with `is_camera`)
   and `api.cameraWsAt(url, id)` (`WS /ws/camera/{id}`, then `{depth_mode: 'colored'}` like CameraCell). They are in
   `lib/api.ts` (no new HTTP file); `listClients` / `cameraWs` call the same code with the active robot's URL (unit-tested).
 - **One stream per robot**, closed when the camera is changed, the robot leaves the list or the tab goes away.
+- **A cancelled read is not a failure** (2026-11-23): the tile's own cleanup aborts a read it no longer needs (React's double effect in development, a rebuilt tile); that abort and that answer are ignored (`live` flag in `FleetCamTile.tsx`). Only the 5 s timeout and a real failure of the current read say "Cannot reach".
 - **No endless spinner**: a camera list not read in 5 s or failing = "Cannot reach the robot at <url>."; no camera = "This
   robot has no camera."; no frame in 8 s = "No image from this camera." (or the robot's own error).
 - Reading cameras and streaming never start a run (rule 6). A robot's own tab is unchanged.
@@ -112,7 +119,7 @@ the robot's `WS /ws/events` ([fleet_seams](../../../ra_merge/docs/fleet_seams.md
 
 Backend: `GET /fleet/robots`, `GET /fleet/plans` (**not in the SPEC yet**: without it the tab shows the plans it
 submitted or saw on the WebSocket), `GET /fleet/plans/{id}`, `POST /fleet/requests`, `POST .../approve`,
-`POST .../answer`, `POST /fleet/stop` (a list of `CancelResult`, bare or as `{results}`),
+`POST .../reject`, `POST .../answer`, `POST /fleet/stop` (a list of `CancelResult`, bare or as `{results}`),
 `POST /fleet/locks/{resource}/release`, `WS /ws/fleet`. The manager must allow the dashboard's origin (CORS).
 
 Not verified: no browser run (the selector and editor were only type-checked, built and unit-tested) and no fleet manager (its API was not written on 2026-11-21); tested with unit tests

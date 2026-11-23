@@ -107,6 +107,24 @@ the **Log** panel (order in the column: Robot State, Plan progress, planner step
 - Robot State and the GRACE trace are unchanged; the Log steps also work for SAGE events (`index` / `action` / `object`
   instead of `step` / `total` / `task`).
 
+## Chat in the Fleet view (2026-11-23)
+
+While a fleet is chosen and the Fleet view is open, the card talks to the fleet manager, not to one robot; choosing a
+fleet opens the card. Details: [fleet.md](fleet.md#requests-approval-and-questions-are-in-the-chat-2026-11-23).
+
+**Size and place (2026-11-23).** In the Fleet view the card is *docked*: it sits in the page flow under the robots' camera grid, as wide as
+the column, so it covers no camera (`ChatPanel` prop `docked`, `data-docked="1"`). In every other view it is the floating card at the bottom
+right, whose message log is half as high as before (`h-32`, was `h-64`; docked: `h-44`).
+
+- A typed message is a request (`POST /fleet/requests`). The log shows the fleet's one voice: the manager's `say`
+  events (what it understood, the plan read-back with which robot does what and which are REAL, progress, results,
+  the robots' questions). A robot's question is answered by typing (`POST /fleet/plans/{id}/answer`).
+- When the plan awaits approval, "yes" starts it (`POST .../approve`, operator name from the tab preference, else
+  "chat") and "no" drops it (`POST .../reject`). Only a message made entirely of yes-words ("yes", "ok go ahead",
+  "네", "có") is yes. Anything else gets "The fleet is waiting for you: answer yes to start the plan or no to drop
+  it." and nothing is sent (rule 8). Word lists: `frontend/lib/fleetChat.ts` (en, ko, vi).
+- Cancel (both buttons) is the fleet's Stop all. Not verified in a browser or against real robots.
+
 ## Stop and Reset
 
 State machine: [lib/chatRun.ts](../../frontend/lib/chatRun.ts) (`runReduce`, tested in `make unit`); `page.tsx` feeds it.

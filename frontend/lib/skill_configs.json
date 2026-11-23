@@ -1,122 +1,43 @@
 {
   "skill_config_map": {
-    "grip": [
-      "GRIP_CONFIGS"
-    ],
-    "lift": [
-      "LIFT_CONFIGS"
-    ],
-    "dlift": [
-      "LIFT_CONFIGS"
-    ],
-    "moveh": [
-      "HEAD_CONFIGS"
-    ],
-    "movel": [
-      "ARM_CONFIGS"
-    ],
-    "movej": [
-      "ARM_CONFIGS"
-    ],
-    "movet": [
-      "ARM_CONFIGS"
-    ],
-    "movelf": [
-      "ARM_CONFIGS"
-    ],
-    "find": [
-      "FIND_CONFIGS",
-      "ARM_CONFIGS"
-    ],
-    "detect": [
-      "FIND_CONFIGS",
-      "ARM_CONFIGS"
-    ],
-    "find_arm": [
-      "FIND_CONFIGS",
-      "ARM_CONFIGS"
-    ],
-    "grasp_succeed": [
-      "FIND_CONFIGS"
-    ],
-    "pick": [
-      "ARM_CONFIGS",
-      "LIFT_CONFIGS",
-      "GRIP_CONFIGS",
-      "FIND_CONFIGS"
-    ],
-    "fine_move": [
-      "ARM_CONFIGS"
-    ],
-    "open_drawer": [
-      "ARM_CONFIGS",
-      "LIFT_CONFIGS"
-    ],
-    "close_drawer": [
-      "ARM_CONFIGS",
-      "LIFT_CONFIGS"
-    ],
-    "stack": [
-      "ARM_CONFIGS",
-      "LIFT_CONFIGS"
-    ],
-    "vla_stack": [
-      "VLA_CONFIGS"
-    ],
-    "place": [
-      "ARM_CONFIGS",
-      "LIFT_CONFIGS",
-      "GRIP_CONFIGS"
-    ],
-    "wipe": [
-      "ARM_CONFIGS",
-      "LIFT_CONFIGS"
-    ],
-    "init_arm": [
-      "ARM_CONFIGS"
-    ],
-    "enable": [],
-    "move": [
-      "MOBILE_CONFIGS"
-    ],
-    "move_left": [
-      "MOBILE_CONFIGS"
-    ],
-    "move_right": [
-      "MOBILE_CONFIGS"
-    ],
-    "moveb": [],
-    "moveb_direct": [],
-    "shift": [
-      "MOBILE_CONFIGS"
-    ],
-    "forward": [],
-    "inform": [],
+    "grip":            ["GRIP_CONFIGS"],
+    "lift":            ["LIFT_CONFIGS"],
+    "dlift":           ["LIFT_CONFIGS"],
+    "moveh":           ["HEAD_CONFIGS"],
+    "movel":           ["ARM_CONFIGS"],
+    "movej":           ["ARM_CONFIGS"],
+    "movet":           ["ARM_CONFIGS"],
+    "movelf":          ["ARM_CONFIGS"],
+    "find":            ["FIND_CONFIGS", "ARM_CONFIGS"],
+    "detect":          ["FIND_CONFIGS", "ARM_CONFIGS"],
+    "find_arm":        ["FIND_CONFIGS", "ARM_CONFIGS"],
+    "grasp_succeed":   ["FIND_CONFIGS"],
+    "pick":            ["ARM_CONFIGS", "LIFT_CONFIGS", "GRIP_CONFIGS", "FIND_CONFIGS"],
+    "fine_move":       ["ARM_CONFIGS"],
+    "open_drawer":     ["ARM_CONFIGS", "LIFT_CONFIGS"],
+    "close_drawer":    ["ARM_CONFIGS", "LIFT_CONFIGS"],
+    "stack":           ["ARM_CONFIGS", "LIFT_CONFIGS"],
+    "place":           ["ARM_CONFIGS", "LIFT_CONFIGS", "GRIP_CONFIGS"],
+    "wipe":            ["ARM_CONFIGS", "LIFT_CONFIGS"],
+    "init_arm":        ["ARM_CONFIGS"],
+    "enable":          [],
+    "move":            ["MOBILE_CONFIGS"],
+    "move_left":       ["MOBILE_CONFIGS"],
+    "move_right":      ["MOBILE_CONFIGS"],
+    "moveb":           [],
+    "moveb_direct":    [],
+    "shift":           ["MOBILE_CONFIGS"],
+    "forward":         [],
+    "inform":          [],
     "select_response": [],
-    "reply": [
-      "HRI_CONFIGS"
-    ],
-    "ask": [
-      "HRI_CONFIGS"
-    ],
-    "announce": [
-      "HRI_CONFIGS"
-    ],
-    "qa": [
-      "QA_CONFIGS",
-      "HRI_CONFIGS"
-    ],
-    "check_fall": [
-      "EMERGENCY_CONFIGS"
-    ],
-    "check_restroom": [
-      "EMERGENCY_CONFIGS"
-    ],
-    "call_119": [
-      "EMERGENCY_CONFIGS"
-    ]
-  },
-  "pi0.5_act": [
-    "VLA_CONFIGS"
-  ]
+    "reply":           ["HRI_CONFIGS"],
+    "ask":             ["HRI_CONFIGS"],
+    "announce":        ["HRI_CONFIGS"],
+    "qa":              ["QA_CONFIGS", "HRI_CONFIGS"],
+    "check_fall":      ["EMERGENCY_CONFIGS"],
+    "check_restroom":  ["EMERGENCY_CONFIGS"],
+    "call_119":        ["EMERGENCY_CONFIGS"],
+    "vla_stack":       ["VLA_CONFIGS"],
+    "pi0.5_act":       ["VLA_CONFIGS"]
+  }
 }

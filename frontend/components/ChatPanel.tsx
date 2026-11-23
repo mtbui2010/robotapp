@@ -21,7 +21,7 @@ const HELP = 'Type a task ("put the apple on the counter") and the robot plans a
 export default function ChatPanel({
   log, state, langPicker, planner, onPlanner, planOnly, onPlanOnly,
   handsFree, onHandsFree, micSupported, micListening, micNote,
-  onSend, onStop, onReset, canStop, canType, lost, stuck, onClear, onClose,
+  onSend, onStop, onReset, canStop, canType, lost, stuck, onClear, onClose, docked = false,
 }: {
   log: ChatLine[]
   state: ChatState
@@ -44,13 +44,17 @@ export default function ChatPanel({
   stuck: boolean             // stopping for more than a few seconds: offer Force reset
   onClear: () => void
   onClose: () => void
+  docked?: boolean           // in the page flow under the Fleet view's camera grid (wide, covers nothing) instead of the floating card; it hides the planner and
+                             // plan-only controls: a fleet request ignores both (the fleet manager plans, and a plan is approved in the chat)
 }) {
   const [draft, setDraft] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
+  const logRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }) }, [log.length])
+  // scroll the LOG, not the page: scrollIntoView also scrolls the document when the card is docked in the page flow (review 2026-11-23)
+  useEffect(() => { const el = logRef.current; if (el) el.scrollTop = el.scrollHeight }, [log.length])
   // focus when the chat can take a message again (asked / finished)
-  useEffect(() => { if (canType) inputRef.current?.focus() }, [state, canType])
+  useEffect(() => { if (canType) inputRef.current?.focus({ preventScroll: true }) }, [state, canType])
 
   const send = () => {
     const t = draft.trim()
@@ -66,8 +70,8 @@ export default function ChatPanel({
   const dot = state === 'stopping' ? 'bg-red-500 animate-pulse' : state === 'idle' && lost ? 'bg-red-400' : state === 'idle' ? 'bg-gray-300' : state === 'running' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'
 
   return (
-    <div data-testid="chat-card"
-      className="fixed bottom-4 right-4 z-40 w-96 max-w-[calc(100vw-2rem)] bg-white border border-gray-300 rounded-lg shadow-lg flex flex-col text-sm">
+    <div data-testid="chat-card" data-docked={docked ? '1' : undefined}
+      className={`${docked ? 'w-full mt-3' : 'fixed bottom-4 right-4 z-40 w-96 max-w-[calc(100vw-2rem)] shadow-lg'} bg-white border border-gray-300 rounded-lg flex flex-col text-sm`}>
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 bg-gray-50 rounded-t-lg">
         <span className="font-medium text-gray-700">💬 Chat</span>
         <span title={HELP} className="cursor-help text-[11px] text-gray-400 border border-gray-300 rounded-full w-4 h-4 inline-flex items-center justify-center">?</span>
@@ -86,6 +90,7 @@ export default function ChatPanel({
           className="text-gray-400 hover:text-gray-700 leading-none">×</button>
       </div>
       <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-100 text-[11px] text-gray-600 flex-wrap">
+        {!docked && (
         <select value={planner} onChange={e => onPlanner(e.target.value as PlannerMethod)} disabled={state !== 'idle'}
           title="Planner for the next command"
           className="bg-white border border-gray-300 rounded px-1 py-0.5 disabled:opacity-50">
@@ -93,14 +98,17 @@ export default function ChatPanel({
           <option value="grace" title="SAGE planner in the plain closed loop (no understanding / clarification layer)">SAGE plain loop</option>
           <option value="direct">Direct</option>
         </select>
+        )}
         {langPicker}
+        {!docked && (
         <label data-testid="chat-plan-only" title={planOnly ? 'ON: the robot only PLANS the command, it does not move' : 'OFF: the robot executes the plan (it moves)'}
           className={`flex items-center gap-1 cursor-pointer px-1.5 py-0.5 rounded border ${planOnly ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-red-50 border-red-300 text-red-700'}`}>
           <input type="checkbox" checked={planOnly} onChange={e => onPlanOnly(e.target.checked)} disabled={state !== 'idle'} className="accent-amber-600" />
           plan only{planOnly ? '' : ' — will move'}
         </label>
+        )}
       </div>
-      <div className="flex flex-col gap-1.5 px-3 py-2 h-64 max-h-[40vh] overflow-y-auto" data-testid="chat-log">
+      <div ref={logRef} className={`flex flex-col gap-1.5 px-3 py-2 overflow-y-auto ${docked ? 'h-44 max-h-[30vh]' : 'h-32 max-h-[20vh]'}`} data-testid="chat-log">
         {log.length === 0 && <span className="text-[11px] text-gray-400">Say or type a task for the robot, e.g. &ldquo;Please put the apple on the counter.&rdquo;</span>}
         {log.map((l, i) => l.who === 'system'
           ? <div key={i} className="self-center text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded px-2 py-0.5">{l.text}</div>

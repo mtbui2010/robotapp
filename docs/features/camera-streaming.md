@@ -56,3 +56,14 @@ In the Cameras tab, with the **Grid** layout every view (each camera, `log_image
 grid (blue = shown); it was a checkbox plus a label. Chips can still be dragged to reorder. The **Tab** layout keeps the tabs.
 The webcam used as the `observe` view is switched on with the `webcam` checkbox (a phone through DroidCam / Iriun works too); its
 device picker is at most 7 rem wide. The row stays one line (it scrolls sideways when the window is narrower than its content).
+
+## Switching robots
+
+Picking another robot in the Robot Agent drop-down (or editing the active robot's name or URL) rebuilds the camera, map and data panels for it
+at once: `lib/useRobotEpoch.ts` counts the `ROBOT_CHANGED_EVENT` (fired by `api.setActiveRobot`), and `page.tsx` uses the count as a React `key`
+on `CameraFeed`, `MapPanel` and `DataPanel`, so every camera socket is closed and opened again on the new robot's URL. Before this, a robot
+that had a camera with the same id (for example `head_camera`) kept the old socket and the picture of the old robot until F5. The old robot's
+device list is cleared when the robot is picked, so its cameras are neither drawn nor opened for the new one.
+
+There is no Connect button. The panel connects when it opens, picking a robot connects to it (an unreachable robot is rolled back to the previous one),
+and while the active robot does not answer it tries again every 5 s (the badge shows `Unreachable` until it does).

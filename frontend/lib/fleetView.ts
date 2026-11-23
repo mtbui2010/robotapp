@@ -104,3 +104,6 @@ export function mergePlans(known: FleetPlan[], fresh: FleetPlan[]): FleetPlan[] 
   }
   return out
 }
+
+/** The tooltip of the page's Cancel button while the Fleet tab is open (Cancel is the fleet's Stop all; rule 7's warning stays one hover away). */
+export const FLEET_STOP_HINT = 'Stop all: cancel what every robot of the fleet is doing; the plan stops and cannot continue. Stops every robot of the fleet, whoever started its run (another tab, the CLI). Two clients driving one robot is unsafe.'
