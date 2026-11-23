@@ -45,7 +45,7 @@ typecheck: check-deps
 # Unit tests of the pure lib modules (planView replayed on recorded event files, chatMic): scripts/test_lib.mjs;
 # the Fleet tab (fleetView, the fleet client with a fake fetch / WebSocket): scripts/test_fleet.mjs
 unit: check-deps
-	node --test --test-reporter=spec $(ROOT)/scripts/test_lib.mjs $(ROOT)/scripts/test_fleet.mjs
+	node --test --test-reporter=spec $(ROOT)/scripts/test_lib.mjs $(ROOT)/scripts/test_fleet.mjs $(ROOT)/scripts/test_sessions.mjs
 
 # Static export must build and produce the page (runs without a robot).
 smoke: check-deps

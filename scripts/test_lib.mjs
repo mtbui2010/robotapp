@@ -409,6 +409,42 @@ test('api.answerListenAudio: a 500 / unreachable server is an error, 404 is "gon
   } finally { globalThis.fetch = orig }
 })
 
+// URL-explicit run calls: they hit the named robot and never the active one
+test('api *At run calls: cancel / listen / qa-end go to the url given, whatever robot is active', async () => {
+  const outfile = join(out, 'api_at.mjs')
+  buildSync({ entryPoints: [join(FE, 'lib', 'api.ts')], outfile, bundle: true, format: 'esm', platform: 'node', logLevel: 'error',
+              define: { 'process.env.NEXT_PUBLIC_AGENT_URL': '"http://active.test:1"' } })
+  globalThis.window = { location: { origin: 'http://x', protocol: 'http:', hostname: 'x' } }
+  globalThis.localStorage = { getItem: () => null, setItem() {} }
+  const { api } = await import(pathToFileURL(outfile).href)
+  const orig = globalThis.fetch, OrigWS = globalThis.WebSocket
+  const calls = []
+  const reply = (status, body) => async (url, init) => { calls.push([String(url), init?.method, init?.body]); return new Response(JSON.stringify(body), { status }) }
+  try {
+    const other = 'http://other.test:2'
+    globalThis.fetch = reply(200, { ok: true })
+    await api.cancelRunAt(other)
+    await api.answerListenAt(other, 'q 1', 'yes', undefined, 'n')
+    await api.endQaAt(other)
+    assert.deepEqual(calls.map(c => c.slice(0, 2)), [[other + '/agent/cancel', 'POST'], [other + '/agent/listen/q%201', 'POST'], [other + '/agent/qa/end', 'POST']])
+    assert.deepEqual(JSON.parse(calls[1][2]), { text: 'yes', error: null, note: 'n' })
+    globalThis.fetch = reply(409, { detail: 'no qa running' })
+    await assert.rejects(api.endQaAt(other), /no qa running/)
+    globalThis.fetch = reply(500, { detail: 'CUDA out of memory' })
+    assert.match((await api.answerListenAudioAt(other, 'a', new Blob(['x']), 'audio/webm')).error, /HTTP 500: CUDA out of memory/)
+    globalThis.fetch = reply(404, {}); assert.equal((await api.answerListenAudioAt(other, 'a', null, '')).gone, true)
+    globalThis.fetch = reply(200, { text: 'hi' }); calls.length = 0
+    assert.deepEqual(await api.answerListenAudioAt(other, 'a', null, '', 'n&1'), { text: 'hi' })
+    assert.equal(calls[0][0], other + '/agent/listen/a/audio?note=n%261')
+    globalThis.fetch = async () => { throw new Error('refused') }
+    assert.match((await api.answerListenAudioAt(other, 'a', null, '')).error, /cannot reach the robot/)
+    const urls = []
+    globalThis.WebSocket = class { constructor(u) { urls.push(u) } }
+    api.agentWsAt('https://secure.test:3'); api.agentWsAt(other)
+    assert.deepEqual(urls, ['wss://secure.test:3/ws/agent', 'ws://other.test:2/ws/agent'])
+  } finally { globalThis.fetch = orig; globalThis.WebSocket = OrigWS }
+})
+
 // ── tabPref: the language belongs to one tab (sessionStorage), localStorage only seeds a new tab ──
 const TP = await load('tabPref')
 const mkStore = () => { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) } }

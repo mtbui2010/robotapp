@@ -857,6 +857,54 @@ export const api = {
     return new WebSocket(`${getWsBase()}/ws/agent`)
   },
 
+  // URL-explicit run calls (per-robot sessions): they name the robot's base URL and never read the active robot.
+  /** POST {baseUrl}/agent/cancel. Stop, Reset and every Cancel button end here. */
+  async cancelRunAt(baseUrl: string): Promise<void> {
+    await fetch(`${baseUrl}/agent/cancel`, { method: 'POST' })
+  },
+  /** WS {baseUrl}/ws/agent: the run socket of the robot at baseUrl. */
+  agentWsAt(baseUrl: string): WebSocket {
+    return new WebSocket(`${baseUrl.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/agent`)
+  },
+  /** POST {baseUrl}/agent/listen/<id>: the answer to a `listen` of a run on THAT robot. */
+  async answerListenAt(baseUrl: string, id: string, text: string, error?: string, note?: string): Promise<void> {
+    await fetch(`${baseUrl}/agent/listen/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, error: error ?? null, note: note ?? null }),
+    })
+  },
+  /** POST {baseUrl}/agent/qa/end ("End Q&A"). Throws the backend's detail (409 when no qa runs). */
+  async endQaAt(baseUrl: string): Promise<void> {
+    const r = await fetch(`${baseUrl}/agent/qa/end`, { method: 'POST' })
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`
+      try { detail = (await r.json()).detail ?? detail } catch { /* not json */ }
+      throw new Error(detail)
+    }
+  },
+  /** Like answerListenAudio, for the robot at baseUrl. Never throws. */
+  async answerListenAudioAt(baseUrl: string, id: string, blob: Blob | null, mime: string, note?: string): Promise<{ text: string; error?: string; gone?: boolean }> {
+    const q = note ? `?note=${encodeURIComponent(note)}` : ''
+    let r: Response
+    try {
+      r = await fetch(`${baseUrl}/agent/listen/${encodeURIComponent(id)}/audio${q}`, {
+        method: 'POST',
+        headers: { 'Content-Type': mime || 'audio/webm' },
+        body: blob ?? new Blob([]),
+      })
+    } catch (e) {
+      return { text: '', error: `cannot reach the robot (${e instanceof Error ? e.message : e})` }
+    }
+    if (r.status === 404) return { text: '', gone: true }
+    if (!r.ok) {
+      let detail = ''
+      try { const j = await r.json(); detail = typeof j?.detail === 'string' ? j.detail : '' } catch { /* not json */ }
+      return { text: '', error: `HTTP ${r.status}${detail ? `: ${detail.slice(0, 120)}` : ''}` }
+    }
+    return { text: String((await r.json().catch(() => ({})))?.text ?? '') }
+  },
+
   /** Read-only stream of every run event of this robot, runs started by others included (WS /ws/events). Sends nothing. */
   eventsWs(): WebSocket {
     return eventsWsAt(getAgentUrl())
