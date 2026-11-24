@@ -46,7 +46,7 @@ or the bar between plans (`◇ waits for Next` / `plan failed`).
 | `continue` | repeats go on after a failure | the bar appears; the plan counts as done or failed by its LAST repeat |
 
 - Repeat **forever** in a sequence is one run per plan (plan-sequence.md), so no question is asked inside a plan.
-- A person's Stop (the question's Stop, the main Stop / Cancel) or a run cancelled elsewhere (`aborted`) ends the repeat loop **and** the sequence and never asks (`endLoop` / `afterRun`).
+- The question's Stop (`endLoop`) ends the repeat loop **and** the sequence. A run that ends `aborted` (cancelled elsewhere, or by the main Stop / Cancel when the robot reports it so) ends them too and never asks (`afterRun`). The main Stop during a running repeat only cancels the run: its `done` goes through `endRun(verdictOf(ev))` and `afterRun`, so a `success` verdict that lands before the cancel leaves the sequence `waiting` with Next, and a `failed` verdict gives Retry / Skip / Stop.
   The run keeps its own verdict.
 - While the loop asks, the bar says so (no Next button; the plan is still the running one), the robot is busy (`startBlock`) and the drop-down shows `◆`, never `◇`.
   `endRun` clears the question and moves the sequence by the plan's verdict in one step, so both can never be set together.

@@ -42,7 +42,7 @@ export function useForeignRun({ robotUrl, ownRunning, show, showImage }: Opts) {
         if (!ev) return
         if (ev.event === 'events_open') { tries = 0; return }
         const r = route(own.current, current, ev, cb.current.ownRunning())
-        if (!r.show) return
+        if (!r.show) { if (r.ended && current) setRun({ runId: current, ended: true }); return }
         if (r.fresh) { current = ev.run_id!; events = []; steps = []; cb.current.showImage(null) }
         events = pushEvent(events, ev)
         steps = reduceSteps(steps, ev)

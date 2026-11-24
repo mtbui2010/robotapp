@@ -450,3 +450,12 @@ test('plan repeats in a sequence: a robot renamed while the loop asks keeps the 
   const s = S.sessionOf(r.store, S.robotKey('new'))
   assert.deepEqual([!!s.repeatAsk, s.seq.kind], [true, 'running'])
 })
+
+test('needsCancel: a loop that only asks has no run of this tab, so removing its robot must not cancel another client\'s run', () => {
+  const run = S.beginRun(two(), ka, A, 1)
+  assert.equal(S.needsCancel(run.sessions[ka]), true, 'running')
+  const asked = S.patch(run, ka, { running: false, repeatAsk: { n: 1, total: 3, ok: true, verdict: 'success' } })
+  assert.equal(S.statusOf(asked.sessions[ka]), 'waiting')
+  assert.equal(S.needsCancel(asked.sessions[ka]), false, 'only asking')
+  assert.equal(S.needsCancel(S.EMPTY_STORE.sessions[ka] ?? S.newSession(ka, A)), false, 'idle')
+})

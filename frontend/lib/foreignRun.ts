@@ -35,10 +35,14 @@ const NO: Routed = { show: false, fresh: false, ended: false }
  *  `own`: run ids this tab started or attached to; `current`: the foreign run now shown (or null);
  *  `ownRunning`: this tab has a run in flight, whose own socket draws it (nothing else may draw meanwhile). */
 export function route(own: ReadonlySet<string>, current: string | null, ev: AgentEvent, ownRunning: boolean): Routed {
-  if (ownRunning || NOT_DRAWN.has(ev.event)) return NO
+  if (NOT_DRAWN.has(ev.event)) return NO
   const id = ev.run_id
   if (typeof id !== 'string' || !id || own.has(id)) return NO
-  return { show: true, fresh: id !== current, ended: ev.event === 'done' || ev.event === 'error' }
+  const ended = ev.event === 'done' || ev.event === 'error'
+  // while our own run draws, nothing is drawn, but the end of the foreign run already on screen is still noted (`ended` with
+  // `show` false), so the badge and the Continue guard cannot go stale
+  if (ownRunning) return ended && id === current ? { show: false, fresh: false, ended: true } : NO
+  return { show: true, fresh: id !== current, ended }
 }
 
 /** Append, keeping the newest MAX_EVENTS. */

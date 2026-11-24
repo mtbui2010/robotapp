@@ -7,7 +7,7 @@ import { api } from './api'
 import { moveHandles, resolveKey, stableKey } from './runHelpers'
 import { STOP_TIMEOUT_MS, type RunEvent } from './chatRun'
 import {
-  EMPTY_STORE, applyRun, newHandles, newSession, patch, reconcile, select, shownOf, statusOf, syncUrls, update, type Listed,
+  EMPTY_STORE, applyRun, newHandles, newSession, needsCancel, patch, reconcile, select, shownOf, statusOf, syncUrls, update, type Listed,
   type RobotSession, type RunHandles, type SessionKey, type SessionStore,
 } from './robotSessions'
 
@@ -62,7 +62,7 @@ export function useRobotSessions() {
     const r = reconcile(ref.current, list, before)
     for (const k of r.dropped) {
       const s = ref.current.sessions[k]
-      if (s && statusOf(s) !== 'idle') api.cancelRunAt(s.url).catch(() => {})
+      if (s && needsCancel(s)) api.cancelRunAt(s.url).catch(() => {})
     }
     const toks = r.dropped.map(k => stableKey(hs.current, k))   // immutable ids, taken before the handles go
     moveHandles(hs.current, r, closeHandles)

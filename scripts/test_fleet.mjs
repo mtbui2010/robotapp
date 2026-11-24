@@ -391,6 +391,14 @@ test('foreignRun route: another client\'s run is shown, the first event of a run
   assert.deepEqual(FG.route(own, 'r9', fev('done', 'r9'), false), { show: true, fresh: false, ended: true })
   assert.equal(FG.route(own, 'r9', fev('step_start', 'r10'), false).fresh, true)
 })
+test('foreignRun route: the end of the foreign run on screen is noted while our own run is in flight (ended cannot go stale)', () => {
+  const own = new Set()
+  assert.deepEqual(FG.route(own, 'x1', fev('done', 'x1'), true), { show: false, fresh: false, ended: true })
+  assert.deepEqual(FG.route(own, 'x1', fev('error', 'x1'), true), { show: false, fresh: false, ended: true })
+  assert.deepEqual(FG.route(own, 'x1', fev('step_log', 'x1'), true), { show: false, fresh: false, ended: false })
+  assert.deepEqual(FG.route(own, null, fev('done', 'x2'), true), { show: false, fresh: false, ended: false }, 'no run on screen: nothing to note')
+  assert.deepEqual(FG.route(own, 'x1', fev('done', 'x2'), true), { show: false, fresh: false, ended: false }, 'another run: not the one on screen')
+})
 test('foreignRun route: this tab\'s own run (noted from /ws/agent) is not shown twice, nor while it is in flight', () => {
   const own = new Set()
   FG.noteOwn(own, fev('plan_ready', 'mine'))

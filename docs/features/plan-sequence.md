@@ -23,12 +23,12 @@ movej::fold
 
 | State | Bar | Buttons |
 |---|---|---|
-| a plan is running | `running…` | none (Cancel stops the run **and** the sequence) |
+| a plan is running | `running…` | none (Cancel stops the run; the sequence ends when the run reports `aborted`, else the bar shows Next or Retry / Skip / Stop by the verdict) |
 | a plan finished well | `Plan 1 done. Next: Plan 2 — <its first skills>` | **▶ Run plan 2**, **■ Stop** |
 | a plan failed | `Plan 2 failed: the robot stayed where it stopped.` | **↻ Retry plan 2** (the same plan again, from its first step), **⏭ Skip** (the plan counts as over; the next one still waits for its click), **■ Stop** |
 | the last plan finished (or was skipped) | `Sequence done (3 plans).` | Close |
 
-- A plan that ends in a plan-only run (`planned`) counts as done. Cancel / Stop / Reset while a plan runs (the verdict `aborted`) ends the sequence.
+- A plan that ends in a plan-only run (`planned`) counts as done. A run that ends `aborted` ends the sequence; Cancel / Stop only cancels the run, so a verdict that lands first (`success` or `failed`) is handled like any other (Next, or Retry / Skip / Stop).
 - A plan **lost to the network** (the socket closes without a `done`, the agent restarts) is an error, not a Stop: the bar shows Retry / Skip / Stop, so you do not start again from plan 1.
   The backend run may still live, so Retry is **disabled** (its tooltip says so) until you press the main **Cancel**: that ends the lost run and keeps the
   place in the sequence; then **Retry** (your click) runs the plan again. The bar's **■ Stop** in this state cancels the lost run too and ends the sequence.

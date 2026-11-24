@@ -103,6 +103,10 @@ export function shownOf(st: SessionStore): RobotSession {
   return (st.shown !== null && st.sessions[st.shown]) || newSession(st.shown ?? '', '')
 }
 
+/** Closing a session of a removed robot cancels at its url only when a run of this tab may be alive there: a loop that only ASKS
+ *  (paused, no run of this tab) must not stop another client's run on that robot. */
+export const needsCancel = (s: RobotSession): boolean => statusOf(s) !== 'idle' && !(s.repeatAsk && !s.run.alive)
+
 /** An unknown key leaves the store unchanged, so a late event of a dropped session is harmless. */
 export function update(st: SessionStore, key: SessionKey, f: (s: RobotSession) => RobotSession): SessionStore {
   const cur = st.sessions[key]
