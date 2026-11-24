@@ -5,6 +5,7 @@ import type { Lang } from '../lib/types'
 import type { PlannerMethod } from '../lib/planner'
 import RecordAudioToggles from './RecordAudioToggles'
 import PopoverButton from './PopoverButton'
+import { DEFAULT_POLICY, LS_REPEAT_COE_OLD, LS_REPEAT_ON_FAIL, askText, migratePolicy, type RepeatAsk, type RepeatPolicy } from '../lib/repeatPolicy'
 
 const LS_CELLS   = 'robotapp_cells'
 const LS_LOG_DATA = 'robotapp_log_data'
@@ -12,7 +13,6 @@ const LS_LOG_TARGET = 'robotapp_log_target'   // 'backend' | 'frontend'
 const LS_LOG_ALL    = 'robotapp_log_all'      // '1' = every run, '0' = failed cases only
 const LS_REPEAT_MODE = 'robotapp_repeat_mode' // 'once' | 'n' | 'forever'
 const LS_REPEAT_N    = 'robotapp_repeat_n'
-const LS_REPEAT_COE  = 'robotapp_repeat_continue_on_error'
 const LS_PRESETS_S = 'robotapp_presets_structured'   // saved plan presets (Structured step editor)
 
 interface Preset { name: string; text: string }
@@ -150,8 +150,10 @@ function loadCells(): string[] {
 interface Props {
   toolbarExtra?: React.ReactNode    // shown before Run / Stop (the page's voice toggle and Guide)
   running: boolean
+  repeatAsk?: RepeatAsk | null     // the shown robot's paused repeat loop asks: continue or stop?
+  onRepeatAnswer?: (go: boolean) => void
   lang: Lang                       // the app's one language (Agent runs and Q&A), picked in the page's control bar
-  onRun: (plan: string, direct: boolean, lang?: string, planner?: PlannerMethod, planOnly?: boolean, logData?: boolean, logTarget?: 'backend' | 'frontend', repeatTimes?: number, continueOnError?: boolean, logAll?: boolean) => void
+  onRun: (plan: string, direct: boolean, lang?: string, planner?: PlannerMethod, planOnly?: boolean, logData?: boolean, logTarget?: 'backend' | 'frontend', repeatTimes?: number, onFail?: RepeatPolicy, logAll?: boolean) => void
   onStop: () => void
   stopText?: string   // 'Stop' / 'Stopping…' / 'Force reset' (same flow as the other Cancel buttons)
   recordEnabled: boolean
@@ -163,7 +165,7 @@ interface Props {
   onOpenGuide?: () => void           // the ⋯ menu's Guide item (the page owns the Guide dialog)
 }
 
-export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop, stopText, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial, onOpenGuide }: Props) {
+export default function AgentPanel({ toolbarExtra, running, repeatAsk, onRepeatAnswer, lang, onRun, onStop, stopText, recordEnabled, onToggleRecord, manualRecording, onToggleManualRecord, backendLogDir, trial, onOpenGuide }: Props) {
   const [cells,      setCells]      = useState<string[]>(['', '', '', ''])
   const [activeCell, setActiveCell] = useState(0)
   const [logData,    setLogData]    = useState(true)
@@ -172,7 +174,7 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
   // Repeat execution of a structured plan: once / N times / forever.
   const [repeatMode, setRepeatMode] = useState<'once' | 'n' | 'forever'>('once')
   const [repeatN,    setRepeatN]    = useState(2)
-  const [repeatCOE,  setRepeatCOE]  = useState(false)   // continue looping on failure
+  const [onFail,      setOnFail]     = useState<RepeatPolicy>(DEFAULT_POLICY)   // what a repeat loop does after a run
 
   // Saved presets of the Structured step editor — picked from a dropdown, edited via Save/Del
   const [structPresets,  setStructPresets]  = useState<Preset[]>([])
@@ -190,7 +192,7 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
     if (rm === 'once' || rm === 'n' || rm === 'forever') setRepeatMode(rm)
     const rn = parseInt(localStorage.getItem(LS_REPEAT_N) || '', 10)
     if (Number.isFinite(rn) && rn >= 1) setRepeatN(rn)
-    setRepeatCOE(localStorage.getItem(LS_REPEAT_COE) === '1')
+    setOnFail(migratePolicy(localStorage.getItem(LS_REPEAT_ON_FAIL), localStorage.getItem(LS_REPEAT_COE_OLD)))   // the old key is only read
     setStructPresets(loadPresets(LS_PRESETS_S))
   }, [])
 
@@ -207,11 +209,11 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
   const repeatTimes = repeatMode === 'once' ? 1 : repeatMode === 'forever' ? Infinity : Math.max(1, repeatN)
   const updateRepeatMode = (v: 'once' | 'n' | 'forever') => { setRepeatMode(v); localStorage.setItem(LS_REPEAT_MODE, v) }
   const updateRepeatN = (v: number) => { setRepeatN(v); localStorage.setItem(LS_REPEAT_N, String(v)) }
-  const updateRepeatCOE = (v: boolean) => { setRepeatCOE(v); localStorage.setItem(LS_REPEAT_COE, v ? '1' : '0') }
+  const updateOnFail = (v: RepeatPolicy) => { setOnFail(v); localStorage.setItem(LS_REPEAT_ON_FAIL, v) }
 
   // Structured mode runs the ACTIVE cell (blue border) — editing a cell through
   // its ⤢ editor makes it active too, else Run would send another cell's plan.
-  const run = () => onRun(cells[activeCell], true, lang, undefined, undefined, logData, logTarget, repeatTimes, repeatCOE, logAll)
+  const run = () => onRun(cells[activeCell], true, lang, undefined, undefined, logData, logTarget, repeatTimes, onFail, logAll)
 
   const updateLogData = (val: boolean) => {
     setLogData(val)
@@ -322,6 +324,13 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
           <span className={manualRecording ? 'animate-pulse' : ''}>{manualRecording ? '⏹' : '⏺'}</span>
           {manualRecording && 'stop'}
         </button>
+        {repeatAsk && (
+          <div data-testid="repeat-ask" className="flex items-center gap-2 px-2 py-1 text-xs rounded border border-amber-400 bg-amber-50 text-amber-900 shrink-0">
+            <span>{askText(repeatAsk)}</span>
+            <button data-testid="repeat-continue" onClick={() => onRepeatAnswer?.(true)} className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded">Continue</button>
+            <button data-testid="repeat-stop" onClick={() => onRepeatAnswer?.(false)} className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded">Stop</button>
+          </div>
+        )}
         {/* Repeat execution: ×1 / ×N / ∞ */}
         <div className="flex items-center gap-1 text-[11px] text-gray-600 shrink-0">
           {running && repeatMode !== 'once' && (
@@ -348,10 +357,13 @@ export default function AgentPanel({ toolbarExtra, running, lang, onRun, onStop,
             />
           )}
           {repeatMode !== 'once' && (
-            <label className="flex items-center gap-1 cursor-pointer" title="Keep looping even if a run fails; default stops on the first failure">
-              <input type="checkbox" checked={repeatCOE} onChange={e => updateRepeatCOE(e.target.checked)} className="accent-blue-600" />
-              keep on error
-            </label>
+            <select data-testid="repeat-policy" value={onFail} onChange={e => updateOnFail(e.target.value as RepeatPolicy)}
+              title="After a run: ? ask me (default) · ⏹ stop at the first failure · ▶ always continue"
+              className="bg-white border border-gray-300 text-gray-800 rounded px-0.5 py-0.5 w-9">
+              <option value="ask" title="Ask me after every run: continue or stop">?</option>
+              <option value="stop" title="Stop at the first failed run">⏹</option>
+              <option value="continue" title="Continue even if a run fails">▶</option>
+            </select>
           )}
         </div>
         <div className="ml-auto flex items-center gap-2">

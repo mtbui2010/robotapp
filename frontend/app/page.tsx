@@ -33,6 +33,7 @@ import { answerBy, createEchoGuard } from '../lib/chatMic'
 import { useHandsFree } from '../lib/useHandsFree'
 import { noteForListenReply, stopAction, stopLabel, canStop, canType, isLost, needsForce } from '../lib/chatRun'
 import { useRobotSessions } from '../lib/useRobotSessions'
+import { nextStep, askText, DEFAULT_POLICY, type RepeatPolicy } from '../lib/repeatPolicy'
 import { robotKey, cancelTarget, startBlock, statusMap, optionText, appendLine, settleHeard, closeLine, verdictOf, beginRun, endRun, patch, HEARD_PENDING, type SessionKey, type RunHandles } from '../lib/robotSessions'
 import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri, handsFreeBusy, ownedByDropped, sessionUrl, micMayEnd } from '../lib/runHelpers'
 import { LS_PLANNER, PLANNER_EVENT, DEFAULT_PLANNER, LS_PLAN_ONLY, storedPlanOnly, storedPlanner, type PlannerMethod } from '../lib/planner'
@@ -481,8 +482,12 @@ export default function Home() {
           (ev.status != null ? (ev.status === 'success' || ev.status === 'planned') : ev.success === true)
         const ctrl = h.repeat
         ctrl.remaining -= 1
-        if (ctrl.active && ctrl.remaining > 0 && (ok || ctrl.continueOnError)) {
+        const step = nextStep(ctrl.policy, ok, ctrl.remaining, ctrl.active)
+        if (step === 'next') {
           setTimeout(() => { if (h.repeat.active) fireRef.current(key) }, 0)
+        } else if (step === 'ask') {   // the loop pauses; the session holds the question until Continue / Stop
+          const q = { n: get(key).trial, total: ctrl.total, ok }
+          applyAt(key, (st, k) => patch(st, k, { repeatAsk: q })); addQaLine(key, 'system', askText(q))
         } else {
           ctrl.active = false
           applyAt(key, (st, k) => endRun(st, k, verdictOf(ev), Date.now()))
@@ -512,7 +517,7 @@ export default function Home() {
   }, [get, put, set, apply, applyAt, sess.stable, dispatch, H, shownKey, emit, noteOwnEvent, speak, beginRecording, endRecording, setRecordingPrefix])
   useEffect(() => { fireRef.current = fire }, [fire])
 
-  const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, continueOnError = false, logAll = true, voice = true, screenRec = true) => {
+  const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, onFail: RepeatPolicy = DEFAULT_POLICY, logAll = true, voice = true, screenRec = true) => {
     if (!finalPrompt.trim()) return
     const key = shownKey(), h = H(key)       // the run belongs to the robot on screen, whatever is picked later
     const why = startBlock(getStore(), key)   // one client per robot (rule 7): a busy robot takes no second command from this tab
@@ -537,7 +542,7 @@ export default function Home() {
     }
     loadSpeechRate()                  // Global Configs may have changed since the page loaded
     h.args = { finalPrompt, direct, lang, planner, planOnly, logData, logTarget, logAll, voice, screenRec }
-    h.repeat = { remaining: repeatTimes, continueOnError, active: true }
+    h.repeat = { remaining: repeatTimes, total: repeatTimes, policy: onFail, active: true }
     h.langs = robotLangsRef.current   // this run speaks with the languages of its own robot
     apply(st => beginRun(st, key, get(key).url || api.getAgentUrl(), Date.now()))   // freezes the url; fire() bumps the trial to 1
     fire(key)
@@ -583,6 +588,7 @@ export default function Home() {
     const cur = get(key).run, h = H(key)
     if (stopAction(cur) === 'force-reset') { reset(key, 'force reset'); return }
     h.repeat.active = false   // cancel any pending repeat
+    if (get(key).repeatAsk) { apply(st => endRun(st, key, 'aborted', Date.now())); addQaLine(key, 'system', '■ stopped'); return }   // paused and asking: nothing runs, the loop ends
     stopNudge(h)
     h.stopReq = true
     abortCaptures(key)
@@ -592,6 +598,14 @@ export default function Home() {
     api.cancelRunAt(get(key).url).then(() => dispatch(key, { t: 'cancel-ack' })).catch(() => {})
     if (!cur.ws) { apply(st => endRun(st, key, 'aborted', Date.now())); endRec(key) }
   }, [get, apply, dispatch, H, abortCaptures, reset])
+  // Continue / Stop of the question a paused repeat loop asks (the shown robot's session holds it)
+  const answerRepeat = useCallback((go: boolean) => {
+    const key = sess.stable(shownKey()), a = get(key).repeatAsk
+    if (!a) return
+    if (go && H(key).repeat.active) { set(key, { repeatAsk: null }); addQaLine(key, 'system', '▶ continue'); fireRef.current(key) }
+    else { H(key).repeat.active = false; applyAt(key, (st, k) => endRun(st, k, a.ok ? 'success' : 'failed', Date.now())); addQaLine(key, 'system', `■ stopped after run ${a.n}`) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [get, set, applyAt, H, shownKey])
   // Stop of the robot on screen (every Stop / Cancel button of a robot calls it). Cancel adds the Fleet tab: there it is the fleet's Stop all
   const stopShown = useCallback(() => { const t = cancelTarget(getStore()); if (t) stop(t.key) }, [getStore, stop])
   const cancel = useCallback(() => { if (mainTab === 'fleet' && fleetStopRef.current) fleetStopRef.current(); else stopShown() }, [mainTab, stopShown])
@@ -700,7 +714,7 @@ export default function Home() {
       logAll = localStorage.getItem('robotapp_log_all') === '1'
     } catch { /* no storage */ }
     h.nextFromChat = true
-    run(text, false, lang, planner, planOnly, logData, logTarget, 1, false, logAll, true)
+    run(text, false, lang, planner, planOnly, logData, logTarget, 1, 'ask', logAll, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, lang, planner, planOnly, fleetMode, fleetChat])
   const sendChatRef = useRef(sendChat); sendChatRef.current = sendChat
@@ -814,7 +828,7 @@ export default function Home() {
             <div className="p-3 border-b border-gray-200 flex-shrink-0">
               {/* Button-panel shortcuts run silently — no voice announcements. */}
               <ButtonPanel
-                onRun={plan => run(plan, true, 'en', 'grace', false, false, 'frontend', 1, false, true, false, false)}   // a button: no data log, no voice, no screen recording
+                onRun={plan => run(plan, true, 'en', 'grace', false, false, 'frontend', 1, 'ask', true, false, false)}   // a button: no data log, no voice, no screen recording
                 refreshKey={skillRefreshKey} />
             </div>
             <div className="p-4 flex-1 overflow-y-auto">
@@ -849,7 +863,7 @@ export default function Home() {
               ⚠ no {voiceLang} voice
             </span>
           )}
-          </>} onOpenGuide={() => setGuideOpen(true)} running={running} lang={lang} onRun={run} onStop={stopShown} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
+          </>} onOpenGuide={() => setGuideOpen(true)} running={running} repeatAsk={sess.shown.repeatAsk} onRepeatAnswer={answerRepeat} lang={lang} onRun={run} onStop={stopShown} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
           </section>
           <GuidePanel open={guideOpen} onOpenChange={setGuideOpen} hideTrigger />
 

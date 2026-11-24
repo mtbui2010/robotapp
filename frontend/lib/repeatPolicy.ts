@@ -47,3 +47,10 @@ export function migratePolicy(storedNew: string | null | undefined, storedOld: s
   if (storedOld === '0') return 'stop'
   return DEFAULT_POLICY
 }
+
+/** The question a paused loop is waiting on (held by the SESSION of the robot). `n` = runs done, `total` = Infinity for "forever". */
+export interface RepeatAsk { n: number; total: number; ok: boolean }
+
+/** "Run 2 of 3 succeeded. Continue or stop?" (forever: no "of M"). */
+export const askText = (a: RepeatAsk): string =>
+  `Run ${a.n}${Number.isFinite(a.total) ? ` of ${a.total}` : ''} ${a.ok ? 'succeeded' : 'failed'}. Continue or stop?`

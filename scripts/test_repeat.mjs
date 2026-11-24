@@ -85,3 +85,9 @@ test('constants: the storage keys and the default', () => {
   assert.equal(R.DEFAULT_POLICY, 'ask')
   assert.deepEqual([...R.POLICIES], ['ask', 'stop', 'continue'])
 })
+
+test('askText: run N of M, succeeded or failed; forever has no M', () => {
+  assert.equal(R.askText({ n: 2, total: 3, ok: true }), 'Run 2 of 3 succeeded. Continue or stop?')
+  assert.equal(R.askText({ n: 1, total: 3, ok: false }), 'Run 1 of 3 failed. Continue or stop?')
+  assert.equal(R.askText({ n: 4, total: Infinity, ok: true }), 'Run 4 succeeded. Continue or stop?')
+})

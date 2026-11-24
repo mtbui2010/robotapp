@@ -338,3 +338,19 @@ test('hands-free: busy while a BACKGROUND run holds the mic; the shown robot kee
   const loud = S.newHandles(); loud.busy = 1
   assert.equal(H.handsFreeBusy('beta', 'beta', same, loud, 1000), true)
 })
+
+test('a paused repeat loop (repeatAsk): the session is waiting, busy, blocks a second command, and ends with the run', () => {
+  let st = S.select(S.EMPTY_STORE, ka, A)
+  st = S.select(st, kb, B)
+  st = S.beginRun(st, ka, A, 1)
+  assert.equal(S.statusOf(st.sessions[ka]), 'running')
+  st = S.patch(st, ka, { repeatAsk: { n: 1, total: 3, ok: true } })   // run 1 ended, the loop asks
+  assert.equal(S.statusOf(st.sessions[ka]), 'waiting')
+  assert.equal(S.statusMap(st)[ka], 'waiting')
+  assert.match(S.optionText('alpha', 'waiting'), /◆.*asks you/)
+  assert.match(S.startBlock(st, ka) ?? '', /already/)
+  assert.equal(S.startBlock(st, kb), null)          // asking on a never blocks b
+  st = S.endRun(st, ka, 'success', 2)
+  assert.equal(st.sessions[ka].repeatAsk, null)
+  assert.equal(S.statusOf(st.sessions[ka]), 'idle')
+})

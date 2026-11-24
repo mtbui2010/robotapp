@@ -6,6 +6,7 @@ import type { AgentEvent } from './types'
 import type { ChatLine } from '../components/ChatPanel'
 import type { Step } from '../components/PlanPanel'
 import type { RobotLanguages } from './robotLanguages'
+import type { RepeatAsk, RepeatPolicy } from './repeatPolicy'
 
 /** 'robot:<registry name>' | 'fleet:<fleet name>' = the drop-down's <option value>. */
 export type SessionKey = string
@@ -35,6 +36,7 @@ export interface RobotSession {
   startedAt: number | null
   endedAt: number | null
   verdict: Verdict | null      // the last finished run
+  repeatAsk: RepeatAsk | null  // a repeat loop is paused and asks the person (continue or stop?): the robot counts as busy
 }
 export interface SessionStore { shown: SessionKey | null; sessions: Readonly<Record<SessionKey, RobotSession>> }
 
@@ -45,7 +47,7 @@ export interface RunArgs {
 /** What is not data (socket, timers, resolvers, counters): one object per key, kept by the hook, never read by a render. */
 export interface RunHandles {
   ws: WebSocket | null; nudge: ReturnType<typeof setInterval> | null; stopTimer: ReturnType<typeof setTimeout> | null
-  repeat: { remaining: number; continueOnError: boolean; active: boolean }
+  repeat: { remaining: number; total: number; policy: RepeatPolicy; active: boolean }
   args: RunArgs | null; textAsk: ((text: string | null) => void) | null
   stopReq: boolean; epoch: number; busy: number; speechUntil: number; choiceAt: number
   fromChat: boolean; nextFromChat: boolean
@@ -56,7 +58,7 @@ export interface RunHandles {
 let nextSid = 1
 export const newHandles = (): RunHandles => ({
   sid: String(nextSid++),
-  ws: null, nudge: null, stopTimer: null, repeat: { remaining: 0, continueOnError: false, active: false },
+  ws: null, nudge: null, stopTimer: null, repeat: { remaining: 0, total: 0, policy: 'ask', active: false },
   args: null, textAsk: null, stopReq: false, epoch: 0, busy: 0, speechUntil: 0, choiceAt: 0,
   fromChat: false, nextFromChat: false, langs: null, heard: null, recording: false, chain: Promise.resolve(),
 })
@@ -66,7 +68,7 @@ export const EMPTY_STORE: SessionStore = { shown: null, sessions: {} }
 export function newSession(key: SessionKey, url: string): RobotSession {
   return {
     key, url, run: INITIAL_RUN, running: false, trial: 0, runMethod: '', events: [], steps: [], logImage: null, qaLog: [],
-    listenId: null, choice: null, qaSkill: false, heardLang: null, startedAt: null, endedAt: null, verdict: null,
+    listenId: null, choice: null, qaSkill: false, heardLang: null, startedAt: null, endedAt: null, verdict: null, repeatAsk: null,
   }
 }
 
@@ -78,7 +80,7 @@ export function statusOf(s: RobotSession): SessionStatus {
     case 'waiting': return 'waiting'
     case 'stopping': return 'stopping'
     case 'running': return 'running'
-    default: return s.run.alive ? 'lost' : s.running ? 'running' : 'idle'   // idle phase + running flag = between two iterations of a repeat
+    default: return s.run.alive ? 'lost' : s.repeatAsk ? 'waiting' : s.running ? 'running' : 'idle'   // idle phase + running flag = between two iterations of a repeat
   }
 }
 const isBusy = (s: RobotSession): boolean => statusOf(s) !== 'idle'
@@ -114,10 +116,10 @@ export const applyRun = (st: SessionStore, key: SessionKey, e: RunEvent): Sessio
 
 /** A run starts: freezes the url, clears the last run (the chat log stays). */
 export const beginRun = (st: SessionStore, key: SessionKey, url: string, now: number): SessionStore =>
-  patch(st, key, { url, running: true, startedAt: now, endedAt: null, events: [], steps: [], logImage: null, trial: 0, verdict: null })
+  patch(st, key, { url, running: true, startedAt: now, endedAt: null, events: [], steps: [], logImage: null, trial: 0, verdict: null, repeatAsk: null })
 /** The run (or the last repeat) is over: the result stays visible; the pending asks go. */
 export const endRun = (st: SessionStore, key: SessionKey, verdict: Verdict, now: number): SessionStore =>
-  patch(st, key, { running: false, verdict, endedAt: now, listenId: null, choice: null, qaSkill: false })
+  patch(st, key, { running: false, verdict, endedAt: now, listenId: null, choice: null, qaSkill: false, repeatAsk: null })
 
 export interface Listed { name: string; url?: string }
 /** A robot left the registry: its session is dropped (the caller closes the socket and cancels); a robot renamed in place (same url, new name,
