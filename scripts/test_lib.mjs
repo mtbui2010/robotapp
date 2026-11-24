@@ -929,3 +929,10 @@ test('planSequence: a socket lost during a plan is an error (Retry / Skip), a St
   assert.equal(SQ.afterRun(running, SQ.lostVerdict(running, true)).kind, 'idle')
 })
 
+
+test('planSequence: bar guard: a lost run blocks Retry (cancel it first) and the bar Stop cancels it; otherwise Stop only ends the sequence', () => {
+  assert.equal(SQ.barGuard(false).retryBlock, null)
+  assert.equal(SQ.barGuard(false).stopCancelsRun, false)
+  assert.match(SQ.barGuard(true).retryBlock, /Cancel the lost run first/)
+  assert.equal(SQ.barGuard(true).stopCancelsRun, true)
+})

@@ -28,7 +28,7 @@ import { reduceSteps } from '../lib/planSteps'
 import { useForeignRun } from '../lib/useForeignRun'
 import ForeignRunBadge from '../components/ForeignRunBadge'
 import SequenceBar from '../components/SequenceBar'
-import { splitPlans, isSequence, lostVerdict, start as seqStart, next as seqNext, retry as seqRetry, skip as seqSkip, IDLE as SEQ_IDLE } from '../lib/planSequence'
+import { splitPlans, isSequence, barGuard, lostVerdict, start as seqStart, next as seqNext, retry as seqRetry, skip as seqSkip, IDLE as SEQ_IDLE } from '../lib/planSequence'
 import { useVoiceOutput, stillWorkingPhrase } from '../lib/useVoiceOutput'
 import { speakAndWait, recognizeOnce, recordPhrase, primeMic, playEarcon, playAlarm, stopRecording, abortRecognition } from '../lib/hriVoice'
 import { answerBy, createEchoGuard } from '../lib/chatMic'
@@ -854,7 +854,7 @@ export default function Home() {
             <div className="p-4 flex-1 overflow-y-auto">
               {blockWhy && !fleetMode && <div data-testid="start-block" className="mb-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">{blockWhy}</div>}
               <ForeignRunBadge run={foreignRun} />
-              {!fleetMode && <SequenceBar seq={seq} onNext={() => seqGo(seqNext)} onRetry={() => seqGo(seqRetry)} onSkip={seqSkipClick} onStop={seqStopClick} />}
+              {!fleetMode && <SequenceBar seq={seq} lost={isLost(rs)} onNext={() => seqGo(seqNext)} onRetry={() => seqGo(seqRetry)} onSkip={seqSkipClick} onStop={() => { if (barGuard(isLost(rs)).stopCancelsRun) stopShown(); seqStopClick() }} />}
               <PlanPanel events={agentEvents} steps={agentSteps} planMethod={runMethod} running={running || (!!foreignRun && !foreignRun.ended)} />
             </div>
           </div>

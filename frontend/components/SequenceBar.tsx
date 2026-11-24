@@ -1,17 +1,18 @@
 'use client'
-import { chips, nextPlan, planTitle, progressLabel, type SeqState } from '../lib/planSequence'
+import { barGuard, chips, nextPlan, planTitle, progressLabel, type SeqState } from '../lib/planSequence'
 
 // The bar of a preset that is a sequence of plans (docs/features/plan-sequence.md): which plan runs, and, when one is over, the click that
 // runs the next one (or Retry / Skip after a failure) or stops. Nothing moves by itself between two plans.
 const BTN = 'px-2 py-0.5 text-xs rounded whitespace-nowrap'
 
-export default function SequenceBar({ seq, onNext, onRetry, onSkip, onStop }: {
-  seq: SeqState; onNext: () => void; onRetry: () => void; onSkip: () => void; onStop: () => void
+export default function SequenceBar({ seq, lost, onNext, onRetry, onSkip, onStop }: {
+  seq: SeqState; lost: boolean; onNext: () => void; onRetry: () => void; onSkip: () => void; onStop: () => void
 }) {
   if (seq.kind === 'idle' || seq.plans.length < 2) return null
   const n = seq.plans.length
   const nxt = nextPlan(seq)
   const marks = chips(seq)
+  const guard = barGuard(lost)
   const chipCls = (m: string) => m === '▶' ? 'bg-blue-600 text-white' : m === '✓' ? 'bg-green-100 text-green-700 border-green-300'
     : m === '✗' ? 'bg-red-100 text-red-700 border-red-300' : m === '⏭' ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-gray-100 text-gray-500'
   return (
@@ -36,11 +37,13 @@ export default function SequenceBar({ seq, onNext, onRetry, onSkip, onStop }: {
       </>)}
       {seq.kind === 'failed' && (<>
         <span className="text-red-700">Plan {seq.index + 1} failed: the robot stayed where it stopped.</span>
-        <button data-testid="seq-retry" onClick={onRetry} className={`${BTN} bg-blue-600 hover:bg-blue-500 text-white`}
-          title="Run this plan again from its first step">↻ Retry plan {seq.index + 1}</button>
+        <button data-testid="seq-retry" onClick={onRetry} disabled={!!guard.retryBlock}
+          className={`${BTN} bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed`}
+          title={guard.retryBlock ?? 'Run this plan again from its first step'}>↻ Retry plan {seq.index + 1}</button>
         <button data-testid="seq-skip" onClick={onSkip} className={`${BTN} bg-amber-500 hover:bg-amber-400 text-white`}
           title={seq.index + 1 >= n ? 'Count this plan as over: the sequence ends' : 'Count this plan as over; the next plan still waits for your click'}>⏭ Skip</button>
-        <button data-testid="seq-stop" onClick={onStop} className={`${BTN} bg-red-600 hover:bg-red-500 text-white`}>■ Stop</button>
+        <button data-testid="seq-stop" onClick={onStop} className={`${BTN} bg-red-600 hover:bg-red-500 text-white`}
+          title={guard.stopCancelsRun ? 'End the sequence and cancel the run this tab lost track of' : 'End the sequence; the robot stays where it is'}>■ Stop</button>
       </>)}
       {seq.kind === 'done' && (<>
         <span className="text-green-700">Sequence done ({n} plans{seq.marks.includes('skipped') ? `, ${seq.marks.filter(m => m === 'skipped').length} skipped` : ''}).</span>

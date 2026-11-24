@@ -30,10 +30,15 @@ movej::fold
 
 - A plan that ends in a plan-only run (`planned`) counts as done. Cancel / Stop / Reset while a plan runs (the verdict `aborted`) ends the sequence.
 - A plan **lost to the network** (the socket closes without a `done`, the agent restarts) is an error, not a Stop: the bar shows Retry / Skip / Stop, so you do not start again from plan 1.
+  The backend run may still live, so Retry is **disabled** (its tooltip says so) until you press the main **Cancel**: that ends the lost run and keeps the
+  place in the sequence; then **Retry** (your click) runs the plan again. The bar's **■ Stop** in this state cancels the lost run too and ends the sequence.
+  Nothing starts by itself (rule 8).
 - Each chip keeps what happened to its plan: `✓` done, `✗` failed, `⏭` skipped, `○` not run yet, `▶` running. A skipped plan is never shown as done; the last bar says `Sequence done (3 plans, 1 skipped)`.
 - On a failure the robot stops where it is, as for any plan (rule: stop in place); the bar never continues by itself.
 - Repeat (once / N times) and "keep on error" apply to **each plan** like a plain run; the bar waits until the plan's repeats are over. Repeat **forever** would never get past plan 1, so in a sequence each plan runs once (the Run button's tooltip says so).
-- Running any other command in the same robot's session (a shortcut button, the chat, a one-plan cell) ends a waiting sequence.
+- A command started through `run()` of this tab (a shortcut button, the chat, a one-plan cell, the Agent panel Run) ends a waiting sequence. A base move from the Map tab
+  or a teleop pose does not go through `run()` and leaves the sequence as it is; Next still needs your click (rule 8), so nothing moves by itself.
+- The robot drop-down marks a robot whose sequence waits (`◇ name · waits for Next`) or failed (`◇ name · plan failed: Retry / Skip / Stop`); a running or lost run keeps its own mark.
 - The sequence belongs to the **robot's session** (per-robot sessions, [sessions.md](sessions.md)): picking another robot shows that robot's bar; the first
   robot's sequence waits for its own click.
 

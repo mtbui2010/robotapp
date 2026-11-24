@@ -371,3 +371,19 @@ test('sequence of plans: a robot renamed in place keeps a sequence that waits fo
   assert.deepEqual(S.reconcile(idle, [{ name: 'new', url: A }], [{ name: 'old', url: A }]).renamed, [])
 })
 
+
+test('sequence of plans: a robot whose sequence waits or failed shows a mark in the drop-down; a running or lost run keeps its own mark', () => {
+  const seq = kind => ({ kind, plans: ['a::1', 'b::2'], index: 0, marks: ['ok', 'pending'] })
+  let st = S.patch(two(), ka, { seq: seq('waiting') }); st = S.patch(st, kb, { seq: seq('failed') })
+  assert.deepEqual(S.statusMap(st), { [ka]: 'next', [kb]: 'seqfailed' })
+  assert.equal(S.optionText('alpha', 'next'), '◇ alpha · waits for Next')
+  assert.equal(S.optionText('beta', 'seqfailed', '🤖 '), '◇ beta · plan failed: Retry / Skip / Stop')
+  // the mark is only a label: a waiting sequence is still an idle robot that takes the Next click (rule 7 check unchanged)
+  assert.equal(S.statusOf(S.sessionOf(st, ka)), 'idle')
+  assert.equal(S.startBlock(st, ka), null)
+  // a done sequence (the Close button) shows no mark; a lost run shows the lost mark, not the sequence mark
+  assert.deepEqual(S.statusMap(S.patch(two(), ka, { seq: seq('done') })), {})
+  let lost = S.patch(two(), kb, { seq: seq('failed') }); lost = S.beginRun(lost, kb, B, 1)
+  lost = S.applyRun(lost, kb, { t: 'start' }); lost = S.applyRun(lost, kb, { t: 'ws-close' })
+  assert.equal(S.statusMap(lost)[kb], 'lost')
+})

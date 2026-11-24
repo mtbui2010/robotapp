@@ -9,7 +9,7 @@ import FleetEditor from './FleetEditor'
 import { useFleets } from './useFleets'
 import { fleetsUsing, parseSelection, selectorOptions } from '../lib/fleetEdit'
 import { followRobot, forgetRobot } from '../lib/fleetRegistry'
-import { optionText, robotKey, type SessionStatus } from '../lib/robotSessions'
+import { optionText, robotKey, type SessionMark } from '../lib/robotSessions'
 import ServerListEditor, {
   KIND_DEFAULT_NAME, STATUS_DOT, defaultRows, rowsError, rowsFromConfig, rowsToConfig, type ServerRow,
 } from './ServerListEditor'
@@ -165,7 +165,7 @@ interface Props {
   onActiveChange?: (t: ActiveTarget) => void      // the robot / site this tab drives (shown by the Cameras / Map tabs)
   onFleetChosen?: (name: string) => void          // a fleet was picked in the robot / fleet drop-down (the Fleet tab opens)
   switchRef?: React.MutableRefObject<((name: string) => Promise<void>) | null>   // the page's tab-row drop-down switches the robot through this
-  marks?: Record<string, SessionStatus>           // robots whose session in this tab is not idle, by option value: the drop-down shows a running mark
+  marks?: Record<string, SessionMark>           // robots whose session in this tab is not idle, by option value: the drop-down shows a running mark
 }
 
 function getHead(name: string): string {

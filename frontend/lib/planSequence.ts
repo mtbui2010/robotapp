@@ -117,3 +117,9 @@ export function chips(s: SeqState): { label: string; mark: '✓' | '▶' | '✗'
     return { label: String(i + 1), mark: glyph as '✓' | '▶' | '✗' | '⏭' | '○' }
   })
 }
+
+/** What the bar does when the shown run is LOST (the socket closed without a `done`: the backend run may still live, rule 7).
+ *  Retry would be a second command, so it waits for the main Cancel (which keeps the place in the sequence); the bar's Stop ends the lost run too. */
+export function barGuard(lost: boolean): { retryBlock: string | null; stopCancelsRun: boolean } {
+  return { retryBlock: lost ? 'This tab lost track of the run: Cancel the lost run first (Cancel button), then Retry' : null, stopCancelsRun: lost }
+}

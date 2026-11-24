@@ -163,16 +163,24 @@ export function syncUrls(st: SessionStore, robots: Listed[]): SessionStore {
 
 // ── what the operator sees ──────────────────────────────────────────────────────────────────────
 /** Only the non-idle sessions: one entry per robot that is running (or waiting / stopping / lost). */
-export function statusMap(st: SessionStore): Record<SessionKey, SessionStatus> {
-  const m: Record<SessionKey, SessionStatus> = {}
-  for (const [k, s] of Object.entries(st.sessions)) { const x = statusOf(s); if (x !== 'idle') m[k] = x }
+export function statusMap(st: SessionStore): Record<SessionKey, SessionMark> {
+  const m: Record<SessionKey, SessionMark> = {}
+  for (const [k, s] of Object.entries(st.sessions)) {
+    const x = statusOf(s)
+    if (x !== 'idle') m[k] = x
+    else if (s.seq.kind === 'waiting') m[k] = 'next'          // an idle robot whose sequence waits for the operator's click
+    else if (s.seq.kind === 'failed') m[k] = 'seqfailed'
+  }
   return m
 }
-const MARKS: Record<Exclude<SessionStatus, 'idle'>, [string, string]> = {
+/** The drop-down mark: a busy status, or a sequence that waits ('next') or failed ('seqfailed'); the latter two are labels only (statusOf stays idle). */
+export type SessionMark = SessionStatus | 'next' | 'seqfailed'
+const MARKS: Record<Exclude<SessionMark, 'idle'>, [string, string]> = {
   running: ['●', 'running'], waiting: ['◆', 'asks you'], stopping: ['○', 'stopping'], lost: ['▲', 'lost'],
+  next: ['◇', 'waits for Next'], seqfailed: ['◇', 'plan failed: Retry / Skip / Stop'],
 }
 /** Text of an <option> (text only; the mark goes first so a truncated closed select still shows it). */
-export function optionText(label: string, status: SessionStatus, idlePrefix = ''): string {
+export function optionText(label: string, status: SessionMark, idlePrefix = ''): string {
   if (status === 'idle') return `${idlePrefix}${label}`
   const [mark, word] = MARKS[status]
   return `${mark} ${label} · ${word}`
