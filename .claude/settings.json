@@ -10,7 +10,15 @@
       "Bash(./node_modules/.bin/tsc --noEmit*)",
       "Bash(npm view *)",
       "Bash(make help)",
-      "Bash(nvidia-smi*)"
+      "Bash(nvidia-smi*)",
+   "Bash(make ci)",
+   "Bash(make unit)",
+   "Bash(make typecheck)",
+   "Bash(make lint)",
+   "Bash(curl -s http://127.0.0.1:*/runs*)",
+   "Bash(curl -s -m * http://127.0.0.1:*/runs*)",
+   "Bash(curl -s http://127.0.0.1:*/skills*)",
+   "Bash(curl -s -m * http://127.0.0.1:*/skills*)"
     ]
   }
 }
