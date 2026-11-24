@@ -28,6 +28,7 @@ const TB = await load('targetBadge')
 const TL = await load('teleop')
 const RC = await load('recorder')
 const RS = await load('recordings')
+const SQ = await load('planSequence')
 const PS = await load('poses')
 
 const FIX = join(ROOT, 'scripts/fixtures/events')
@@ -814,3 +815,117 @@ test('recorder: recording before the move is off by default and kept per row', (
   assert.deepEqual(RC.parseRecRows(JSON.stringify({ rows: [{}, {}], before: [false, true] }), null).before, [false, true])
   assert.deepEqual(RC.parseRecRows(JSON.stringify({ rows: [{}, {}], before: ['yes', 1, true] }), null).before, [false, false])   // only a real true counts
 })
+
+// ── lib/planSequence.ts: a preset is a sequence of plans split by a `---` line ────────────────────────────────────────────────────
+test('planSequence: a text without a --- line is one plan, so the old single run is unchanged', () => {
+  const t = 'movej::home\nlift::0.5'
+  assert.deepEqual(SQ.splitPlans(t), [t])
+  assert.equal(SQ.isSequence(SQ.splitPlans(t)), false)
+  assert.deepEqual(SQ.splitPlans(''), [''])
+})
+
+test('planSequence: --- splits the plans; blank plans, spaces round the marker and CRLF are tolerated; join is the inverse', () => {
+  const t = 'move::sofa\n---\n\nmovej::give\nlift::0.4\r\n  ---  \n---\ngrip::open\n'
+  const plans = SQ.splitPlans(t)
+  assert.deepEqual(plans, ['move::sofa', 'movej::give\nlift::0.4', 'grip::open'])
+  assert.deepEqual(SQ.splitPlans(SQ.joinPlans(plans)), plans)
+  assert.equal(SQ.joinPlans(['a::1', 'b::2']), 'a::1\n---\nb::2')
+})
+
+test('planSequence: a skill argument that merely contains dashes is not a separator', () => {
+  assert.deepEqual(SQ.splitPlans('say::a---b\n--- x\n----'), ['say::a---b\n--- x\n----'])
+})
+
+test('planSequence: planTitle names the first skills of a plan, parallel groups and prefixes included', () => {
+  assert.equal(SQ.planTitle('movej::give\n!lift::0.4 && head::down\ngrip::open\n# note\nmove::x'), 'movej → lift → grip → …')
+  assert.equal(SQ.planTitle('movej::give'), 'movej')
+  assert.equal(SQ.planTitle('just words here'), 'just words here')
+})
+
+test('planSequence: Run -> plan 1 -> waiting -> Next -> plan 2 ... -> done; Next only moves from waiting', () => {
+  const plans = ['a::1', 'b::2', 'c::3']
+  let s = SQ.start(plans)
+  assert.deepEqual([s.kind, s.index], ['running', 0])
+  assert.equal(SQ.next(s), s)                                   // a click on Next while a plan runs does nothing
+  s = SQ.finish(s, true)
+  assert.deepEqual([s.kind, s.index], ['waiting', 0])
+  assert.equal(SQ.nextPlan(s), 'b::2')
+  s = SQ.next(s); assert.deepEqual([s.kind, s.index], ['running', 1])
+  s = SQ.finish(s, true); s = SQ.next(s)
+  assert.deepEqual([s.kind, s.index], ['running', 2])
+  s = SQ.finish(s, true)
+  assert.equal(s.kind, 'done')                                  // the last plan: no Next
+  assert.equal(SQ.nextPlan(s), null)
+})
+
+test('planSequence: a failed plan offers Retry (same plan) or Skip (the next one still waits for its click), never goes on by itself', () => {
+  const plans = ['a::1', 'b::2']
+  let s = SQ.finish(SQ.start(plans), false)
+  assert.equal(s.kind, 'failed')
+  assert.equal(SQ.next(s), s)                                   // Next is not a way out of a failure
+  const again = SQ.retry(s); assert.deepEqual([again.kind, again.index], ['running', 0])
+  const sk = SQ.skip(s); assert.deepEqual([sk.kind, sk.index, sk.marks[0]], ['waiting', 0, 'skipped'])
+  assert.equal(SQ.next(sk).index, 1)
+  const last = SQ.finish(SQ.next(SQ.finish(SQ.start(plans), true)), false)
+  assert.equal(SQ.skip(last).kind, 'done')                      // skipping the last plan ends the sequence
+})
+
+test('planSequence: finish on something that is not running, and Stop, change nothing / forget everything', () => {
+  assert.equal(SQ.finish(SQ.IDLE, true), SQ.IDLE)
+  const w = SQ.finish(SQ.start(['a::1', 'b::2']), true)
+  assert.equal(SQ.finish(w, false), w)
+  assert.equal(SQ.stop(w).kind, 'idle')
+  assert.deepEqual(SQ.start([]), SQ.IDLE)
+})
+
+test('planSequence: progress label and chips follow the state', () => {
+  const plans = ['a::1', 'b::2', 'c::3']
+  let s = SQ.start(plans)
+  assert.equal(SQ.progressLabel(s), 'Plan 1/3')
+  assert.deepEqual(SQ.chips(s).map(c => c.mark), ['▶', '○', '○'])
+  s = SQ.finish(s, true)
+  assert.deepEqual(SQ.chips(s).map(c => c.mark), ['✓', '○', '○'])
+  s = SQ.finish(SQ.next(s), false)
+  assert.deepEqual(SQ.chips(s).map(c => c.mark), ['✓', '✗', '○'])
+  s = SQ.skip(s)
+  assert.deepEqual(SQ.chips(s).map(c => c.mark), ['✓', '⏭', '○'])
+  assert.equal(SQ.progressLabel(SQ.start(['only'])), '')        // one plan: no sequence UI
+  assert.equal(SQ.progressLabel(SQ.IDLE), '')
+})
+
+test('planSequence: the verdict of a run decides the next state (aborted forgets, failed / error offer Retry)', () => {
+  const run = () => SQ.start(['a::1', 'b::2'])
+  assert.equal(SQ.afterRun(run(), 'success').kind, 'waiting')
+  assert.equal(SQ.afterRun(run(), 'planned').kind, 'waiting')         // a plan-only run counts as done
+  assert.equal(SQ.afterRun(run(), 'failed').kind, 'failed')
+  assert.equal(SQ.afterRun(run(), 'error').kind, 'failed')
+  assert.equal(SQ.afterRun(run(), 'aborted').kind, 'idle')            // Cancel / Stop / Reset ends the sequence
+  const w = SQ.afterRun(run(), 'success')
+  assert.equal(SQ.afterRun(w, 'failed'), w)                           // a late verdict of an old run changes nothing
+})
+
+test('planSequence: a skipped or failed plan stays marked after the sequence moves on (the chips never claim it worked)', () => {
+  const plans = ['a::1', 'b::2', 'c::3']
+  let s = SQ.finish(SQ.start(plans), false)                              // plan 1 fails
+  s = SQ.next(SQ.skip(s))                                                // Skip, then Next: plan 2 runs
+  assert.deepEqual(SQ.chips(s).map(c => c.mark), ['⏭', '▶', '○'])
+  s = SQ.next(SQ.finish(s, true))
+  s = SQ.finish(s, true)                                                 // plan 3 done
+  assert.equal(s.kind, 'done')
+  assert.deepEqual(SQ.chips(s).map(c => c.mark), ['⏭', '✓', '✓'])
+  let t = SQ.skip(SQ.finish(SQ.next(SQ.finish(SQ.start(plans), true)), false))   // plan 2 fails and is skipped: plan 3 waits
+  t = SQ.finish(SQ.next(t), false)                                       // plan 3 fails
+  assert.deepEqual(SQ.chips(SQ.skip(t)).map(c => c.mark), ['✓', '⏭', '⏭'])      // skipping the last plan ends the sequence, still marked skipped
+  const again = SQ.retry(SQ.finish(SQ.start(plans), false))
+  assert.deepEqual(SQ.chips(again).map(c => c.mark), ['▶', '○', '○'])    // Retry: the failure mark is gone while it runs again
+})
+
+test('planSequence: a socket lost during a plan is an error (Retry / Skip), a Stop the operator asked for is aborted', () => {
+  const running = SQ.start(['a::1', 'b::2'])
+  assert.equal(SQ.lostVerdict(running, false), 'error')
+  assert.equal(SQ.lostVerdict(running, true), 'aborted')                 // the operator pressed Stop / Cancel
+  assert.equal(SQ.lostVerdict(SQ.IDLE, false), 'aborted')                // not a sequence: the old behaviour
+  assert.equal(SQ.afterRun(running, SQ.lostVerdict(running, false)).kind, 'failed')
+  assert.equal(SQ.afterRun(running, SQ.lostVerdict(running, true)).kind, 'idle')
+})
+

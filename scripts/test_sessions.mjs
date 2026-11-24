@@ -338,3 +338,36 @@ test('hands-free: busy while a BACKGROUND run holds the mic; the shown robot kee
   const loud = S.newHandles(); loud.busy = 1
   assert.equal(H.handsFreeBusy('beta', 'beta', same, loud, 1000), true)
 })
+
+test('sequence of plans: a session starts without one; endRun moves it by the verdict; each robot has its own', () => {
+  const running = (i = 0) => ({ kind: 'running', plans: ['a::1', 'b::2', 'c::3'], index: i, marks: ['pending', 'pending', 'pending'] })
+  let st = two()
+  assert.equal(S.sessionOf(st, ka).seq.kind, 'idle')
+  st = S.patch(st, ka, { seq: running() }); st = S.patch(st, kb, { seq: running(1) })
+  st = S.endRun(S.beginRun(st, ka, A, 1), ka, 'success', 2)
+  assert.deepEqual([S.sessionOf(st, ka).seq.kind, S.sessionOf(st, ka).seq.index], ['waiting', 0])
+  assert.deepEqual([S.sessionOf(st, kb).seq.kind, S.sessionOf(st, kb).seq.index], ['running', 1])   // beta's own sequence is untouched
+  st = S.endRun(S.beginRun(st, kb, B, 3), kb, 'failed', 4)
+  assert.equal(S.sessionOf(st, kb).seq.kind, 'failed')
+  st = S.patch(st, ka, { seq: running() })
+  assert.equal(S.sessionOf(S.endRun(st, ka, 'aborted', 5), ka).seq.kind, 'idle')       // Cancel / Stop / Reset ends the sequence
+})
+
+test('sequence of plans: a run that is not part of a sequence (no running state) leaves the state alone; idle stays idle', () => {
+  let st = S.endRun(S.beginRun(two(), ka, A, 1), ka, 'success', 2)
+  assert.equal(S.sessionOf(st, ka).seq.kind, 'idle')
+  const waiting = { kind: 'waiting', plans: ['a::1', 'b::2'], index: 0, marks: ['ok', 'pending'] }
+  st = S.endRun(S.patch(st, ka, { seq: waiting }), ka, 'failed', 3)
+  assert.deepEqual(S.sessionOf(st, ka).seq, waiting)                                    // a late verdict does not touch a waiting sequence
+})
+
+test('sequence of plans: a robot renamed in place keeps a sequence that waits for its Next click', () => {
+  const waiting = { kind: 'waiting', plans: ['a::1', 'b::2'], index: 0, marks: ['ok', 'pending'] }
+  let st = S.patch(S.select(S.EMPTY_STORE, S.robotKey('old'), A), S.robotKey('old'), { seq: waiting })
+  const r = S.reconcile(st, [{ name: 'new', url: A }], [{ name: 'old', url: A }])
+  assert.deepEqual(r.renamed, [[S.robotKey('old'), S.robotKey('new')]])
+  assert.deepEqual(S.sessionOf(r.store, S.robotKey('new')).seq, waiting)
+  const idle = S.select(S.EMPTY_STORE, S.robotKey('old'), A)                          // nothing to keep: an idle blank session is dropped as before
+  assert.deepEqual(S.reconcile(idle, [{ name: 'new', url: A }], [{ name: 'old', url: A }]).renamed, [])
+})
+

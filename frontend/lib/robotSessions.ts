@@ -6,6 +6,7 @@ import type { AgentEvent } from './types'
 import type { ChatLine } from '../components/ChatPanel'
 import type { Step } from '../components/PlanPanel'
 import type { RobotLanguages } from './robotLanguages'
+import { IDLE, afterRun, type SeqState } from './planSequence'
 
 /** 'robot:<registry name>' | 'fleet:<fleet name>' = the drop-down's <option value>. */
 export type SessionKey = string
@@ -35,6 +36,7 @@ export interface RobotSession {
   startedAt: number | null
   endedAt: number | null
   verdict: Verdict | null      // the last finished run
+  seq: SeqState                // the preset's sequence of plans this robot is in (idle = no sequence; docs/features/plan-sequence.md)
 }
 export interface SessionStore { shown: SessionKey | null; sessions: Readonly<Record<SessionKey, RobotSession>> }
 
@@ -49,6 +51,8 @@ export interface RunHandles {
   args: RunArgs | null; textAsk: ((text: string | null) => void) | null
   stopReq: boolean; epoch: number; busy: number; speechUntil: number; choiceAt: number
   fromChat: boolean; nextFromChat: boolean
+  seqKeep: boolean             // the next run() belongs to a sequence: it must not clear the sequence state
+  seqRepeat: { times: number; coe: boolean }   // the repeat options of the sequence's plans (each plan repeats like a plain run)
   langs: RobotLanguages | null; heard: string | null; recording: boolean
   chain: Promise<void>         // this robot's speak / listen jobs, strictly in order
   sid: string                  // immutable id of this robot's run state: a run closure holds it, never the (renamable, reusable) registry name
@@ -58,7 +62,7 @@ export const newHandles = (): RunHandles => ({
   sid: String(nextSid++),
   ws: null, nudge: null, stopTimer: null, repeat: { remaining: 0, continueOnError: false, active: false },
   args: null, textAsk: null, stopReq: false, epoch: 0, busy: 0, speechUntil: 0, choiceAt: 0,
-  fromChat: false, nextFromChat: false, langs: null, heard: null, recording: false, chain: Promise.resolve(),
+  fromChat: false, nextFromChat: false, seqKeep: false, seqRepeat: { times: 1, coe: false }, langs: null, heard: null, recording: false, chain: Promise.resolve(),
 })
 
 export const EMPTY_STORE: SessionStore = { shown: null, sessions: {} }
@@ -66,7 +70,7 @@ export const EMPTY_STORE: SessionStore = { shown: null, sessions: {} }
 export function newSession(key: SessionKey, url: string): RobotSession {
   return {
     key, url, run: INITIAL_RUN, running: false, trial: 0, runMethod: '', events: [], steps: [], logImage: null, qaLog: [],
-    listenId: null, choice: null, qaSkill: false, heardLang: null, startedAt: null, endedAt: null, verdict: null,
+    listenId: null, choice: null, qaSkill: false, heardLang: null, startedAt: null, endedAt: null, verdict: null, seq: IDLE,
   }
 }
 
@@ -117,7 +121,7 @@ export const beginRun = (st: SessionStore, key: SessionKey, url: string, now: nu
   patch(st, key, { url, running: true, startedAt: now, endedAt: null, events: [], steps: [], logImage: null, trial: 0, verdict: null })
 /** The run (or the last repeat) is over: the result stays visible; the pending asks go. */
 export const endRun = (st: SessionStore, key: SessionKey, verdict: Verdict, now: number): SessionStore =>
-  patch(st, key, { running: false, verdict, endedAt: now, listenId: null, choice: null, qaSkill: false })
+  update(st, key, s => ({ ...s, running: false, verdict, endedAt: now, listenId: null, choice: null, qaSkill: false, seq: afterRun(s.seq, verdict) }))
 
 export interface Listed { name: string; url?: string }
 /** A robot left the registry: its session is dropped (the caller closes the socket and cancels); a robot renamed in place (same url, new name,
@@ -138,7 +142,7 @@ export function reconcile(st: SessionStore, robots: Listed[], before: Listed[] =
     }
     const cands = s.url ? robots.filter(r => r.url === s.url && free(r)) : []
     const to = cands.find(r => !old.has(r.name))      // only a name that is new to the list may receive a run (an old idle sibling must not)
-    if (to && isBusy(s)) {
+    if (to && (isBusy(s) || s.seq.kind !== 'idle')) {      // a run, or a sequence waiting for its Next click, moves to the new name
       const nk = robotKey(to.name)
       delete sessions[k]; sessions[nk] = { ...s, key: nk }; renamed.push([k, nk])
       if (shown === k) shown = nk
