@@ -6,6 +6,7 @@ import type { PlannerMethod } from '../lib/planner'
 import RecordAudioToggles from './RecordAudioToggles'
 import PopoverButton from './PopoverButton'
 import { DEFAULT_POLICY, LS_REPEAT_COE_OLD, LS_REPEAT_ON_FAIL, askText, migratePolicy, type RepeatAsk, type RepeatPolicy } from '../lib/repeatPolicy'
+import { splitPlans } from '../lib/planSequence'
 
 const LS_CELLS   = 'robotapp_cells'
 const LS_LOG_DATA = 'robotapp_log_data'
@@ -213,6 +214,8 @@ export default function AgentPanel({ toolbarExtra, running, repeatAsk, onRepeatA
 
   // Structured mode runs the ACTIVE cell (blue border) — editing a cell through
   // its ⤢ editor makes it active too, else Run would send another cell's plan.
+  // A cell with `---` lines is a sequence of plans: the first runs now, the next ones when you click Next (the bar in the plan panel).
+  const nPlans = splitPlans(cells[activeCell]).length
   const run = () => onRun(cells[activeCell], true, lang, undefined, undefined, logData, logTarget, repeatTimes, onFail, logAll)
 
   const updateLogData = (val: boolean) => {
@@ -371,8 +374,9 @@ export default function AgentPanel({ toolbarExtra, running, repeatAsk, onRepeatA
           {running
             ? <button onClick={onStop}
                 className="px-4 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded">{stopText ?? 'Stop'}</button>
-            : <button onClick={run} title={`Run cell ${activeCell + 1} (the one with the blue border) · click a cell to select · Ctrl+Enter = run`}
-                className="px-4 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded">Run</button>
+            : <button onClick={run} data-testid="run-button"
+                title={`Run cell ${activeCell + 1} (the one with the blue border) · click a cell to select · Ctrl+Enter = run` + (nPlans > 1 ? ` · ${nPlans} plans separated by --- lines: the first runs now, a click on Next runs each following one (repeat "forever" runs each plan once)` : '')}
+                className="px-4 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded">{nPlans > 1 ? `Run (${nPlans} plans)` : 'Run'}</button>
           }
         </div>
       </div>

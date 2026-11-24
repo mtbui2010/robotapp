@@ -354,3 +354,99 @@ test('a paused repeat loop (repeatAsk): the session is waiting, busy, blocks a s
   assert.equal(st.sessions[ka].repeatAsk, null)
   assert.equal(S.statusOf(st.sessions[ka]), 'idle')
 })
+
+test('sequence of plans: a session starts without one; endRun moves it by the verdict; each robot has its own', () => {
+  const running = (i = 0) => ({ kind: 'running', plans: ['a::1', 'b::2', 'c::3'], index: i, marks: ['pending', 'pending', 'pending'] })
+  let st = two()
+  assert.equal(S.sessionOf(st, ka).seq.kind, 'idle')
+  st = S.patch(st, ka, { seq: running() }); st = S.patch(st, kb, { seq: running(1) })
+  st = S.endRun(S.beginRun(st, ka, A, 1), ka, 'success', 2)
+  assert.deepEqual([S.sessionOf(st, ka).seq.kind, S.sessionOf(st, ka).seq.index], ['waiting', 0])
+  assert.deepEqual([S.sessionOf(st, kb).seq.kind, S.sessionOf(st, kb).seq.index], ['running', 1])   // beta's own sequence is untouched
+  st = S.endRun(S.beginRun(st, kb, B, 3), kb, 'failed', 4)
+  assert.equal(S.sessionOf(st, kb).seq.kind, 'failed')
+  st = S.patch(st, ka, { seq: running() })
+  assert.equal(S.sessionOf(S.endRun(st, ka, 'aborted', 5), ka).seq.kind, 'idle')       // Cancel / Stop / Reset ends the sequence
+})
+
+test('sequence of plans: a run that is not part of a sequence (no running state) leaves the state alone; idle stays idle', () => {
+  let st = S.endRun(S.beginRun(two(), ka, A, 1), ka, 'success', 2)
+  assert.equal(S.sessionOf(st, ka).seq.kind, 'idle')
+  const waiting = { kind: 'waiting', plans: ['a::1', 'b::2'], index: 0, marks: ['ok', 'pending'] }
+  st = S.endRun(S.patch(st, ka, { seq: waiting }), ka, 'failed', 3)
+  assert.deepEqual(S.sessionOf(st, ka).seq, waiting)                                    // a late verdict does not touch a waiting sequence
+})
+
+test('sequence of plans: a robot renamed in place keeps a sequence that waits for its Next click', () => {
+  const waiting = { kind: 'waiting', plans: ['a::1', 'b::2'], index: 0, marks: ['ok', 'pending'] }
+  let st = S.patch(S.select(S.EMPTY_STORE, S.robotKey('old'), A), S.robotKey('old'), { seq: waiting })
+  const r = S.reconcile(st, [{ name: 'new', url: A }], [{ name: 'old', url: A }])
+  assert.deepEqual(r.renamed, [[S.robotKey('old'), S.robotKey('new')]])
+  assert.deepEqual(S.sessionOf(r.store, S.robotKey('new')).seq, waiting)
+  const idle = S.select(S.EMPTY_STORE, S.robotKey('old'), A)                          // nothing to keep: an idle blank session is dropped as before
+  assert.deepEqual(S.reconcile(idle, [{ name: 'new', url: A }], [{ name: 'old', url: A }]).renamed, [])
+})
+
+
+test('sequence of plans: a robot whose sequence waits or failed shows a mark in the drop-down; a running or lost run keeps its own mark', () => {
+  const seq = kind => ({ kind, plans: ['a::1', 'b::2'], index: 0, marks: ['ok', 'pending'] })
+  let st = S.patch(two(), ka, { seq: seq('waiting') }); st = S.patch(st, kb, { seq: seq('failed') })
+  assert.deepEqual(S.statusMap(st), { [ka]: 'next', [kb]: 'seqfailed' })
+  assert.equal(S.optionText('alpha', 'next'), '◇ alpha · waits for Next')
+  assert.equal(S.optionText('beta', 'seqfailed', '🤖 '), '◇ beta · plan failed: Retry / Skip / Stop')
+  // the mark is only a label: a waiting sequence is still an idle robot that takes the Next click (rule 7 check unchanged)
+  assert.equal(S.statusOf(S.sessionOf(st, ka)), 'idle')
+  assert.equal(S.startBlock(st, ka), null)
+  // a done sequence (the Close button) shows no mark; a lost run shows the lost mark, not the sequence mark
+  assert.deepEqual(S.statusMap(S.patch(two(), ka, { seq: seq('done') })), {})
+  let lost = S.patch(two(), kb, { seq: seq('failed') }); lost = S.beginRun(lost, kb, B, 1)
+  lost = S.applyRun(lost, kb, { t: 'start' }); lost = S.applyRun(lost, kb, { t: 'ws-close' })
+  assert.equal(S.statusMap(lost)[kb], 'lost')
+})
+
+// ── the two ways a session can wait (the repeat question in the middle of a plan, the bar between plans) never mix ──
+const seqRun = (i = 0) => ({ kind: 'running', plans: ['a::1', 'b::2', 'c::3'], index: i, marks: ['pending', 'pending', 'pending'] })
+const asking = (st, key, url) => S.patch(S.patch(S.beginRun(st, key, url, 1), key, { seq: seqRun() }), key, { repeatAsk: { n: 1, total: 3, ok: true, verdict: 'success' } })
+
+test('plan repeats in a sequence: the ask in the middle of a plan marks the robot ◆, blocks a command, and the bar is not a waiting mark', () => {
+  const st = asking(two(), ka, A)
+  assert.equal(S.statusOf(S.sessionOf(st, ka)), 'waiting')
+  assert.equal(S.statusMap(st)[ka], 'waiting')                      // the ask wins: no ◇ mark although the sequence is not idle
+  assert.match(S.optionText('alpha', S.statusMap(st)[ka]), /◆.*asks you/)
+  assert.match(S.startBlock(st, ka) ?? '', /already/)
+  assert.equal(S.sessionOf(st, ka).seq.kind, 'running')             // the plan is still the running one: the bar offers no Next now
+})
+
+test('plan repeats in a sequence: the last repeat ends the plan: the ask is gone and ONLY the bar waits (◇), never both', () => {
+  let st = asking(two(), ka, A)
+  st = S.endRun(st, ka, 'success', 5)
+  const s = S.sessionOf(st, ka)
+  assert.equal(s.repeatAsk, null); assert.equal(s.seq.kind, 'waiting')
+  assert.equal(S.statusMap(st)[ka], 'next')
+  assert.equal(S.startBlock(st, ka), null)
+  st = S.endRun(asking(two(), ka, A), ka, 'failed', 5)               // policy stop / last repeat failed
+  assert.equal(S.statusMap(st)[ka], 'seqfailed'); assert.equal(S.sessionOf(st, ka).repeatAsk, null)
+})
+
+test('plan repeats in a sequence: the person Stop (endLoop) ends the loop AND the sequence, keeps the real verdict, leaves no mark', () => {
+  let st = S.endLoop(asking(two(), ka, A), ka, 'failed', 5)
+  const s = S.sessionOf(st, ka)
+  assert.deepEqual([s.repeatAsk, s.seq.kind, s.verdict, s.running], [null, 'idle', 'failed', false])
+  assert.deepEqual(S.statusMap(st), {})
+  st = S.endLoop(S.endRun(S.beginRun(two(), kb, B, 1), kb, 'success', 2), kb, 'success', 3)   // endLoop without a sequence: same as endRun
+  assert.equal(S.sessionOf(st, kb).seq.kind, 'idle')
+})
+
+test('plan repeats in a sequence: a cancelled run (aborted) ends the plan, the ask and the sequence', () => {
+  const st = S.endRun(asking(two(), ka, A), ka, 'aborted', 5)
+  const s = S.sessionOf(st, ka)
+  assert.deepEqual([s.repeatAsk, s.seq.kind, s.verdict], [null, 'idle', 'aborted'])
+})
+
+test('plan repeats in a sequence: a robot renamed while the loop asks keeps the question and the running plan', () => {
+  const old = S.robotKey('old')
+  const st = asking(S.select(S.EMPTY_STORE, old, A), old, A)
+  const r = S.reconcile(st, [{ name: 'new', url: A }], [{ name: 'old', url: A }])
+  const s = S.sessionOf(r.store, S.robotKey('new'))
+  assert.deepEqual([!!s.repeatAsk, s.seq.kind], [true, 'running'])
+})

@@ -7,6 +7,7 @@ import type { ChatLine } from '../components/ChatPanel'
 import type { Step } from '../components/PlanPanel'
 import type { RobotLanguages } from './robotLanguages'
 import type { RepeatAsk, RepeatPolicy } from './repeatPolicy'
+import { IDLE, afterRun, type SeqState } from './planSequence'
 
 /** 'robot:<registry name>' | 'fleet:<fleet name>' = the drop-down's <option value>. */
 export type SessionKey = string
@@ -37,6 +38,7 @@ export interface RobotSession {
   endedAt: number | null
   verdict: Verdict | null      // the last finished run
   repeatAsk: RepeatAsk | null  // a repeat loop is paused and asks the person (continue or stop?): the robot counts as busy
+  seq: SeqState                // the preset's sequence of plans this robot is in (idle = no sequence; docs/features/plan-sequence.md)
 }
 export interface SessionStore { shown: SessionKey | null; sessions: Readonly<Record<SessionKey, RobotSession>> }
 
@@ -51,6 +53,8 @@ export interface RunHandles {
   args: RunArgs | null; textAsk: ((text: string | null) => void) | null
   stopReq: boolean; epoch: number; busy: number; speechUntil: number; choiceAt: number
   fromChat: boolean; nextFromChat: boolean
+  seqKeep: boolean             // the next run() belongs to a sequence: it must not clear the sequence state
+  seqRepeat: { times: number; onFail: RepeatPolicy }   // the repeat options of the sequence's plans (each plan repeats like a plain run)
   langs: RobotLanguages | null; heard: string | null; recording: boolean
   chain: Promise<void>         // this robot's speak / listen jobs, strictly in order
   sid: string                  // immutable id of this robot's run state: a run closure holds it, never the (renamable, reusable) registry name
@@ -60,7 +64,7 @@ export const newHandles = (): RunHandles => ({
   sid: String(nextSid++),
   ws: null, nudge: null, stopTimer: null, repeat: { remaining: 0, total: 0, policy: 'ask', active: false },
   args: null, textAsk: null, stopReq: false, epoch: 0, busy: 0, speechUntil: 0, choiceAt: 0,
-  fromChat: false, nextFromChat: false, langs: null, heard: null, recording: false, chain: Promise.resolve(),
+  fromChat: false, nextFromChat: false, seqKeep: false, seqRepeat: { times: 1, onFail: 'ask' }, langs: null, heard: null, recording: false, chain: Promise.resolve(),
 })
 
 export const EMPTY_STORE: SessionStore = { shown: null, sessions: {} }
@@ -68,7 +72,7 @@ export const EMPTY_STORE: SessionStore = { shown: null, sessions: {} }
 export function newSession(key: SessionKey, url: string): RobotSession {
   return {
     key, url, run: INITIAL_RUN, running: false, trial: 0, runMethod: '', events: [], steps: [], logImage: null, qaLog: [],
-    listenId: null, choice: null, qaSkill: false, heardLang: null, startedAt: null, endedAt: null, verdict: null, repeatAsk: null,
+    listenId: null, choice: null, qaSkill: false, heardLang: null, startedAt: null, endedAt: null, verdict: null, repeatAsk: null, seq: IDLE,
   }
 }
 
@@ -119,7 +123,11 @@ export const beginRun = (st: SessionStore, key: SessionKey, url: string, now: nu
   patch(st, key, { url, running: true, startedAt: now, endedAt: null, events: [], steps: [], logImage: null, trial: 0, verdict: null, repeatAsk: null })
 /** The run (or the last repeat) is over: the result stays visible; the pending asks go. */
 export const endRun = (st: SessionStore, key: SessionKey, verdict: Verdict, now: number): SessionStore =>
-  patch(st, key, { running: false, verdict, endedAt: now, listenId: null, choice: null, qaSkill: false, repeatAsk: null })
+  update(st, key, s => ({ ...s, running: false, verdict, endedAt: now, listenId: null, choice: null, qaSkill: false, repeatAsk: null, seq: afterRun(s.seq, verdict) }))
+/** The person ends the loop of the run (the Stop of a paused repeat question, or the main Stop while it waits): the run's own verdict stays, the sequence it belonged to ends
+ *  too (a Stop is not a plan result, so the bar must not take over and ask again). */
+export const endLoop = (st: SessionStore, key: SessionKey, verdict: Verdict, now: number): SessionStore =>
+  update(endRun(st, key, verdict, now), key, s => (s.seq.kind === 'idle' ? s : { ...s, seq: IDLE }))
 
 export interface Listed { name: string; url?: string }
 /** A robot left the registry: its session is dropped (the caller closes the socket and cancels); a robot renamed in place (same url, new name,
@@ -140,7 +148,7 @@ export function reconcile(st: SessionStore, robots: Listed[], before: Listed[] =
     }
     const cands = s.url ? robots.filter(r => r.url === s.url && free(r)) : []
     const to = cands.find(r => !old.has(r.name))      // only a name that is new to the list may receive a run (an old idle sibling must not)
-    if (to && isBusy(s)) {
+    if (to && (isBusy(s) || s.seq.kind !== 'idle')) {      // a run, or a sequence waiting for its Next click, moves to the new name
       const nk = robotKey(to.name)
       delete sessions[k]; sessions[nk] = { ...s, key: nk }; renamed.push([k, nk])
       if (shown === k) shown = nk
@@ -161,16 +169,24 @@ export function syncUrls(st: SessionStore, robots: Listed[]): SessionStore {
 
 // ── what the operator sees ──────────────────────────────────────────────────────────────────────
 /** Only the non-idle sessions: one entry per robot that is running (or waiting / stopping / lost). */
-export function statusMap(st: SessionStore): Record<SessionKey, SessionStatus> {
-  const m: Record<SessionKey, SessionStatus> = {}
-  for (const [k, s] of Object.entries(st.sessions)) { const x = statusOf(s); if (x !== 'idle') m[k] = x }
+export function statusMap(st: SessionStore): Record<SessionKey, SessionMark> {
+  const m: Record<SessionKey, SessionMark> = {}
+  for (const [k, s] of Object.entries(st.sessions)) {
+    const x = statusOf(s)
+    if (x !== 'idle') m[k] = x
+    else if (s.seq.kind === 'waiting') m[k] = 'next'          // an idle robot whose sequence waits for the operator's click
+    else if (s.seq.kind === 'failed') m[k] = 'seqfailed'
+  }
   return m
 }
-const MARKS: Record<Exclude<SessionStatus, 'idle'>, [string, string]> = {
+/** The drop-down mark: a busy status, or a sequence that waits ('next') or failed ('seqfailed'); the latter two are labels only (statusOf stays idle). */
+export type SessionMark = SessionStatus | 'next' | 'seqfailed'
+const MARKS: Record<Exclude<SessionMark, 'idle'>, [string, string]> = {
   running: ['●', 'running'], waiting: ['◆', 'asks you'], stopping: ['○', 'stopping'], lost: ['▲', 'lost'],
+  next: ['◇', 'waits for Next'], seqfailed: ['◇', 'plan failed: Retry / Skip / Stop'],
 }
 /** Text of an <option> (text only; the mark goes first so a truncated closed select still shows it). */
-export function optionText(label: string, status: SessionStatus, idlePrefix = ''): string {
+export function optionText(label: string, status: SessionMark, idlePrefix = ''): string {
   if (status === 'idle') return `${idlePrefix}${label}`
   const [mark, word] = MARKS[status]
   return `${mark} ${label} · ${word}`

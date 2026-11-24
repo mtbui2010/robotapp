@@ -15,6 +15,9 @@ const out = mkdtempSync(join(tmpdir(), 'robotapp-repeat-'))
 const outfile = join(out, 'repeatPolicy.mjs')
 buildSync({ entryPoints: [join(FE, 'lib', 'repeatPolicy.ts')], outfile, bundle: true, format: 'esm', platform: 'node', logLevel: 'error' })
 const R = await import(pathToFileURL(outfile).href)
+const seqOut = join(out, 'planSequence.mjs')
+buildSync({ entryPoints: [join(FE, 'lib', 'planSequence.ts')], outfile: seqOut, bundle: true, format: 'esm', platform: 'node', logLevel: 'error' })
+const Q = await import(pathToFileURL(seqOut).href)
 
 // nextStep(policy, ok, remaining AFTER this run, active)
 test('ask: after every run that is not the last, success or failure alike', () => {
@@ -94,4 +97,62 @@ test('askText: run N of M, succeeded or failed; forever has no M', () => {
   assert.equal(R.askText({ n: 2, total: 3, ok: true }), 'Run 2 of 3 succeeded. Continue or stop?')
   assert.equal(R.askText({ n: 1, total: 3, ok: false }), 'Run 1 of 3 failed. Continue or stop?')
   assert.equal(R.askText({ n: 4, total: Infinity, ok: true }), 'Run 4 succeeded. Continue or stop?')
+})
+
+// ── the repeats of ONE plan inside a sequence of plans (docs/features/plan-sequence.md): the loop decides with nextStep, the plan's last run
+// moves the sequence with afterRun (what endRun does). Made-up verdicts; `answers` = what the person answers each time the loop asks.
+function plan(policy, verdicts, times, answers = []) {
+  let seq = Q.start(['a::1', 'b::2', 'c::3'])
+  const asked = []
+  let remaining = times
+  for (const verdict of verdicts) {
+    remaining -= 1
+    const ok = verdict === 'success'
+    const step = R.nextStep(policy, ok, remaining, true, verdict === 'aborted')
+    if (step === 'ask') {
+      asked.push(verdict)
+      if (answers.shift() === 'continue') continue
+      return { seq: Q.afterRun(seq, verdict), asked, ended: 'by the person' }   // the person's Stop ends loop and sequence (endLoop): see test_sessions
+    }
+    if (step === 'end') return { seq: Q.afterRun(seq, verdict), asked, ended: 'by the loop' }
+  }
+  throw new Error('verdicts ran out')
+}
+
+test('sequence, policy ask: the loop asks BETWEEN the repeats of a plan; after the last repeat nothing asks and the bar takes over', () => {
+  const r = plan('ask', ['success', 'success', 'success'], 3, ['continue', 'continue'])
+  assert.deepEqual(r.asked, ['success', 'success'])      // two questions for three repeats, none after the last
+  assert.equal(r.seq.kind, 'waiting')                     // the bar (Next / Stop) is the go-or-stop question of the plan
+  assert.equal(R.nextStep('ask', true, 0, true), 'end')
+})
+
+test('sequence, policy ask: a failed LAST repeat does not ask either; the bar shows Retry / Skip / Stop', () => {
+  const r = plan('ask', ['success', 'failed'], 2, ['continue'])
+  assert.deepEqual(r.asked, ['success'])
+  assert.equal(r.seq.kind, 'failed')
+})
+
+test('sequence, policy stop: a failed repeat ends the plan repeats at once; the bar shows Retry / Skip / Stop', () => {
+  const r = plan('stop', ['success', 'failed', 'success'], 3)
+  assert.deepEqual(r.asked, [])
+  assert.equal(r.seq.kind, 'failed'); assert.equal(r.seq.marks[0], 'failed')
+})
+
+test('sequence, policy continue: the repeats go on after a failure; the bar appears when they are over (judged by the last repeat)', () => {
+  assert.equal(plan('continue', ['failed', 'success', 'success'], 3).seq.kind, 'waiting')
+  assert.equal(plan('continue', ['success', 'success', 'failed'], 3).seq.kind, 'failed')
+  assert.deepEqual(plan('continue', ['failed', 'failed', 'success'], 3).asked, [])
+})
+
+test('sequence: an aborted run (Stop / Cancel / another window) ends repeats and sequence in every policy and never asks', () => {
+  for (const p of ['ask', 'stop', 'continue']) {
+    const r = plan(p, ['success', 'aborted'], 3, ['continue'])
+    assert.equal(r.seq.kind, 'idle', p)
+    assert.equal(r.asked.length, p === 'ask' ? 1 : 0, p)   // only the question BEFORE the abort (policy ask after run 1)
+  }
+  assert.equal(R.nextStep('ask', false, 2, true, true), 'end')
+})
+
+test('sequence: forever is one run per plan: a count of 1 leaves nothing to ask, whatever the policy', () => {
+  for (const p of ['ask', 'stop', 'continue']) assert.equal(R.nextStep(p, true, 1 - 1, true), 'end')
 })

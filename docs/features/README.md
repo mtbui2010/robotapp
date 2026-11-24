@@ -20,6 +20,7 @@ add the dated line to [../CHANGELOG.md](../CHANGELOG.md).
 | [AI servers: vlms / visions / voices, with fallback (2026-10-16)](ai-servers.md) |
 | [Per-robot sessions in one tab (2026-11-24)](sessions.md) |
 | [Repeat policy: ask / stop / continue (2026-11-24)](repeat.md) |
+| [A preset as a sequence of plans: `---`, a Next / Stop bar (2026-11-24)](plan-sequence.md) |
 | [Cancel / Stop](cancel-stop.md) |
 | [Camera streaming (multiple viewers)](camera-streaming.md) |
 | [Map tab (click to move)](map-tab.md) |

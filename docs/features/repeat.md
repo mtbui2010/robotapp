@@ -31,7 +31,26 @@ like it cancels a running robot; a rename keeps it.
 
 The policy is kept in localStorage `robotapp_repeat_on_fail` (`ask` | `stop` | `continue`). The old key
 `robotapp_repeat_continue_on_error` is read once when the new key is absent: `1` -> `continue`, `0` -> `stop`; neither, or anything else -> `ask`.
-The old key is never written again. Preset sequences (plan-sequence, not in this branch) still pass a boolean `continueOnError`; when that work lands, its `seqRepeat.coe` must switch to `onFail` (follow-up).
+The old key is never written again.
+
+## Inside a sequence of plans
+
+A preset with `---` lines ([plan-sequence](plan-sequence.md)) runs plan by plan; the chosen policy (`onFail`) and the repeat count apply to **each plan's repeats**
+(`runPreset`, `seqGo` and `RunHandles.seqRepeat` carry `onFail`). A session waits in ONE way at a time: a question in the middle of a plan (`◆ asks you`)
+or the bar between plans (`◇ waits for Next` / `plan failed`).
+
+| Policy | In the middle of a plan's repeats | When the repeats are over |
+|---|---|---|
+| `ask` | asks Continue / Stop BETWEEN the repeats | after the LAST repeat nothing asks: the bar (Next / Stop, or Retry / Skip / Stop after a failure) is the go / stop question |
+| `stop` | a failed repeat ends the plan's repeats | the bar shows Retry / Skip / Stop |
+| `continue` | repeats go on after a failure | the bar appears; the plan counts as done or failed by its LAST repeat |
+
+- Repeat **forever** in a sequence is one run per plan (plan-sequence.md), so no question is asked inside a plan.
+- A person's Stop (the question's Stop, the main Stop / Cancel) or a run cancelled elsewhere (`aborted`) ends the repeat loop **and** the sequence and never asks (`endLoop` / `afterRun`).
+  The run keeps its own verdict.
+- While the loop asks, the bar says so (no Next button; the plan is still the running one), the robot is busy (`startBlock`) and the drop-down shows `◆`, never `◇`.
+  `endRun` clears the question and moves the sequence by the plan's verdict in one step, so both can never be set together.
+- Tests: `scripts/test_repeat.mjs` (`sequence, …`), `scripts/test_sessions.mjs` (`plan repeats in a sequence: …`).
 
 ## Code and proof
 

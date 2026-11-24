@@ -27,6 +27,8 @@ import type { Robot } from '../lib/api'
 import { reduceSteps } from '../lib/planSteps'
 import { useForeignRun } from '../lib/useForeignRun'
 import ForeignRunBadge from '../components/ForeignRunBadge'
+import SequenceBar from '../components/SequenceBar'
+import { splitPlans, isSequence, barGuard, lostVerdict, start as seqStart, next as seqNext, retry as seqRetry, skip as seqSkip, IDLE as SEQ_IDLE } from '../lib/planSequence'
 import { useVoiceOutput, stillWorkingPhrase } from '../lib/useVoiceOutput'
 import { speakAndWait, recognizeOnce, recordPhrase, primeMic, playEarcon, playAlarm, stopRecording, abortRecognition } from '../lib/hriVoice'
 import { answerBy, createEchoGuard } from '../lib/chatMic'
@@ -34,7 +36,7 @@ import { useHandsFree } from '../lib/useHandsFree'
 import { noteForListenReply, stopAction, stopLabel, canStop, canType, isLost, needsForce } from '../lib/chatRun'
 import { useRobotSessions } from '../lib/useRobotSessions'
 import { nextStep, askText, DEFAULT_POLICY, type RepeatPolicy } from '../lib/repeatPolicy'
-import { robotKey, cancelTarget, startBlock, statusMap, optionText, appendLine, settleHeard, closeLine, verdictOf, beginRun, endRun, patch, HEARD_PENDING, type SessionKey, type RunHandles } from '../lib/robotSessions'
+import { robotKey, cancelTarget, startBlock, statusMap, optionText, appendLine, settleHeard, closeLine, verdictOf, beginRun, endRun, endLoop, patch, HEARD_PENDING, type SessionKey, type RunHandles } from '../lib/robotSessions'
 import { sanitizeTask, downloadJpeg, isFailureEvent, stopNudge, newHriEpoch, enqueueHri, handsFreeBusy, ownedByDropped, sessionUrl, micMayEnd } from '../lib/runHelpers'
 import { LS_PLANNER, PLANNER_EVENT, DEFAULT_PLANNER, LS_PLAN_ONLY, storedPlanOnly, storedPlanner, type PlannerMethod } from '../lib/planner'
 import { useScreenRecorder } from '../lib/useScreenRecorder'
@@ -73,7 +75,7 @@ export default function Home() {
   const [target, setTarget]           = useState<ActiveTarget | null>(null)   // robot + site this tab drives
   const sess = useRobotSessions()   // one session per robot (run, socket, chat log, plan): lib/robotSessions.ts. The page draws the SHOWN one
   const { get, put, set, apply, applyAt, dispatch, handles: H, shownKey, getStore, sameKey } = sess
-  const { running, events: agentEvents, steps: agentSteps, logImage, runMethod, trial, qaLog, listenId, choice, qaSkill, heardLang, run: rs } = sess.shown
+  const { running, events: agentEvents, steps: agentSteps, logImage, runMethod, trial, qaLog, listenId, choice, qaSkill, heardLang, run: rs, seq } = sess.shown
   useEffect(() => { window.addEventListener(ROBOTS_CHANGED_EVENT, readRobotList); return () => window.removeEventListener(ROBOTS_CHANGED_EVENT, readRobotList) }, [readRobotList])   // add / rename / remove / edit url, from any panel
   const dropRecRef = useRef<(toks: string[]) => void>(() => {})   // a dropped robot that owns the screen recorder releases it (its socket closes silently)
   useEffect(() => { sess.reconcileRobots([...robotList, { name: '' }], t => dropRecRef.current(t)) }, [robotList, sess.reconcileRobots])   // a removed or renamed robot ends its session
@@ -510,7 +512,7 @@ export default function Home() {
       dispatch(key, { t: 'ws-close' })
       if (between) return
       h.repeat.active = false
-      applyAt(key, (st, k) => (st.sessions[k]?.running ? endRun(st, k, 'aborted', Date.now()) : st))   // a socket closing after its `done` keeps that verdict
+      applyAt(key, (st, k) => (st.sessions[k]?.running ? endRun(st, k, lostVerdict(st.sessions[k].seq, h.stopReq), Date.now()) : st))   // a socket closing after its `done` keeps that verdict; a plan of a sequence lost to the network is an error (Retry / Skip), not a Stop
       endRec(key)
     }
     ws.onclose = gone
@@ -521,8 +523,11 @@ export default function Home() {
   const run = useCallback((finalPrompt: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, onFail: RepeatPolicy = DEFAULT_POLICY, logAll = true, voice = true, screenRec = true) => {
     if (!finalPrompt.trim()) return
     const key = shownKey(), h = H(key)       // the run belongs to the robot on screen, whatever is picked later
+    const keepSeq = h.seqKeep                 // set by runPreset / seqGo for the plan of a sequence, for this one call only
+    h.seqKeep = false
     const why = startBlock(getStore(), key)   // one client per robot (rule 7): a busy robot takes no second command from this tab
     if (why) { addQaLine(key, 'system', why); return }
+    if (!keepSeq) apply(st => patch(st, key, { seq: SEQ_IDLE }))   // a plain run (a button, the chat, a one-plan preset) ends a sequence that was waiting
     h.fromChat = h.nextFromChat
     h.nextFromChat = false
     const tok = sess.stable(key)      // a rename while the permission prompt is open must not lose the line
@@ -548,6 +553,35 @@ export default function Home() {
     apply(st => beginRun(st, key, get(key).url || api.getAgentUrl(), Date.now()))   // freezes the url; fire() bumps the trial to 1
     fire(key)
   }, [get, apply, H, shownKey, getStore, fire, loadSpeechRate])
+
+  // A preset is a SEQUENCE of plans (split at `---` lines; docs/features/plan-sequence.md): the first plan runs now, each next one when the operator
+  // clicks Next on the bar. Every plan goes through run() like a plain plan. One plan (no `---`): exactly the old single run.
+  const runPreset = useCallback((text: string, direct: boolean, lang = 'en', planner: 'grace' | 'direct' | 'sage' = 'grace', planOnly = false, logData = false, logTarget: 'backend' | 'frontend' = 'frontend', repeatTimes = 1, onFail: RepeatPolicy = DEFAULT_POLICY, logAll = true) => {
+    const plans = splitPlans(text)
+    if (!isSequence(plans)) return run(text, direct, lang, planner, planOnly, logData, logTarget, repeatTimes, onFail, logAll)
+    const key = shownKey(), h = H(key)
+    const why = startBlock(getStore(), key)
+    if (why) { addQaLine(key, 'system', why); return }
+    const times = Number.isFinite(repeatTimes) ? repeatTimes : 1   // `forever` would never get past plan 1: in a sequence each plan runs once
+    apply(st => patch(st, key, { seq: seqStart(plans) }))
+    h.seqKeep = true
+    h.seqRepeat = { times, onFail }
+    run(plans[0], direct, lang, planner, planOnly, logData, logTarget, times, onFail, logAll)
+  }, [run, shownKey, H, getStore, apply])
+
+  // The bar's clicks: Next / Retry run a plan with the options of the run before it; Skip and Stop only change the state.
+  const seqGo = useCallback((f: typeof seqNext) => {
+    const key = shownKey(), h = H(key), a = h.args, cur = get(key).seq
+    const nxt = f(cur)
+    if (nxt === cur || nxt.kind !== 'running' || !a) return
+    const why = startBlock(getStore(), key)                 // a busy robot takes no command: the bar keeps its state
+    if (why) { addQaLine(key, 'system', why); return }
+    apply(st => patch(st, key, { seq: nxt }))
+    h.seqKeep = true
+    run(nxt.plans[nxt.index], a.direct, a.lang, a.planner, a.planOnly, a.logData, a.logTarget, h.seqRepeat.times, h.seqRepeat.onFail, a.logAll, a.voice, a.screenRec)
+  }, [shownKey, H, get, getStore, apply, run])
+  const seqSkipClick = useCallback(() => { const key = shownKey(); apply(st => patch(st, key, { seq: seqSkip(get(key).seq) })) }, [shownKey, apply, get])
+  const seqStopClick = useCallback(() => { const key = shownKey(); apply(st => patch(st, key, { seq: SEQ_IDLE })) }, [shownKey, apply])
 
   // End every capture in flight for the run: typed wait, mic recording, recogniser, speech, on-screen choice.
   // The mic and the speaker are the browser's one: only the robot on screen may end them.
@@ -589,7 +623,7 @@ export default function Home() {
     const cur = get(key).run, h = H(key)
     if (stopAction(cur) === 'force-reset') { reset(key, 'force reset'); return }
     h.repeat.active = false   // cancel any pending repeat
-    if (get(key).repeatAsk) { apply(st => endRun(st, key, get(key).repeatAsk?.verdict ?? 'aborted', Date.now())); addQaLine(key, 'system', '■ stopped'); return }   // paused and asking: nothing runs, the loop ends
+    if (get(key).repeatAsk) { apply(st => endLoop(st, key, get(key).repeatAsk?.verdict ?? 'aborted', Date.now())); addQaLine(key, 'system', '■ stopped'); return }   // paused and asking: nothing runs, the loop ends
     stopNudge(h)
     h.stopReq = true
     abortCaptures(key)
@@ -605,7 +639,7 @@ export default function Home() {
     if (!a) return
     if (go && foreignRunRef.current && !foreignRunRef.current.ended) { addQaLine(key, 'system', 'Another client is running this robot: wait for it to end, then Continue'); return }
     if (go && H(key).repeat.active) { set(key, { repeatAsk: null }); addQaLine(key, 'system', '▶ continue'); fireRef.current(key) }
-    else { H(key).repeat.active = false; applyAt(key, (st, k) => endRun(st, k, a.verdict, Date.now())); addQaLine(key, 'system', `■ stopped after run ${a.n}`) }
+    else { H(key).repeat.active = false; applyAt(key, (st, k) => endLoop(st, k, a.verdict, Date.now())); addQaLine(key, 'system', `■ stopped after run ${a.n}`) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [get, set, applyAt, H, shownKey])
   // Stop of the robot on screen (every Stop / Cancel button of a robot calls it). Cancel adds the Fleet tab: there it is the fleet's Stop all
@@ -836,6 +870,7 @@ export default function Home() {
             <div className="p-4 flex-1 overflow-y-auto">
               {blockWhy && !fleetMode && <div data-testid="start-block" className="mb-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">{blockWhy}</div>}
               <ForeignRunBadge run={foreignRun} />
+              {!fleetMode && <SequenceBar seq={seq} lost={isLost(rs)} asking={!!sess.shown.repeatAsk} onNext={() => seqGo(seqNext)} onRetry={() => seqGo(seqRetry)} onSkip={seqSkipClick} onStop={() => { if (barGuard(isLost(rs)).stopCancelsRun) stopShown(); seqStopClick() }} />}
               <PlanPanel events={agentEvents} steps={agentSteps} planMethod={runMethod} running={running || (!!foreignRun && !foreignRun.ended)} />
             </div>
           </div>
@@ -865,7 +900,7 @@ export default function Home() {
               ⚠ no {voiceLang} voice
             </span>
           )}
-          </>} onOpenGuide={() => setGuideOpen(true)} running={running} repeatAsk={sess.shown.repeatAsk} onRepeatAnswer={answerRepeat} lang={lang} onRun={run} onStop={stopShown} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
+          </>} onOpenGuide={() => setGuideOpen(true)} running={running} repeatAsk={sess.shown.repeatAsk} onRepeatAnswer={answerRepeat} lang={lang} onRun={runPreset} onStop={stopShown} stopText={stopLabel(rs)} recordEnabled={recordEnabled} onToggleRecord={toggleRecord} manualRecording={manualRecording} onToggleManualRecord={toggleManualRecord} backendLogDir={backendLogDir} trial={trial} />
           </section>
           <GuidePanel open={guideOpen} onOpenChange={setGuideOpen} hideTrigger />
 
