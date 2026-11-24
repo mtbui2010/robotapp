@@ -23,6 +23,10 @@ test('ask: after every run that is not the last, success or failure alike', () =
   assert.equal(R.nextStep('ask', true, 1, true), 'ask')
 })
 
+test('a run cancelled from elsewhere (aborted) ends the loop in every policy, never asks or continues', () => {
+  for (const p of ['ask', 'stop', 'continue']) assert.equal(R.nextStep(p, false, 2, true, true), 'end')
+})
+
 test('ask: forever (Infinity) asks after every run', () => {
   assert.equal(R.nextStep('ask', true, Infinity, true), 'ask')
   assert.equal(R.nextStep('ask', false, Infinity - 1, true), 'ask')

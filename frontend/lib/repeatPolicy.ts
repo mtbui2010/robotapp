@@ -28,10 +28,11 @@ export function isPolicy(v: unknown): v is RepeatPolicy {
  * @param ok        the run succeeded
  * @param remaining runs still to do AFTER this one (Infinity for "forever")
  * @param active    false when the loop was ended from outside (user Stop / Cancel, socket loss, reset)
- * An inactive loop and an exhausted count always end and NEVER ask.
+ * @param aborted  the run was cancelled (a Stop from another window or the fleet's Stop all): the loop ends in every policy
+ * An inactive loop, an aborted run and an exhausted count always end and NEVER ask.
  */
-export function nextStep(policy: RepeatPolicy | string | null | undefined, ok: boolean, remaining: number, active: boolean): RepeatStep {
-  if (!active || !(remaining > 0)) return 'end'
+export function nextStep(policy: RepeatPolicy | string | null | undefined, ok: boolean, remaining: number, active: boolean, aborted = false): RepeatStep {
+  if (aborted || !active || !(remaining > 0)) return 'end'
   if (policy === 'continue') return 'next'
   if (policy === 'stop') return ok ? 'next' : 'end'
   return 'ask'
@@ -49,7 +50,7 @@ export function migratePolicy(storedNew: string | null | undefined, storedOld: s
 }
 
 /** The question a paused loop is waiting on (held by the SESSION of the robot). `n` = runs done, `total` = Infinity for "forever". */
-export interface RepeatAsk { n: number; total: number; ok: boolean }
+export interface RepeatAsk { n: number; total: number; ok: boolean; verdict: 'success' | 'planned' | 'failed' | 'aborted' | 'error' }
 
 /** "Run 2 of 3 succeeded. Continue or stop?" (forever: no "of M"). */
 export const askText = (a: RepeatAsk): string =>

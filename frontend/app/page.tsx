@@ -127,8 +127,9 @@ export default function Home() {
     dispatch(key, { t: id ? 'listen' : 'answered' })
   }
   // Runs started by someone else on this robot (the fleet manager ...) are drawn in the SHOWN robot's session, from its read-only /ws/events
-  const { foreignRun, noteOwnEvent } = useForeignRun({ robotUrl: target?.url, ownRunning: () => get(shownKey()).running,
+  const { foreignRun, noteOwnEvent } = useForeignRun({ robotUrl: target?.url, ownRunning: () => get(shownKey()).running && !get(shownKey()).repeatAsk,
     show: (e, s) => emit(shownKey(), e, s), showImage: b => set(shownKey(), { logImage: b }) })
+  const foreignRunRef = useRef(foreignRun); foreignRunRef.current = foreignRun
   const handsFreeRef = useRef(false)    // the chat's mic toggle, read by the listen handler (set below, from state)
   const echoGuard = useRef(createEchoGuard()).current
   // a line the robot says: robot bubble (even with 🔊 off), echo guard, speech-time estimate for the mic. key null = the Fleet chat
@@ -482,11 +483,11 @@ export default function Home() {
           (ev.status != null ? (ev.status === 'success' || ev.status === 'planned') : ev.success === true)
         const ctrl = h.repeat
         ctrl.remaining -= 1
-        const step = nextStep(ctrl.policy, ok, ctrl.remaining, ctrl.active)
+        const step = nextStep(ctrl.policy, ok, ctrl.remaining, ctrl.active, ev.status === 'aborted')
         if (step === 'next') {
           setTimeout(() => { if (h.repeat.active) fireRef.current(key) }, 0)
         } else if (step === 'ask') {   // the loop pauses; the session holds the question until Continue / Stop
-          const q = { n: get(key).trial, total: ctrl.total, ok }
+          const q = { n: get(key).trial, total: ctrl.total, ok, verdict: verdictOf(ev) }
           applyAt(key, (st, k) => patch(st, k, { repeatAsk: q })); addQaLine(key, 'system', askText(q))
         } else {
           ctrl.active = false
@@ -588,7 +589,7 @@ export default function Home() {
     const cur = get(key).run, h = H(key)
     if (stopAction(cur) === 'force-reset') { reset(key, 'force reset'); return }
     h.repeat.active = false   // cancel any pending repeat
-    if (get(key).repeatAsk) { apply(st => endRun(st, key, 'aborted', Date.now())); addQaLine(key, 'system', '■ stopped'); return }   // paused and asking: nothing runs, the loop ends
+    if (get(key).repeatAsk) { apply(st => endRun(st, key, get(key).repeatAsk?.verdict ?? 'aborted', Date.now())); addQaLine(key, 'system', '■ stopped'); return }   // paused and asking: nothing runs, the loop ends
     stopNudge(h)
     h.stopReq = true
     abortCaptures(key)
@@ -602,8 +603,9 @@ export default function Home() {
   const answerRepeat = useCallback((go: boolean) => {
     const key = sess.stable(shownKey()), a = get(key).repeatAsk
     if (!a) return
+    if (go && foreignRunRef.current && !foreignRunRef.current.ended) { addQaLine(key, 'system', 'Another client is running this robot: wait for it to end, then Continue'); return }
     if (go && H(key).repeat.active) { set(key, { repeatAsk: null }); addQaLine(key, 'system', '▶ continue'); fireRef.current(key) }
-    else { H(key).repeat.active = false; applyAt(key, (st, k) => endRun(st, k, a.ok ? 'success' : 'failed', Date.now())); addQaLine(key, 'system', `■ stopped after run ${a.n}`) }
+    else { H(key).repeat.active = false; applyAt(key, (st, k) => endRun(st, k, a.verdict, Date.now())); addQaLine(key, 'system', `■ stopped after run ${a.n}`) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [get, set, applyAt, H, shownKey])
   // Stop of the robot on screen (every Stop / Cancel button of a robot calls it). Cancel adds the Fleet tab: there it is the fleet's Stop all
@@ -705,7 +707,7 @@ export default function Home() {
       api.answerListenAt(cur.url, id, text).catch(() => {})
       return
     }
-    if (cur.running) return
+    if (cur.running) { if (cur.repeatAsk) addQaLine(key, 'system', 'The loop waits for your answer: Continue or Stop first'); return }
     addQaLine(key, 'user', text)
     let logData = true, logTarget: 'backend' | 'frontend' = 'frontend', logAll = false
     try {
@@ -761,7 +763,7 @@ export default function Home() {
           onSend={sendChat}
           onStop={fleetMode ? cancel : stopShown}
           onReset={() => reset(shownKey(), 'reset')}
-          canStop={fleetMode || canStop(rs)} canType={fleetMode || canType(rs)} lost={!fleetMode && isLost(rs)} stuck={!fleetMode && needsForce(rs)}
+          canStop={fleetMode || canStop(rs) || !!sess.shown.repeatAsk} canType={fleetMode || canType(rs)} lost={!fleetMode && isLost(rs)} stuck={!fleetMode && needsForce(rs)}
           onClear={() => { if (fleetMode) setFleetLog([]); else set(shownKey(), { qaLog: [] }) }}
           onClose={() => setChatOpen(false)}
         />

@@ -31,7 +31,7 @@ like it cancels a running robot; a rename keeps it.
 
 The policy is kept in localStorage `robotapp_repeat_on_fail` (`ask` | `stop` | `continue`). The old key
 `robotapp_repeat_continue_on_error` is read once when the new key is absent: `1` -> `continue`, `0` -> `stop`; neither, or anything else -> `ask`.
-The old key is never written again. Preset sequences use the same policy.
+The old key is never written again. Preset sequences (plan-sequence, not in this branch) still pass a boolean `continueOnError`; when that work lands, its `seqRepeat.coe` must switch to `onFail` (follow-up).
 
 ## Code and proof
 
@@ -40,3 +40,5 @@ The old key is never written again. Preset sequences use the same policy.
 - End-to-end proof on two real sim agents: `scripts/e2e_repeat.py` (own dashboard on port 3027; steps: default `ask`, ask after success with
   Continue then Stop, ask after failure, `stop` ends with no ask, `continue` runs back to back, ask on a while b stays usable and a is marked `◆`,
   Cancel never asks, migration of the old key). Screenshots `e2e_start.png`, `e2e_ask.png`, `e2e_end.png`.
+
+A run cancelled from elsewhere (`done` with status `aborted`: another window, the fleet's Stop all) ends the loop in every policy and never asks. While the loop asks, a run started on the robot by another client is drawn, and Continue waits until it has ended.
