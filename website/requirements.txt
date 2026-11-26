@@ -1,0 +1,3 @@
+# Build the documentation site: pip install -r website/requirements.txt && cd website && zensical serve
+# Zensical reads mkdocs.yml and docs/ as they are. Beta (0.x): keep the pin until engine_selftest.sh passes.
+zensical>=0.1,<0.2
